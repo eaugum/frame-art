@@ -291,7 +291,9 @@ class Rotation:
 
     def status(self):
         interval = self.interval()
-        pools = {s.name: len((self.state["pools"].get(s.name) or {}).get("keys") or []) for s in self.sources}
+        # None: not listed yet (a source is listed the first time it's drawn); 0: listed, and nothing found
+        pools = {s.name: len(self.state["pools"][s.name].get("keys") or []) if s.name in self.state["pools"] else None
+                 for s in self.sources}
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
                 "next": int(self.state["changed"] + interval) if self.state["changed"] else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],

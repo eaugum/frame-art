@@ -167,7 +167,7 @@ PAGE = """<!doctype html>
     var rows = "";
     (s.sources || []).forEach(function (name) {
       var n = (s.pools || {})[name];
-      rows += "<tr><td></td><td class=n>" + (n ? n + " bilder" : "ingen ennå") + "</td></tr>";
+      rows += "<tr><td></td><td class=n>" + (n === null || n === undefined ? "ikke lest ennå (første gang den trekkes)" : n ? n + " bilder" : "ingen bilder funnet") + "</td></tr>";
     });
     $("sources").innerHTML = rows;
     (s.sources || []).forEach(function (name, i) { $("sources").rows[i].cells[0].textContent = name; });

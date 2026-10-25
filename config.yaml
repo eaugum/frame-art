@@ -1,7 +1,7 @@
 # Home Assistant add-on (local): copy this folder to /addons/frame_art on the Pi, then
 # Settings → Add-ons → Add-on Store → ⋮ → Check for updates → Frame Art (Local add-ons). See README.md.
 name: Frame Art
-version: "0.5.1"
+version: "0.5.2"
 slug: frame_art
 description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med Morgenbildet og kveldens serie (AUG-1438, AUG-1447)
 url: https://github.com/eaugum/frame-tv/tree/main/frame-art
