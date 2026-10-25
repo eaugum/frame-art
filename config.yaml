@@ -1,9 +1,9 @@
 # Home Assistant add-on (local): copy this folder to /addons/frame_art on the Pi, then
 # Settings → Add-ons → Add-on Store → ⋮ → Check for updates → Frame Art (Local add-ons). See README.md.
 name: Frame Art
-version: "0.4.0"
+version: "0.5.0"
 slug: frame_art
-description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film (AUG-1438)
+description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med Morgenbildet og kveldens serie (AUG-1438, AUG-1447)
 url: https://github.com/eaugum/frame-tv/tree/main/frame-art
 arch: [aarch64, amd64]
 init: false
@@ -24,6 +24,15 @@ options:
   interval_minutes: 60
   keep: 3
   tmdb_key: ""
+  # Morgenbildet (the date and the weather) and tonight's show from Stasera, once a day each. The add-on's page can
+  # change the times and the interval; what it sets is kept and wins over these.
+  morning: true
+  morning_time: "07:00"
+  tonight: true
+  tonight_time: "18:00"
+  latitude: 59.9139
+  longitude: 10.7522
+  stasera_url: ""
   # A source: name, type, query (several with |), and if needed years ("1800-1930"), shape (wide: crop to 16:9 and
   # skip the rest; any: anything, shown whole), weight (1-10, how often) and enabled. Types and queries: README.md.
   sources:
@@ -73,6 +82,13 @@ schema:
   interval_minutes: int(5,1440)
   keep: int(1,20)
   tmdb_key: password?
+  morning: bool
+  morning_time: match(^\d\d:\d\d$)
+  tonight: bool
+  tonight_time: match(^\d\d:\d\d$)
+  latitude: float
+  longitude: float
+  stasera_url: url?
   sources:
     - name: str
       type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|tmdb)

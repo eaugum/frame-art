@@ -1,21 +1,40 @@
 """The rotation: every interval a random picture from a random source that's on, up to the TV, shown, and our older
 uploads removed. It remembers in state.json what it uploaded (only those are ever deleted), what it showed lately
 and when, so a restart of the Pi or the TV picks up where it was.
+
+Two pictures we make have a time of their own (AUG-1447): Morgenbildet, with the date and the weather, at morning_time
+(07:00), and tonight's show from Stasera as a poster at tonight_time (18:00). Each is shown once a day, as soon as its
+time comes; the rotation goes on after it. The schedule can be changed on the add-on's page (SCHEDULE), and that is
+kept in settings.json, before the add-on's options.
 """
 import asyncio
+import datetime
 import json
 import logging
 import os
 import random
 import time
+from zoneinfo import ZoneInfo
 
-from . import __version__, image, sources
+from . import __version__, image, made, sources, weather
+from .stasera import Stasera, Unlinked
 from .tv import TV
 
 log = logging.getLogger(__name__)
 
 RECENT = 200  # not the same picture again within this many changes (or the whole pool, if it's smaller)
 RETRY_MINUTES = 5  # TV off or away
+MADE_RETRY_MINUTES = 15  # Open-Meteo, Stasera or TMDB didn't answer
+MADE = ("morning", "tonight")
+
+# What the add-on's page can change: name -> (default, check)
+SCHEDULE = {
+    "interval_minutes": (60, lambda v: int(v) if 5 <= int(v) <= 1440 else None),
+    "morning": (True, lambda v: v if isinstance(v, bool) else None),
+    "morning_time": ("07:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
+    "tonight": (True, lambda v: v if isinstance(v, bool) else None),
+    "tonight_time": ("18:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
+}
 
 
 class State:
@@ -26,7 +45,8 @@ class State:
                 self.d = json.load(f)
         except (OSError, ValueError):
             self.d = {}
-        for k, v in (("uploaded", []), ("recent", []), ("bad", []), ("pools", {}), ("changed", 0)):
+        for k, v in (("uploaded", []), ("recent", []), ("bad", []), ("pools", {}), ("changed", 0), ("made", {}),
+                     ("tried", {})):
             self.d.setdefault(k, v)
 
     def __getitem__(self, k):
@@ -44,13 +64,49 @@ class State:
 
 class Rotation:
     def __init__(self, cfg, data_dir):
-        self.cfg = cfg
         self.data = data_dir
+        self.settings_path = os.path.join(data_dir, "settings.json")
+        self.cfg = dict(cfg, **self._saved_schedule())
         self.state = State(os.path.join(data_dir, "state.json"))
         self.sources = sources.from_config(cfg)
         self.next_path = os.path.join(data_dir, "next.jpg")
         self.showing_path = os.path.join(data_dir, "showing.jpg")
         self.lock = asyncio.Lock()  # one conversation with the TV at a time: the timer, Home Assistant, Frame TV
+        self.stasera = Stasera(cfg.get("stasera_url"), data_dir)
+        self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
+
+    # MARK: - The schedule
+
+    def _saved_schedule(self):
+        try:
+            with open(self.settings_path) as f:
+                return {k: v for k, v in json.load(f).items() if k in SCHEDULE}
+        except (OSError, ValueError):
+            return {}
+
+    def schedule(self):
+        return {k: self.cfg.get(k, default) for k, (default, _) in SCHEDULE.items()}
+
+    def set_schedule(self, changes):
+        """Checks and keeps what the add-on's page changed; raises ValueError on a bad value."""
+        clean = {}
+        for k, v in changes.items():
+            if k not in SCHEDULE:
+                raise ValueError("unknown setting %s" % k)
+            try:
+                clean[k] = SCHEDULE[k][1](v)
+            except (TypeError, ValueError):
+                clean[k] = None
+            if clean[k] is None:
+                raise ValueError("bad value for %s: %r" % (k, v))
+        saved = dict(self._saved_schedule(), **clean)
+        tmp = self.settings_path + ".tmp"
+        with open(tmp, "w") as f:
+            json.dump(saved, f, indent=1)
+        os.replace(tmp, self.settings_path)
+        self.cfg.update(clean)
+        log.info("schedule: %s", ", ".join("%s=%s" % kv for kv in sorted(clean.items())))
+        return self.schedule()
 
     # MARK: - Picking
 
@@ -98,31 +154,100 @@ class Rotation:
             return image.to_jpeg(img), "%s: %s" % (src.name, label), full
         return None
 
-    def prepared(self):
-        """The picture for the next change, made once and kept until it's on the TV (the TV may be off for hours)."""
+    # MARK: - The pictures we make
+
+    def now(self):
+        return datetime.datetime.now(self.zone)
+
+    def _clock(self, name):
+        try:
+            return datetime.time.fromisoformat(self.cfg.get(name) or SCHEDULE[name][0])
+        except ValueError:
+            return datetime.time.fromisoformat(SCHEDULE[name][0])
+
+    def due(self):
+        """'tonight' or 'morning' when its time has come and it hasn't been shown today, else None."""
+        now = self.now()
+        today, clock = now.date().isoformat(), now.time()
+        evening = self._clock("tonight_time")
+        for kind, on, start, end in (
+                ("tonight", self.cfg.get("tonight", True) and self.stasera.state() == "linked", evening,
+                 datetime.time.max),
+                ("morning", self.cfg.get("morning", True), self._clock("morning_time"), evening)):
+            if not on or not start <= clock < end or self.state["made"].get(kind) == today:
+                continue
+            if time.time() - self.state["tried"].get(kind, 0) < MADE_RETRY_MINUTES * 60:
+                continue
+            return kind
+        return None
+
+    def make(self, kind):
+        """(jpeg, label, key) for Morgenbildet or tonight's poster, or None (and it's tried again later)."""
+        now = self.now()
+        today = now.date().isoformat()
+        try:
+            if kind == "morning":
+                try:
+                    w = weather.today(self.cfg.get("latitude", 59.9139), self.cfg.get("longitude", 10.7522))
+                except Exception as e:
+                    log.warning("no weather for Morgenbildet (%s)", e)
+                    w = None
+                img, label = made.morning_picture(now, w), "Morgenbildet"
+            else:
+                items = [i for i in self.stasera.tonight() if i.get("textlessBackdropPath") or i.get("backdropPath")]
+                if not items:
+                    log.info("nothing in Stasera tonight")
+                    self.state["made"][kind] = today  # not again today
+                    self.state.save()
+                    return None
+                img, label = made.poster(items[0]), "I kveld: %s" % (items[0].get("title") or "?")
+        except Unlinked:
+            log.info("Stasera isn't linked: link it on the add-on's page")
+            return None
+        except Exception as e:
+            log.warning("couldn't make %s (%s: %s)", kind, type(e).__name__, e)
+            self.state["tried"][kind] = time.time()
+            self.state.save()
+            return None
+        return image.to_jpeg(img), label, "%s:%s" % (kind, today)
+
+    def prepared(self, what=None):
+        """The picture for the next change, made once and kept until it's on the TV (the TV may be off for hours).
+        what ('morning' or 'tonight') makes that one now; otherwise one that's due comes before the rotation."""
         meta = self.state.d.get("next")
+        kind = what or self.due()
+        if meta and meta.get("made") and meta["key"] != "%s:%s" % (kind, self.now().date().isoformat()):
+            meta = None  # yesterday's, or Morgenbildet still waiting when it's time for the poster
+        if meta and kind and not meta.get("made"):
+            meta = None  # a picture from the rotation gives way
         if meta and os.path.exists(self.next_path):
             with open(self.next_path, "rb") as f:
                 return f.read(), meta["label"], meta["key"]
-        got = self.pick()
+        got = self.make(kind) if kind else None
+        if not got and what:
+            return None
+        if not got:
+            got = self.pick()
         if got:
             with open(self.next_path, "wb") as f:
                 f.write(got[0])
-            self.state["next"] = {"label": got[1], "key": got[2]}
+            self.state["next"] = {"label": got[1], "key": got[2], "made": got[2].split(":")[0] in MADE}
             self.state.save()
         return got
 
     # MARK: - The TV
 
-    async def change(self, art_mode=False):
-        """A new picture. With art_mode, the TV goes to Art Mode too (Home Assistant, Frame TV); the timer never does."""
+    async def change(self, art_mode=False, what=None):
+        """A new picture. With art_mode, the TV goes to Art Mode too (Home Assistant, Frame TV); the timer never does.
+        what: 'morning' or 'tonight' for that one now."""
         async with self.lock:
-            return await self._change(art_mode)
+            return await self._change(art_mode, what)
 
-    async def _change(self, force):
-        got = self.prepared()
+    async def _change(self, force, what=None):
+        got = await asyncio.to_thread(self.prepared, what)
         if not got:
-            log.warning("nothing to show: no source is on, or none has pictures")
+            log.warning("nothing to show: %s", "couldn't make %s" % what if what else
+                        "no source is on, or none has pictures")
             return False
         jpeg, label, key = got
         log.info("connecting to the TV for %s", label)
@@ -143,6 +268,9 @@ class Rotation:
             self.state["recent"] = (self.state["recent"] + [key])[-RECENT:]
             self.state["changed"] = time.time()
             self.state["showing"] = label
+            kind, _, day = key.partition(":")
+            if kind in MADE:
+                self.state["made"][kind] = day
             self.state.d.pop("next", None)
             self.state.save()
             os.replace(self.next_path, self.showing_path)  # for the add-on's page
@@ -167,8 +295,8 @@ class Rotation:
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
                 "next": int(self.state["changed"] + interval) if self.state["changed"] else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
-                "pools": pools,
-                "busy": self.lock.locked()}
+                "pools": pools, "schedule": self.schedule(), "stasera": self.stasera.state(),
+                "pairing": self.stasera.pairing, "busy": self.lock.locked()}
 
     async def clean(self, tv):
         """Deletes our own older uploads, keeping the newest few; never anything else in «Mine bilder»."""
@@ -188,12 +316,11 @@ class Rotation:
         return max(1, float(self.cfg.get("interval_minutes", 60))) * 60
 
     async def run(self):
-        interval = self.interval()
-        log.info("Frame Art %s for %s, every %g min, sources: %s", __version__, self.cfg["tv_host"], interval / 60,
-                 ", ".join(s.name for s in self.sources) or "none")
+        log.info("Frame Art %s for %s, every %g min, sources: %s", __version__, self.cfg["tv_host"],
+                 self.interval() / 60, ", ".join(s.name for s in self.sources) or "none")
         while True:
-            wait = self.state["changed"] + interval - time.time()
-            if wait > 0:
+            wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
+            if wait > 0 and not self.due():
                 await asyncio.sleep(min(wait, 60))  # a change from the API moves the time; look again each minute
                 continue
             try:

@@ -61,6 +61,26 @@ mange av våre egne bilder som blir liggende på TV-en.
 Tilgang: Kunstmodus-kanalen spør aldri om «Tillat», den bare tier uten token. Uten token kobler tjenesten seg derfor
 først til fjernkontroll-kanalen (uten å sende taster). Da kommer spørsmålet på TV-en, og tokenet virker for begge.
 
+## Morgenbildet og kveldens serie (AUG-1447)
+
+To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der. Etterpå går rotasjonen videre som før.
+
+- **Morgenbildet** (`morning_time`, 07:00): ukedag, dato, dagens høyeste og laveste temperatur, været i ord («regn fra
+  kl. 15») og sola opp og ned, i rolig skrift på en flate med farge etter været. Været kommer fra Open-Meteo for
+  `latitude`/`longitude`, uten HA. Svarer ikke Open-Meteo, kommer bildet uten vær.
+- **Kveldens serie** (`tonight_time`, 18:00): en plakat av den første i Staseras «I kveld», med bakgrunnsbildet uten
+  tekst, logoen (eller tittelen) og sesong og episode. Trenger `stasera_url` og at add-on-et er koblet til Stasera.
+  Er det ingenting i kveld, blir det ingen plakat.
+
+Er TV-en av når tiden kommer, venter bildet til den er på igjen, men Morgenbildet bare til kveldens tid. Får den ikke
+laget bildet (nettet), prøver den igjen om 15 minutter.
+
+**Tidsplanen på add-on-siden:** hvor ofte bildet byttes, og av/på og klokkeslett for de to bildene. Det virker med en
+gang, uten omstart, og lagres i `/data/settings.json`, foran valgene i add-on-et.
+
+**Stasera:** «Koble til Stasera» på add-on-siden gir en kode og en lenke; godkjenn den i Stasera, som når TV-en kobles.
+Tokenet ligger i `/data/stasera_token.txt`. «Koble fra» glemmer det.
+
 ## Styre den: Home Assistant og Frame TV
 
 Add-on-et svarer på port 8099 på hjemmenettet, uten innlogging (som TV-ens eget API). Svarene venter på TV-en.
@@ -68,14 +88,17 @@ Add-on-et svarer på port 8099 på hjemmenettet, uten innlogging (som TV-ens ege
 | Kall | Hva |
 |---|---|
 | `GET /status` | Hva som vises, når det ble byttet og når det byttes neste gang |
-| `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også |
+| `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også, `?what=morning` viser Morgenbildet og `?what=tonight` kveldens serie |
 | `POST /artmode` | Kunstmodus på, med bildet den har |
+| `POST /schedule` | Endrer tidsplanen, med JSON: `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time` |
+| `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 
 Kunstmodus slås på med `set_artmode`. Tar ikke det, sendes ett kort trykk på av/på over fjernkontroll-kanalen, men bare
 når TV-en nettopp har sagt at den er på og ikke i Kunstmodus. Timeren alene slår aldri på Kunstmodus.
 
 - **Home Assistant:** `homeassistant/packages/frame_tv.yaml` har `rest_command.frame_art_next` og
-  `rest_command.frame_art_artmode`, og skriptene «Kunstmodus - Nytt bilde» og «Kunstmodus - Slå på».
+  `rest_command.frame_art_artmode`, og skriptene «Kunstmodus - Nytt bilde», «Kunstmodus - Slå på»,
+  «Kunstmodus - Morgenbildet» og «Kunstmodus - Kveldens serie».
 - **Frame TV:** `art_url=http://10.1.2.12:8099` i `config.properties`. Flisen på Hjem: OK slår på Kunstmodus, hold OK
   for et nytt bilde.
 
@@ -93,6 +116,7 @@ Egne bilder legges i `/media/frame-art` (Media-mappa i HA, f.eks. over Samba).
 ```bash
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m frameart --config options.json --preview out   # lager 5 bilder i out/, rører ikke TV-en
+.venv/bin/python -m frameart --config options.json --preview out --what morning   # bare Morgenbildet (eller tonight)
 .venv/bin/python -m frameart --config options.json --once          # bytter bildet én gang
 .venv/bin/python -m frameart --config options.json                 # går av seg selv
 ```
