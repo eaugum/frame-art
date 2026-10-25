@@ -1,9 +1,9 @@
 # Home Assistant add-on (local): copy this folder to /addons/frame_art on the Pi, then
 # Settings → Add-ons → Add-on Store → ⋮ → Check for updates → Frame Art (Local add-ons). See README.md.
 name: Frame Art
-version: "0.3.0"
+version: "0.4.0"
 slug: frame_art
-description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe og fra museer (AUG-1438)
+description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film (AUG-1438)
 url: https://github.com/eaugum/frame-tv/tree/main/frame-art
 arch: [aarch64, amd64]
 init: false
@@ -23,27 +23,61 @@ options:
   tv_host: 10.1.2.36
   interval_minutes: 60
   keep: 3
-  folder: true
-  folder_path: /media/frame-art
-  museums: true
-  years: "1800-1930"
-  met: true
-  met_queries: [landscape, seascape]
-  rijksmuseum: true
-  rijksmuseum_queries: [landschap, zee]
-  nasjonalmuseet: true
-  nasjonalmuseet_artists: [Hans Gude, Harald Sohlberg, Edvard Munch, Nikolai Astrup, Theodor Kittelsen]
+  tmdb_key: ""
+  # A source: name, type, query (several with |), and if needed years ("1800-1930"), shape (wide: crop to 16:9 and
+  # skip the rest; any: anything, shown whole), weight (1-10, how often) and enabled. Types and queries: README.md.
+  sources:
+    # Mine egne
+    - {name: Mine bilder, type: folder, query: /media/frame-art}
+    # Malerier
+    - {name: Landskap og hav (The Met), type: met, query: landscape|seascape, years: 1800-1930}
+    - {name: Rijksmuseum, type: rijksmuseum, query: landschap|zee, years: 1800-1930}
+    - {name: Nasjonalmuseet, type: nasjonalmuseet,
+       query: Hans Gude|Harald Sohlberg|Edvard Munch|Nikolai Astrup|Theodor Kittelsen}
+    - {name: Cleveland, type: cleveland, query: landscape|seascape, years: 1800-1930}
+    - {name: Dansk gullalder (SMK), type: smk, query: "*", years: 1800-1900}
+    - {name: Impresjonistene, type: commons,
+       query: Paintings by Claude Monet|Paintings by Camille Pissarro|Paintings by Alfred Sisley|Paintings by Vincent van Gogh}
+    - {name: Romantikken, type: commons,
+       query: Paintings by Caspar David Friedrich|Paintings by Joseph Mallord William Turner|Paintings by Ivan Aivazovsky|Paintings by Albert Bierstadt}
+    - {name: Nordisk lys, type: commons,
+       query: Paintings by Peder Severin Krøyer|Paintings by Akseli Gallen-Kallela|Paintings by Anders Zorn|Paintings by Vilhelm Hammershøi}
+    # Abstrakt
+    - {name: Abstrakt, type: commons, shape: any,
+       query: Paintings by Wassily Kandinsky|Paintings by Piet Mondrian|Paintings by Kazimir Malevich|Paintings by Paul Klee|Paintings by Robert Delaunay|Paintings by Hilma af Klint|Paintings by Sophie Taeuber-Arp|Paintings by Lyubov Popova}
+    # Japan
+    - {name: Japanske tresnitt (The Met), type: met, shape: any, query: medium=Prints&q=Hiroshige|medium=Prints&q=Hokusai}
+    - {name: Japanske tresnitt (Cleveland), type: cleveland, shape: any,
+       query: type=Print&q=Hiroshige|type=Print&q=Hokusai}
+    - {name: Kawase Hasui, type: commons, shape: any, query: Kawase Hasui}
+    # Plakater
+    - {name: Art nouveau-plakater, type: commons, shape: any, query: Art Nouveau posters|Posters by Alfons Mucha}
+    - {name: Art deco-plakater, type: commons, shape: any, query: Art Deco posters}
+    - {name: Nasjonalparkplakater, type: commons, shape: any, query: "WPA posters, National Park Service"}
+    # Natur og rommet
+    - {name: Botanikk, type: wellcome, query: botanical}
+    - {name: Naturfoto, type: commons,
+       query: Featured pictures of landscapes|Featured pictures of mountains|Featured pictures of Norway}
+    - {name: Rommet (NASA), type: nasa, query: nebula|spiral galaxy|star cluster}
+    - {name: Jorda fra rommet, type: nasa, query: earth from space}
+    - {name: Astrofoto, type: commons, query: Featured pictures of astronomy}
+    # Film (tmdb trenger tmdb_key)
+    - {name: Filmplakater, type: commons, shape: any, query: 1920s film posters|Film posters of the United States}
+    - {name: Stumfilm, type: commons, shape: any, query: Film stills, enabled: false}
+    - {name: Film, type: tmdb, query: top_rated}
+    - {name: Regissører, type: tmdb,
+       query: Christopher Nolan|Denis Villeneuve|Wes Anderson|Hayao Miyazaki|Stanley Kubrick|Wong Kar-wai}
+    - {name: Science fiction, type: tmdb, query: with_genres=878}
 schema:
   tv_host: str
   interval_minutes: int(5,1440)
   keep: int(1,20)
-  folder: bool
-  folder_path: str
-  museums: bool
-  years: str?
-  met: bool
-  met_queries: [str]
-  rijksmuseum: bool
-  rijksmuseum_queries: [str]
-  nasjonalmuseet: bool
-  nasjonalmuseet_artists: [str]
+  tmdb_key: password?
+  sources:
+    - name: str
+      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|tmdb)
+      query: str?
+      years: str?
+      shape: list(wide|any)?
+      weight: int(1,10)?
+      enabled: bool?

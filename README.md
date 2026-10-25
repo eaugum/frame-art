@@ -14,19 +14,43 @@ da; tokenet lagres i `token.txt` (gitignorert).
 
 ## Kildene
 
-| Kilde | Hva | Valg |
+Kildene er en liste i valgene (`sources`), så en ny kilde er noen linjer i Home Assistant: Innstillinger → Add-ons →
+Frame Art → Konfigurasjon → ⋮ → Rediger i YAML. Etter en omstart viser add-on-ets side hvor mange bilder hver kilde
+fant; 0 betyr som regel et feil navn (loggen sier hvilket).
+
+```yaml
+- name: Abstrakt                  # vises foran tittelen; uten kolon
+  type: commons
+  query: Paintings by Hilma af Klint|Paintings by Piet Mondrian   # flere med |
+  shape: any                      # wide (beskjær til 16:9, hopp over resten) eller any (alt, vist helt)
+  years: 1800-1930                # bare met, rijksmuseum, cleveland, smk, nasa og tmdb
+  weight: 2                       # 1-10: hvor ofte, mot de andre (1)
+  enabled: false                  # av, uten å slette den
+```
+
+| Type | Hva | `query` |
 |---|---|---|
-| `folder` | Bildene i en mappe (og undermapper), som de er. Det som ikke er nær 16:9, vises helt på en uskarp kopi av seg selv | `folder_path` |
-| `met` | The Met: malerier i public domain, funnet med søkeord | `met_queries` |
-| `rijksmuseum` | Rijksmuseum: malerier med bilde (alle public domain), søkeord i beskrivelsen eller søkets egne felt (`creator=Vermeer`) | `rijksmuseum_queries` |
-| `nasjonalmuseet` | Nasjonalmuseets malerier via Wikimedia Commons, én kategori per kunstner (eller en hel `Category:...`) | `nasjonalmuseet_artists` |
+| `folder` | Bildene i en mappe (og undermapper), alle former | Mappa (`/media/frame-art`) |
+| `met` | The Met, public domain; malerier om ikke annet er sagt | Søkeord, eller søkets felt: `medium=Prints&q=Hiroshige` |
+| `rijksmuseum` | Rijksmuseum (alt med bilde er public domain); malerier om ikke annet er sagt | Ord i beskrivelsen (`zee`), eller felt: `creator=Vermeer` |
+| `nasjonalmuseet` | Nasjonalmuseets malerier på Wikimedia Commons | Kunstnere (`Hans Gude`) |
+| `cleveland` | Cleveland Museum of Art, CC0; malerier om ikke annet er sagt | Søkeord, eller felt: `type=Print&q=Hokusai` |
+| `smk` | Statens Museum for Kunst, København, public domain; malerier om ikke annet er sagt | Søkeord (`landskab`), `*` for alt, eller felt: `keys=*&object_names=tegning` |
+| `commons` | Wikimedia Commons-kategorier, med underkategorier to nivåer ned (alt der er fritt) | Kategorinavn uten `Category:`, f.eks. `Featured pictures of Norway` |
+| `nasa` | NASAs bildebibliotek, alle former | Søkeord (`nebula`) |
+| `wellcome` | Wellcome Collection, public domain og CC0: gamle illustrasjoner, alle former | Søkeord (`botanical`) |
+| `tmdb` | Stillbilder fra filmer på TMDB, uten tekst. Trenger `tmdb_key` (samme som Frame TV) | `top_rated`, `popular`, en person (`Christopher Nolan`), eller discover-felt: `with_genres=878` |
 
-`museums` slår av og på alle tre museene; `years` (`1800-1930`) gjelder The Met og Rijksmuseum. Museumsbildene må
-være nær 16:9 (1,3–2,1) og minst 1920 px brede; de beskjæres til 3840×2160. Art Institute of Chicago er ikke med:
-bildene ligger bak en Cloudflare-sjekk som et skript ikke kommer forbi. Nasjonalmuseets eget API er nede til v2 kommer,
-og DigitaltMuseum gir høyst 1200 px, derfor Commons.
+Uten `shape` beskjærer museene, Commons og TMDB (bildene må være nær 16:9, 1,3–2,1, og minst 1920 px brede);
+mappa, NASA og Wellcome viser alt helt, på en uskarp kopi av seg selv. `any` passer for plakater, tresnitt og
+abstrakt. Art Institute of Chicago er ikke med: bildene ligger bak en Cloudflare-sjekk som et skript ikke kommer forbi. Nasjonalmuseets eget
+API er nede til v2 kommer, og DigitaltMuseum gir høyst 1200 px, derfor Commons. Europeana, Smithsonian og Harvard
+trenger en nøkkel hver og er ikke med ennå. TMDB-bildene er ikke frie, men til bruk hjemme.
 
-Hver kilde trekkes like ofte, uansett hvor mange bilder den har. Ingen bilder kommer igjen før 200 andre har vært
+Valgene fra 0.3 (`museums`, `met_queries` osv.) virker fortsatt når `sources` mangler, f.eks. i en gammel
+`options.json`.
+
+Hver kilde trekkes like ofte (ganger `weight`), uansett hvor mange bilder den har. Ingen bilder kommer igjen før 200 andre har vært
 vist (eller hele kilden, om den er mindre).
 
 Byttet: er TV-en i Kunstmodus, vises bildet med en gang; ellers blir det valgt og står klart til neste gang

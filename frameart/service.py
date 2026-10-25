@@ -70,14 +70,17 @@ class Rotation:
 
     def pick(self):
         """(jpeg, label, key) for a new picture, or None."""
-        bad, recent = set(self.state["bad"]), self.state["recent"]
+        bad, recent, empty = set(self.state["bad"]), self.state["recent"], set()
         for _ in range(12):
-            choices = [(s, self.pool(s)) for s in self.sources]
-            choices = [(s, [k for k in keys if s.name + ":" + k not in bad]) for s, keys in choices]
-            choices = [(s, keys) for s, keys in choices if keys]
+            # a source is listed only when it's drawn, so a big new one doesn't hold up the others
+            choices = [s for s in self.sources if s.name not in empty]
             if not choices:
                 return None
-            src, keys = random.choice(choices)
+            src = random.choices(choices, [s.weight for s in choices])[0]
+            keys = [k for k in self.pool(src) if src.name + ":" + k not in bad]
+            if not keys:
+                empty.add(src.name)
+                continue
             fresh = [k for k in keys if src.name + ":" + k not in recent[-min(RECENT, len(keys) - 1):]] or keys
             key = random.choice(fresh)
             full = src.name + ":" + key
@@ -160,9 +163,12 @@ class Rotation:
 
     def status(self):
         interval = self.interval()
+        pools = {s.name: len((self.state["pools"].get(s.name) or {}).get("keys") or []) for s in self.sources}
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
                 "next": int(self.state["changed"] + interval) if self.state["changed"] else None,
-                "interval_minutes": interval / 60, "sources": [s.name for s in self.sources], "busy": self.lock.locked()}
+                "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
+                "pools": pools,
+                "busy": self.lock.locked()}
 
     async def clean(self, tv):
         """Deletes our own older uploads, keeping the newest few; never anything else in «Mine bilder»."""

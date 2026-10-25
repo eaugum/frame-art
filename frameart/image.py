@@ -24,6 +24,13 @@ def big_enough(width, height):
     return croppable(width, height) and width >= MIN_WIDTH
 
 
+def usable(width, height, whole=False):
+    """big_enough for a source that crops; for one shown whole (any shape), not enlarged more than twice."""
+    if not whole:
+        return big_enough(width, height)
+    return width > 0 and height > 0 and min(W / width, H / height) <= 2
+
+
 def fill(img):
     """Crops to 16:9 around the centre."""
     return ImageOps.fit(img, (W, H), Image.LANCZOS, centering=(0.5, 0.5))

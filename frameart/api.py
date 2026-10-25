@@ -1,7 +1,7 @@
 """A small HTTP API on the home network, for Home Assistant (rest_command) and Frame TV on the TV.
 
 GET  /         a page with what's showing and two buttons (the add-on's page in Home Assistant, through ingress)
-GET  /status   what's showing, when it changed and when it changes next
+GET  /status   what's showing, when it changed and when it changes next, and how many pictures each source has
 GET  /showing.jpg  the picture
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too
 POST /artmode  Art Mode on, with the picture it has
@@ -79,6 +79,10 @@ PAGE = """<!doctype html>
            background: #f2c94c; color: #111; }
   button.second { background: #333; color: #eee; }
   button:disabled { opacity: .5; cursor: default; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: #aaa; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; color: #ccc; }
+  td { padding: 4px 0; border-top: 1px solid #222; }
+  td.n { text-align: right; color: #888; }
 </style></head>
 <body><main>
   <img id="pic" alt="">
@@ -87,6 +91,8 @@ PAGE = """<!doctype html>
   <button id="next">Nytt bilde i Kunstmodus</button>
   <button id="art" class="second">Slå på Kunstmodus</button>
   <p id="msg"></p>
+  <h2>Kildene</h2>
+  <table id="sources"></table>
 </main>
 <script>
   function $(id) { return document.getElementById(id); }
@@ -98,6 +104,13 @@ PAGE = """<!doctype html>
       "byttet " + time(s.changed) + " · neste " + time(s.next) + " · versjon " + s.version;
     $("pic").src = "showing.jpg?" + s.changed;
     $("next").disabled = $("art").disabled = !!s.busy;
+    var rows = "";
+    (s.sources || []).forEach(function (name) {
+      var n = (s.pools || {})[name];
+      rows += "<tr><td></td><td class=n>" + (n ? n + " bilder" : "ingen ennå") + "</td></tr>";
+    });
+    $("sources").innerHTML = rows;
+    (s.sources || []).forEach(function (name, i) { $("sources").rows[i].cells[0].textContent = name; });
   }
   function load() { fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {}); }
   function act(path, doing) {
