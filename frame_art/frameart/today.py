@@ -85,6 +85,21 @@ def _hourly(attrs, now):
     return {}
 
 
+def _tibber(ha, attrs, now):
+    """{hour: price} for today from Tibber (tibber.get_prices, in quarters), for the home the sensor is for."""
+    day = now.strftime("%Y-%m-%d")
+    r = ha.post("/api/services/tibber/get_prices?return_response",
+                {"start": day + " 00:00:00", "end": day + " 23:59:59"})
+    homes = (r.get("service_response") or {}).get("prices") or {}
+    prices = homes.get(attrs.get("app_nickname")) or next(iter(homes.values()), [])
+    hours = {}
+    for p in prices:
+        at = datetime.datetime.fromisoformat(p["start_time"]).astimezone(now.tzinfo)
+        if at.date() == now.date():
+            hours.setdefault(at.hour, []).append(float(p["price"]))
+    return {h: sum(v) / len(v) for h, v in hours.items()}
+
+
 
 def _money(v, unit):
     """In øre under a krone, else in kroner: «42 øre», «1,85 kr». The unit says whether it's øre or kroner already."""
@@ -93,19 +108,21 @@ def _money(v, unit):
 
 
 def power(ha, entity, now):
-    """[«Billigst kl. 13–15: 42 øre», «Dyrest kl. 17–19: 1,85 kr»] for the rest of today, or []."""
+    """{hourly: {hour: price}, lines: [«Billigst kl. 13–15: 42 øre», «Dyrest kl. 17–19: 1,85 kr»], cheap: hour,
+    dear: hour} for the rest of today, or None. The prices are in the sensor (Nord Pool), or from Tibber when it's a
+    Tibber sensor."""
     try:
-        s = ha.state(entity)
+        a = ha.state(entity).get("attributes") or {}
+        hourly = _hourly(a, now) or (_tibber(ha, a, now) if "app_nickname" in a else {})
     except Exception as e:
         log.info("Morgenbildet: no price from %s (%s: %s)", entity, type(e).__name__, e)
-        return []
-    a = s.get("attributes") or {}
-    hourly = _hourly(a, now)
+        return None
     starts = [h for h in range(now.hour, 24 - PRICE_HOURS + 1) if all(h + i in hourly for i in range(PRICE_HOURS))]
     if not starts:
-        return []
+        return None
     mean = {h: sum(hourly[h + i] for i in range(PRICE_HOURS)) / PRICE_HOURS for h in starts}
     lo, hi = min(starts, key=mean.get), max(starts, key=mean.get)
     unit = a.get("unit_of_measurement") or a.get("unit") or ""
-    return ["Billigst kl. %02d–%02d: %s" % (lo, lo + PRICE_HOURS, _money(mean[lo], unit)),
-            "Dyrest kl. %02d–%02d: %s" % (hi, hi + PRICE_HOURS, _money(mean[hi], unit))]
+    return {"hourly": hourly, "cheap": lo, "dear": hi, "hours": PRICE_HOURS,
+            "lines": ["Billigst kl. %02d–%02d: %s" % (lo, lo + PRICE_HOURS, _money(mean[lo], unit)),
+                      "Dyrest kl. %02d–%02d: %s" % (hi, hi + PRICE_HOURS, _money(mean[hi], unit))]}

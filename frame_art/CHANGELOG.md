@@ -1,5 +1,12 @@
 # Endringer
 
+## 0.18.0
+
+- Morgenbildet bruker hele skjermen, med større skrift. Under været står temperaturen kl. 8, 12, 16 og 20, vinden fra
+  frisk bris og «Fare for glatte veier» når det er nedbør rundt null grader om morgenen.
+- Strømmen vises som søyler time for time, med de billigste og dyreste timene merket. Tibbers prissensor virker nå
+  (`tibber.get_prices`), i tillegg til Nord Pool.
+
 ## 0.17.1
 
 - Morgenbildet: været fra HA (`weather_entity`, standard `weather.forecast_home`, met.no) og sol opp og ned fra

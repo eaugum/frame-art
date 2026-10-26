@@ -92,14 +92,17 @@ To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der.
 
 - **Morgenbildet** (`morning_time`, 07:00): ukedag, dato, dagens høyeste og laveste temperatur, været i ord («regn fra
   kl. 15») og sola opp og ned, i rolig skrift på en flate med farge etter været. Været kommer fra
-  `weather_entity` i valgene (`weather.forecast_home`: met.no, som Yr) og sola fra `sun.sun` i HA. Er den tom eller
-  svarer ikke, kommer bildet uten vær. Under datoen står
+  `weather_entity` i valgene (`weather.forecast_home`: met.no, som Yr) og sola fra `sun.sun` i HA. Under været står
+  temperaturen kl. 8, 12, 16 og 20, og når det trengs vinden (fra frisk bris, 8 m/s: «Liten kuling fra sørvest, kast
+  18 m/s») og «Fare for glatte veier» (nedbør mellom −3 og 1,5 grader før kl. 12). Er den tom eller svarer ikke,
+  kommer bildet uten vær. Under datoen står
   uka og navnedagen (Almanakkforlagets liste, revidert desember 2025, i `navnedager.json`; `scripts/navnedager.py` lager den
   på nytt). Til høyre, når de har noe:
   - **I dag:** avtalene fra kalenderne i `calendars` i valgene (`calendar.*` i HA).
   - **Nytt i Stasera:** nye episoder, sesong- og seriepremierer og filmpremierer i dag (`/tv/upcoming`).
-  - **Strøm:** de billigste og dyreste to timene resten av dagen, fra en Nord Pool-sensor i HA med `raw_today` eller
-    `today` (`price_entity` i valgene).
+  - **Strøm:** prisen time for time som søyler, og de billigste og dyreste to timene resten av dagen
+    (`price_entity` i valgene): en Nord Pool-sensor med `raw_today` eller `today`, eller Tibbers prissensor
+    (`sensor.<hjem>_electricity_price`), da med prisene fra `tibber.get_prices`.
 - **Kveldens serie** (`tonight_time`, 18:00): en plakat av den første i Staseras «I kveld», med bakgrunnsbildet uten
   tekst, logoen (eller tittelen) og sesong og episode. Trenger `stasera_url` og at add-on-et er koblet til Stasera.
   Er det ingenting i kveld, blir det ingen plakat.

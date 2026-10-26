@@ -50,50 +50,73 @@ def _gradient(top, bottom):
 
 def morning_picture(now, weather, extra=None):
     """now: a local datetime. weather: from weather.from_ha(), or None without it. extra: what else
-    the day has (today.py): names, events [(time, text)], shows [text] and power, each left out when empty."""
+    the day has (today.py): names, events [(time, text)], shows [text] and power ({hourly, cheap, dear, hours,
+    lines}), each left out when empty. Two columns from the top of the screen: the day and the weather on the left,
+    the rest on the right."""
     extra = extra or {}
     top, bottom, ink = PALETTES[(weather or {}).get("kind", "cloudy")]
     img = _gradient(top, bottom)
     d = ImageDraw.Draw(img)
     soft = tuple(round(i * 0.72 + b * 0.28) for i, b in zip(ink, bottom))
-    x = 330
+    x, y = 260, 200
 
-    big = font(300, 300)
-    d.text((x, 560), DAYS[now.weekday()].capitalize(), font=big, fill=ink)
-    d.text((x, 900), "%d. %s" % (now.day, MONTHS[now.month - 1]), font=big, fill=ink)
+    day, date = DAYS[now.weekday()].capitalize(), "%d. %s" % (now.day, MONTHS[now.month - 1])
+    size = 380
+    while size > 240 and d.textlength(date, font=font(size, 300)) > MORNING_LEFT - x:  # «28. september»
+        size -= 10
+    big = font(size, 300)
+    d.text((x, y), day, font=big, fill=ink)
+    d.text((x, y + size * 1.1), date, font=big, fill=ink)
+    y += round(size * 2.32)
     names = extra.get("names")
-    d.text((x + 8, 1268), "Uke %d" % now.isocalendar()[1] + (" · Navnedag: " + names if names else ""),
-           font=font(58, 400), fill=ink)
+    d.text((x + 8, y), "Uke %d" % now.isocalendar()[1] + (" · Navnedag: " + names if names else ""),
+           font=font(72, 400), fill=ink)
+    y += 150
 
     if weather:
-        d.line((x + 8, 1380, x + 260, 1380), fill=soft, width=5)
-        temp = font(150, 350)
-        d.text((x, 1450), "%d°" % weather["high"], font=temp, fill=ink)
+        d.line((x + 8, y, x + 300, y), fill=soft, width=6)
+        y += 70
+        temp = font(200, 350)
+        d.text((x, y), "%d°" % weather["high"], font=temp, fill=ink)
         w = d.textlength("%d°" % weather["high"], font=temp)
-        d.text((x + w + 40, 1450), "/  %d°" % weather["low"], font=temp, fill=soft)
+        d.text((x + w + 50, y), "/  %d°" % weather["low"], font=temp, fill=soft)
+        y += 270
         words = weather["words"]
         if weather["wet"]:  # «Regn det meste av dagen», not «Regn · regn det meste av dagen»
             wet = weather["kind"] in ("rain", "snow")
             words = weather["wet"].capitalize() if wet else words + " · " + weather["wet"]
-        d.text((x, 1660), words, font=font(84, 400), fill=ink)
-        d.text((x, 1790), "Sola opp %s · ned %s" % (weather["sunrise"], weather["sunset"]), font=font(64, 400),
-               fill=soft)
-    _day_column(d, extra, ink, soft)
+        d.text((x, y), words, font=font(100, 400), fill=ink)
+        y += 150
+        small = font(76, 400)
+        if weather.get("temps"):
+            d.text((x, y), "    ".join("%02d: %d°" % t for t in weather["temps"]), font=small, fill=ink)
+            y += 115
+        d.text((x, y), "Sola opp %s · ned %s" % (weather["sunrise"], weather["sunset"]), font=small, fill=soft)
+        warn = [w for w in (weather.get("wind"), "Fare for glatte veier" if weather.get("slippery") else "") if w]
+        if warn:
+            d.text((x, y + 115), " · ".join(warn), font=font(76, 500), fill=ink)
+    _day_column(d, extra, ink, soft, (top, bottom), now)
     return img
 
 
-def _day_column(d, extra, ink, soft):
-    """The right-hand column: today's events, what's new in Stasera and the electricity price."""
-    x, right, y = 2420, image.W - 300, 600
-    head, body = font(46, 600), font(64, 400)
+MORNING_LEFT = 2250  # where the left column ends; the right one starts after a gap
+
+
+def _day_column(d, extra, ink, soft, gradient, now):
+    """The right-hand column: today's events, what's new in Stasera and the electricity price, with its hours."""
+    x, right, y = MORNING_LEFT + 150, image.W - 260, 240
+    head, body = font(56, 600), font(80, 400)
+    power = extra.get("power") or {}
     parts = [("I DAG", ["%s  %s" % (t, s) if t else s for t, s in extra.get("events") or []]),
              ("NYTT I STASERA", extra.get("shows") or []),
-             ("STRØM", extra.get("power") or [])]
+             ("STRØM", power.get("lines") or [])]
     for heading, lines in parts:
-        if not lines or y > image.H - 420:
+        if not lines or y > image.H - 500:
             continue
         d.text((x, y), heading, font=head, fill=soft)
-        y += 80
+        y += 100
+        if heading == "STRØM" and y < image.H - 760:
+            y = _prices(d, power, x, right, y, ink, soft, gradient, now)
         for line in lines:
             rows = _wrap(d, line, body, right - x)
             if len(rows) > 2:
@@ -101,10 +124,32 @@ def _day_column(d, extra, ink, soft):
             for i, row in enumerate(rows):
                 if y > image.H - 300:
                     return
-                d.text((x + (40 if i else 0), y), row, font=body, fill=ink)
-                y += 84
-            y += 6
-        y += 70
+                d.text((x + (50 if i else 0), y), row, font=body, fill=ink)
+                y += 105
+            y += 8
+        y += 90
+
+
+def _prices(d, power, x, right, y, ink, soft, gradient, now):
+    """The day's electricity prices as bars, hour by hour: the cheapest stretch in full ink, the dearest in the soft
+    colour, the rest fainter and the hours gone fainter still. Returns the y below it."""
+    hourly, height = power["hourly"], 280
+    back = tuple(t + (b - t) * (y + height / 2) / image.H for t, b in zip(*gradient))  # behind the bars
+    faint = tuple(round(s * 0.45 + b * 0.55) for s, b in zip(soft, back))
+    gone = tuple(round(s * 0.15 + b * 0.85) for s, b in zip(soft, back))
+    top = max(hourly.values()) or 1
+    step = (right - x) / 24
+    for h in range(24):
+        if h not in hourly:
+            continue
+        colour = ink if power["cheap"] <= h < power["cheap"] + power["hours"] else \
+            soft if power["dear"] <= h < power["dear"] + power["hours"] else gone if h < now.hour else faint
+        bar = max(6, round(height * max(hourly[h], 0) / top))
+        d.rectangle((round(x + h * step + 4), y + height - bar, round(x + (h + 1) * step - 4), y + height), fill=colour)
+    tick = font(48, 400)
+    for h in (0, 6, 12, 18):
+        d.text((round(x + h * step + 4), y + height + 18), "%02d" % h, font=tick, fill=soft)
+    return y + height + 110
 
 
 # MARK: - Tonight's poster

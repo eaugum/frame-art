@@ -371,7 +371,7 @@ class Rotation:
                 "events": todaymod.events(self.ha, self.cfg.get("calendars") or [], now) if ha else [],
                 "shows": todaymod.shows(self.stasera, now.date()) if self.stasera.state() == "linked" else [],
                 "power": todaymod.power(self.ha, self.cfg["price_entity"], now)
-                if ha and self.cfg.get("price_entity") else []}
+                if ha and self.cfg.get("price_entity") else None}
 
     def make_saver(self):
         """(jpeg, label, key) for the screensaver: the next of what we watch and want to start, in turn, or None."""
