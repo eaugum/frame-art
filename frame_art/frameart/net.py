@@ -7,7 +7,7 @@ import urllib.request
 
 from . import __version__
 
-USER_AGENT = "frame-art/%s (https://github.com/eaugum/frame-tv)" % __version__
+USER_AGENT = "frame-art/%s (https://github.com/eaugum/frame-art)" % __version__
 
 
 def get(url, params=None, accept=None, timeout=60, headers=None):

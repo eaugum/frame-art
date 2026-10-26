@@ -1,0 +1,12 @@
+# The TV and Stasera tokens, options and state stay on the machine that runs it
+token.txt
+stasera_token.txt
+options.json
+settings.json
+state.json*
+next.jpg
+out/
+
+.venv/
+__pycache__/
+.DS_Store

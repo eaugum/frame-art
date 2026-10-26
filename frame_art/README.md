@@ -96,7 +96,7 @@ Add-on-et svarer på port 8099 på hjemmenettet, uten innlogging (som TV-ens ege
 Kunstmodus slås på med `set_artmode`. Tar ikke det, sendes ett kort trykk på av/på over fjernkontroll-kanalen, men bare
 når TV-en nettopp har sagt at den er på og ikke i Kunstmodus. Timeren alene slår aldri på Kunstmodus.
 
-- **Home Assistant:** `homeassistant/packages/frame_tv.yaml` har `rest_command.frame_art_next` og
+- **Home Assistant:** pakken `frame_tv.yaml` (i Frame TV) har `rest_command.frame_art_next` og
   `rest_command.frame_art_artmode`, og skriptene «Kunstmodus - Nytt bilde», «Kunstmodus - Slå på»,
   «Kunstmodus - Morgenbildet» og «Kunstmodus - Kveldens serie».
 - **Frame TV:** `art_url=http://10.1.2.12:8099` i `config.properties`. Flisen på Hjem: OK slår på Kunstmodus, hold OK
@@ -104,16 +104,18 @@ når TV-en nettopp har sagt at den er på og ikke i Kunstmodus. Timeren alene sl
 
 ## I Home Assistant
 
-1. Kopier denne mappa (uten `.venv`, `token.txt` og `scripts`) til `/addons/frame_art` på Pi-en, med Samba- eller
-   SSH-add-on-et.
-2. Innstillinger → Add-ons → Add-on Store → ⋮ → Se etter oppdateringer. **Frame Art** står under «Local add-ons».
-3. Installer, se over valgene og start. Svar «Tillat» på TV-en første gang. Loggen viser hvert bytte.
+1. Innstillinger → Add-ons → Add-on Store → ⋮ → Repositories → legg til `https://github.com/eaugum/frame-art`.
+2. **Frame Art** står under «Frame Art». Installer (Pi-en bygger den selv, det tar noen minutter), se over valgene
+   og start. Svar «Tillat» på TV-en første gang. Loggen viser hvert bytte.
+3. En ny versjon her gir «Oppdatering tilgjengelig» i HA (⋮ → Se etter oppdateringer for å se den med en gang).
 
-Egne bilder legges i `/media/frame-art` (Media-mappa i HA, f.eks. over Samba).
+**Egne bilder:** Media → Lokale medier → lag mappa `frame-art` og last opp bildene der (eller kopier dem til
+`/media/frame-art` over Samba). Kilden `type: folder` med `query: /media/frame-art` viser dem.
 
 ## På en Mac eller en annen maskin
 
 ```bash
+cd frame_art
 python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 .venv/bin/python -m frameart --config options.json --preview out   # lager 5 bilder i out/, rører ikke TV-en
 .venv/bin/python -m frameart --config options.json --preview out --what morning   # bare Morgenbildet (eller tonight)
@@ -128,9 +130,9 @@ python3 -m venv .venv && .venv/bin/pip install -r requirements.txt
 
 | Skript | Hva |
 |---|---|
-| `scripts/probe.py` | Kunstmodus på/av, gjeldende bilde, lysbildevisning, bildene på TV-en |
-| `scripts/upload_test.py` | Lager et 4K-testbilde og laster det opp (vises ikke) |
-| `scripts/remote_probe.py` | Kobler til fjernkontroll-kanalen (gir tilgangsspørsmålet) |
-| `scripts/raw.py` | Rå WebSocket-test på port 8001/8002, med svartid |
+| `../scripts/probe.py` | Kunstmodus på/av, gjeldende bilde, lysbildevisning, bildene på TV-en |
+| `../scripts/upload_test.py` | Lager et 4K-testbilde og laster det opp (vises ikke) |
+| `../scripts/remote_probe.py` | Kobler til fjernkontroll-kanalen (gir tilgangsspørsmålet) |
+| `../scripts/raw.py` | Rå WebSocket-test på port 8001/8002, med svartid |
 
 Resultat 24.10.2026: API 4.3.4.0 støttes, opplasting virker (havner i `MY-C0002`).
