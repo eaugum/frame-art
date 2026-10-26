@@ -17,11 +17,17 @@ POST /settings JSON with what to change: mode (shuffle or category), category, c
 POST /stasera/link    a code to approve in Stasera (in /status under pairing until it's approved)
 POST /stasera/unlink  forgets the Stasera token
 
-No login: it's for the home network, like the TV's own API. The answers wait for the TV (up to a minute or two).
+POST /saver    Frame TV's screensaver started: Art Mode on (AUG-1496; Stasera's pictures come with AUG-1494)
+
+Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: the
+add-on makes it in api_key.txt, and its page in Home Assistant shows it. The page itself, through ingress, doesn't
+need it. The answers wait for the TV (up to a minute or two).
 """
 import asyncio
+import hmac
 import logging
 import os
+import secrets
 
 from aiohttp import web
 
@@ -33,12 +39,50 @@ with open(os.path.join(os.path.dirname(__file__), "page.html"), encoding="utf-8"
     PAGE = f.read()  # the add-on's page
 
 CORS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
-        "Access-Control-Allow-Headers": "Content-Type"}
+        "Access-Control-Allow-Headers": "Content-Type, Authorization"}
+INGRESS = "172.30.32.2"  # the Supervisor, when the page is opened in Home Assistant
+
+
+def api_key(data_dir):
+    """The key Frame TV and others send; made the first time."""
+    path = os.path.join(data_dir, "api_key.txt")
+    try:
+        with open(path) as f:
+            key = f.read().strip()
+        if key:
+            return key
+    except OSError:
+        pass
+    key = secrets.token_urlsafe(24)
+    with open(path, "w") as f:
+        f.write(key)
+    os.chmod(path, 0o600)
+    log.info("made a new key for the API (the add-on's page shows it)")
+    return key
 
 
 def app(rotation):
+    key = api_key(rotation.data)
+
+    def ingress(request):
+        return request.remote == INGRESS
+
+    @web.middleware
+    async def keyed(request, handler):
+        if request.method == "OPTIONS" or (request.method == "GET" and request.path == "/") or ingress(request):
+            return await handler(request)
+        given = request.headers.get("Authorization", "")
+        given = given[7:] if given.startswith("Bearer ") else request.query.get("key", "")
+        if not hmac.compare_digest(given.encode(), key.encode()):
+            return web.json_response({"ok": False, "error": "wrong or no key (see the add-on's page)"}, status=401,
+                                     headers=CORS)
+        return await handler(request)
+
     async def status(request):
-        return web.json_response(rotation.status(), headers=CORS)
+        s = rotation.status()
+        if ingress(request):
+            s["api_key"] = key  # for the page, to give to Frame TV
+        return web.json_response(s, headers=CORS)
 
     async def act(request, what):
         try:
@@ -115,6 +159,10 @@ def app(rotation):
         log.info("asked for Art Mode")
         return await act(request, rotation.art_mode)
 
+    async def saver(request):
+        log.info("Frame TV's screensaver started")
+        return await act(request, rotation.art_mode)
+
     async def page(request):
         return web.Response(text=PAGE, content_type="text/html")
 
@@ -126,11 +174,11 @@ def app(rotation):
     async def options(request):
         return web.Response(headers=CORS)
 
-    a = web.Application()
+    a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
                   web.get("/category", category), web.get("/thumb", thumb), web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/settings", settings),
-                  web.post("/schedule", settings),
+                  web.post("/schedule", settings), web.post("/saver", saver),
                   web.post("/stasera/link", link), web.post("/stasera/unlink", unlink),
                   web.route("OPTIONS", "/{tail:.*}", options)])
     return a

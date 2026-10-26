@@ -1,5 +1,11 @@
 # Endringer
 
+## 0.8.0
+
+- API-et krever en nøkkel (header `Authorization: Bearer …` eller `?key=`). Add-on-et lager den, og add-on-siden viser
+  den. Siden i HA trenger den ikke. Kall uten nøkkel, som gamle `rest_command`-er, avvises: bruk MQTT-knappene.
+- `POST /saver`: Frame TV-s skjermsparer slår på Kunstmodus.
+
 ## 0.7.0
 
 - Frame Art er en enhet i Home Assistant over MQTT (Mosquitto): knapper, modus og kategori, intervall, brytere,

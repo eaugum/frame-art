@@ -75,6 +75,9 @@
   <label><span>Bare når noen er hjemme</span><input type="checkbox" data-setting="music_home_only"></label>
   <p id="saved"></p>
 
+  <h2>Frame TV</h2>
+  <p id="key"></p>
+
   <h2>Stasera</h2>
   <p id="stasera"></p>
   <button id="link" class="second">Koble til Stasera</button>
@@ -146,6 +149,11 @@
       document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     }
 
+    if (s.api_key) {
+      $("key").innerHTML = "";
+      $("key").append("Nøkkelen til API-et, for ", el("code", {textContent: "art_key"}), " i Frame TV: ",
+        el("code", {textContent: s.api_key, style: "user-select: all; color: #eee"}));
+    }
     var p = s.pairing;
     $("stasera").innerHTML = "";
     if (s.stasera === "off") $("stasera").textContent = "Av: stasera_url mangler i valgene til add-on-et.";

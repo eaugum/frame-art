@@ -107,7 +107,9 @@ Tokenet ligger i `/data/stasera_token.txt`. «Koble fra» glemmer det.
 
 ## Styre den: Home Assistant og Frame TV
 
-Add-on-et svarer på port 8099 på hjemmenettet, uten innlogging (som TV-ens eget API). Svarene venter på TV-en.
+Add-on-et svarer på port 8099 på hjemmenettet. Hvert kall trenger nøkkelen, som `Authorization: Bearer <nøkkel>` eller
+`?key=<nøkkel>`: add-on-et lager den selv, og add-on-siden i HA viser den under «Frame TV». Siden i HA trenger den
+ikke. Svarene venter på TV-en.
 
 | Kall | Hva |
 |---|---|
@@ -118,16 +120,16 @@ Add-on-et svarer på port 8099 på hjemmenettet, uten innlogging (som TV-ens ege
 | `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |
 | `POST /show?key=…` | Det bildet nå, i Kunstmodus, som fast bilde til neste Morgenbildet |
 | `POST /settings` | Endrer valgene, med JSON: `mode` (`shuffle`, `category`), `category`, `categories_off` (en liste, for Shuffle), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver_stasera`, `music`, `music_home_only`. `/schedule` er det samme |
+| `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på |
 | `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 
 Kunstmodus slås på med `set_artmode`. Tar ikke det, sendes ett kort trykk på av/på over fjernkontroll-kanalen, men bare
 når TV-en nettopp har sagt at den er på og ikke i Kunstmodus. Timeren alene slår aldri på Kunstmodus.
 
-- **Home Assistant:** pakken `frame_tv.yaml` (i Frame TV) har `rest_command.frame_art_next` og
-  `rest_command.frame_art_artmode`, og skriptene «Kunstmodus - Nytt bilde», «Kunstmodus - Slå på»,
-  «Kunstmodus - Morgenbildet» og «Kunstmodus - Kveldens serie».
-- **Frame TV:** `art_url=http://10.1.2.12:8099` i `config.properties`. Flisen på Hjem: OK slår på Kunstmodus, hold OK
-  for et nytt bilde.
+- **Home Assistant:** enheten over MQTT (se over); skript og automasjoner trykker på knappene, f.eks.
+  `button.press` på `button.frame_art_next`.
+- **Frame TV:** `art_url=http://10.1.2.12:8099` og `art_key=<nøkkelen>` i `config.properties`. Flisen på Hjem: OK slår
+  på Kunstmodus, hold OK for et nytt bilde. Når skjermspareren starter, sier den fra med `POST /saver`.
 
 ## Som enhet i Home Assistant (MQTT)
 
