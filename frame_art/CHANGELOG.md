@@ -1,5 +1,10 @@
 # Endringer
 
+## 0.7.0
+
+- Frame Art er en enhet i Home Assistant over MQTT (Mosquitto): knapper, modus og kategori, intervall, brytere,
+  bildet som vises og hva som bestemmer nå. Tilkoblingen kommer fra Supervisor. Uten Mosquitto går den som før.
+
 ## 0.6.1
 
 - Ny kildetype `stasera`: bakgrunnsbildene av det vi ser på, filmene og anbefalingene i Stasera, uten TMDB-nøkkel.

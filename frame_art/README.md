@@ -129,6 +129,41 @@ når TV-en nettopp har sagt at den er på og ikke i Kunstmodus. Timeren alene sl
 - **Frame TV:** `art_url=http://10.1.2.12:8099` i `config.properties`. Flisen på Hjem: OK slår på Kunstmodus, hold OK
   for et nytt bilde.
 
+## Som enhet i Home Assistant (MQTT)
+
+Med Mosquitto broker-add-on-et og MQTT-integrasjonen i HA melder Frame Art seg inn selv som enheten **Frame Art**;
+tilkoblingen kommer fra Supervisor, uten noe i valgene. Uten Mosquitto går add-on-et som før.
+
+| Entitet | Hva |
+|---|---|
+| `button.frame_art_next`, `_morning_now`, `_tonight_now`, `_artmode` | Neste bilde, Morgenbildet nå, kveldens serie nå, Kunstmodus på |
+| `select.frame_art_mode` | Shuffle, Kategori eller Fast bilde (det som vises nå står til neste Morgenbildet) |
+| `select.frame_art_category` | Kategoriene fra kildene; å velge en setter modusen til Kategori |
+| `number.frame_art_interval` | Minutter mellom byttene |
+| `switch.frame_art_morning`, `_tonight` | Morgenbildet og kveldens serie |
+| `switch.frame_art_screensaver_stasera`, `_music`, `_music_home_only` | Skjermspareren og Følg musikken |
+| `sensor.frame_art_showing` | Tittelen på bildet; kilde, kategori, når det ble byttet og neste bytte som attributter |
+| `sensor.frame_art_wanted` | Hva som bestemmer nå: `rotation`, `fixed`, `morning` eller `tonight` |
+| `image.frame_art_picture` | Bildet på veggen, 1280 px bredt |
+
+Tilstanden sendes når den endrer seg (fra HA, add-on-siden eller timeren). En ny kategori i kildene kommer med i
+velgeren etter en omstart av add-on-et. Et kort for dashbordet:
+
+```yaml
+type: vertical-stack
+cards:
+  - type: picture-entity
+    entity: image.frame_art_picture
+    name: Kunstmodus
+  - type: entities
+    entities:
+      - sensor.frame_art_showing
+      - select.frame_art_mode
+      - select.frame_art_category
+      - button.frame_art_next
+      - button.frame_art_artmode
+```
+
 ## I Home Assistant
 
 1. Innstillinger → Add-ons → Add-on Store → ⋮ → Repositories → legg til `https://github.com/eaugum/frame-art`.

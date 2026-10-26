@@ -161,6 +161,14 @@ class Rotation:
             return None
         return f
 
+    def fix_showing(self):
+        """What's on the wall now becomes the fixed picture (from Home Assistant's mode select)."""
+        if not self.state["recent"]:
+            raise ValueError("nothing shown yet")
+        self._keep({"fixed": {"key": self.state["recent"][-1], "label": self.state.d.get("showing"),
+                              "until": self._next_morning()}})
+        log.info("fixed what's showing until the next Morgenbildet")
+
     def _next_morning(self):
         now = self.now()
         at = datetime.datetime.combine(now.date(), self._clock("morning_time"), tzinfo=self.zone)

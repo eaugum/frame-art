@@ -3,3 +3,5 @@ samsungtvws[async] @ https://github.com/NickWaterton/samsung-tv-ws-api/archive/f
 pillow
 # the time zone for Morgenbildet and the poster, when the image has no /usr/share/zoneinfo
 tzdata
+# MQTT discovery: Frame Art as a device in Home Assistant
+aiomqtt

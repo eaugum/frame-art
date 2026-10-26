@@ -10,7 +10,7 @@ import json
 import logging
 import os
 
-from . import api
+from . import api, mqtt
 from .service import Rotation
 
 
@@ -46,13 +46,17 @@ def main():
     elif a.once:
         asyncio.run(rot.change(what=a.what))
     else:
-        asyncio.run(run(rot, int(cfg.get("api_port", 8099))))
+        asyncio.run(run(rot, cfg, int(cfg.get("api_port", 8099))))
 
 
-async def run(rot, port):
+async def run(rot, cfg, port):
     if port:
         await api.serve(rot, port)
-    await rot.run()
+    device = asyncio.create_task(mqtt.serve(rot, cfg))  # Home Assistant, when there's a broker
+    try:
+        await rot.run()
+    finally:
+        device.cancel()
 
 
 main()
