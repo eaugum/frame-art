@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.14.0"
+version: "0.15.0"
 slug: frame_art
 description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kildene du krysser av, Morgenbildet og kveldens serie
 url: https://github.com/eaugum/frame-art
@@ -19,28 +19,37 @@ ports_description:
 services:
   - mqtt:want  # Home Assistant sees it as a device through Mosquitto; it runs without too
 homeassistant_api: true  # Følg musikken reads the Spotify player from Home Assistant
+hassio_api: true  # a key the add-on makes is written into its own options (api_key)
 map:
   - type: media
     read_only: true
-# Here only what the add-on needs to start: the TV, Stasera and the sources. The rest (the interval, the times,
-# Morgenbildet, how many pictures stay on the TV ...) is on the add-on's page; the weather is for Home Assistant's
-# home, unless latitude and longitude are given here.
+# What's set up once: the TV, the key, the place, Home Assistant's entities and the sources. What changes from day to
+# day (the sources that are ticked, the interval, the times, the switches) is on the add-on's page.
 options:
   tv_host: 10.1.2.36
+  # The key Frame TV and others send (art_key in Frame TV); left empty, the add-on makes one and writes it here
+  api_key: ""
+  # The weather's place, a name ("Lillehammer"); empty: Home Assistant's home
+  location: ""
+  # The TV in Home Assistant, turned on before Morgenbildet when it's off; empty: never
+  tv_entity: ""
+  # Calendars whose events today are in Morgenbildet, and a Nord Pool sensor for the electricity price
+  calendars: []
+  price_entity: ""
   stasera_url: "https://www.stasera.app"
-  # A source: category (several sources can share one; without it, the name), name, type, query (several with |),
-  # and if needed years ("1800-1930"), weight (1-10, how often) and enabled. Only pictures close to 16:9 are used,
-  # cropped to fill the screen. Types and queries: README.md.
+  # A source: category (several sources can share one; without it, the name), name, type and query (several with
+  # |). Every source here is used; tick them on the add-on's page. Only pictures close to 16:9, cropped to fill the
+  # screen. Types and queries: README.md.
   sources:
     # Mine egne
     - {category: Mine bilder, name: Mine bilder, type: folder, query: /media/frame-art}
     # Malerier
-    - {category: Malerier, name: Landskap og hav (The Met), type: met, query: landscape|seascape, years: 1800-1930}
-    - {category: Malerier, name: Rijksmuseum, type: rijksmuseum, query: landschap|zee, years: 1800-1930}
+    - {category: Malerier, name: Landskap og hav (The Met), type: met, query: landscape|seascape}
+    - {category: Malerier, name: Rijksmuseum, type: rijksmuseum, query: landschap|zee}
     - {category: Malerier, name: Nasjonalmuseet, type: nasjonalmuseet,
        query: Hans Gude|Harald Sohlberg|Edvard Munch|Nikolai Astrup|Theodor Kittelsen}
-    - {category: Malerier, name: Cleveland, type: cleveland, query: landscape|seascape, years: 1800-1930}
-    - {category: Malerier, name: Dansk gullalder (SMK), type: smk, query: "*", years: 1800-1900}
+    - {category: Malerier, name: Cleveland, type: cleveland, query: landscape|seascape}
+    - {category: Malerier, name: Dansk gullalder (SMK), type: smk, query: "*"}
     - {category: Malerier, name: Impresjonistene, type: commons,
        query: Paintings by Claude Monet|Paintings by Camille Pissarro|Paintings by Alfred Sisley|Paintings by Vincent van Gogh}
     - {category: Malerier, name: Romantikken, type: commons,
@@ -68,15 +77,18 @@ options:
     - {category: Natur og rommet, name: Astrofoto, type: commons, query: Featured pictures of astronomy}
     # Film og serier: fra Stasera (stasera_url, og koblet på add-on-siden)
     - {category: Film, name: Filmplakater, type: commons, query: 1920s film posters|Film posters of the United States}
-    - {category: Film, name: Stumfilm, type: commons, query: Film stills, enabled: false}
     - {category: Film, name: Det vi ser på, type: stasera, query: watching|wantToStart}
     - {category: Film, name: Filmene våre, type: stasera, query: movies}
     - {category: Film, name: Anbefalt, type: stasera, query: recommendations}
 schema:
   tv_host: str
+  api_key: password?
+  location: str?
+  tv_entity: match(^(media_player\..+)?$)?
+  calendars:
+    - match(^calendar\..+$)
+  price_entity: match(^(sensor\..+)?$)?
   tmdb_key: password?
-  latitude: float?
-  longitude: float?
   stasera_url: url?
   back_app: str?
   sources:
@@ -84,7 +96,3 @@ schema:
       category: str?
       type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|tmdb|stasera)
       query: str?
-      years: str?
-      shape: list(wide|any)?
-      weight: int(1,10)?
-      enabled: bool?

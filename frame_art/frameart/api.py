@@ -8,36 +8,35 @@ GET  /showing.jpg  the picture
 GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random, from the
                category's sources that are ticked
 GET  /thumb?key=…  a small copy of a picture (a key from /category)
-GET  /players  Home Assistant's media players, for choosing the TV (tv_entity)
-GET  /calendars, /prices  its calendars and price sensors, for Morgenbildet (morning_calendars, price_entity)
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture.
 POST /show?key=…  that picture now, in Art Mode, standing until the next Morgenbildet (Fast bilde)
 POST /artmode  Art Mode on, with the picture it has
-POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, morning,
-               morning_time, morning_tv_on, tv_entity, morning_calendars, price_entity, tonight, tonight_time,
-               screensaver, screensaver_stasera, music, music_home_only; mode shuffle ends a fixed picture, and mode
-               category with category ticks only that category's sources. New sources_off ends a fixed picture too.
-               /schedule is the same.
+POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, keep,
+               morning, morning_time, tonight, tonight_time, screensaver, screensaver_stasera, music,
+               music_home_only; mode shuffle ends a fixed picture, and mode category with category ticks only that
+               category's sources. New sources_off ends a fixed picture too. /schedule is the same.
 POST /stasera/link    a code to approve in Stasera (in /status under pairing until it's approved)
 POST /stasera/unlink  forgets the Stasera token
 
 POST /saver    Frame TV's screensaver started: Art Mode on, with what we watch in Stasera when screensaver_stasera is
                on, until Art Mode goes off (AUG-1494); ?minutes=5 changes the picture that often meanwhile
 
-Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: the
-add-on makes it in api_key.txt, and its page in Home Assistant shows it. The page itself, through ingress, doesn't
+Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: it's
+api_key in the add-on's options (made and written there when it's empty). The page itself, through ingress, doesn't
 need it. The answers wait for the TV (up to a minute or two).
 """
 import asyncio
 import hmac
+import json
 import logging
 import os
 import secrets
+import urllib.request
 
 from aiohttp import web
 
-from . import sources, today
+from . import sources
 
 log = logging.getLogger(__name__)
 
@@ -49,26 +48,48 @@ CORS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET
 INGRESS = "172.30.32.2"  # the Supervisor, when the page is opened in Home Assistant
 
 
-def api_key(data_dir):
-    """The key Frame TV and others send; made the first time."""
+def api_key(cfg, data_dir):
+    """The key Frame TV and others send: api_key in the options. Without one, the key made before (api_key.txt) or a
+    new one, written into the add-on's options so it can be read there."""
+    if (cfg.get("api_key") or "").strip():
+        return cfg["api_key"].strip()
     path = os.path.join(data_dir, "api_key.txt")
     try:
         with open(path) as f:
             key = f.read().strip()
-        if key:
-            return key
     except OSError:
-        pass
-    key = secrets.token_urlsafe(24)
-    with open(path, "w") as f:
-        f.write(key)
-    os.chmod(path, 0o600)
-    log.info("made a new key for the API (the add-on's page shows it)")
+        key = ""
+    if not key:
+        key = secrets.token_urlsafe(24)
+        with open(path, "w") as f:
+            f.write(key)
+        os.chmod(path, 0o600)
+        log.info("made a new key for the API")
+    _into_options(data_dir, key)
     return key
 
 
+def _into_options(data_dir, key):
+    """api_key into the add-on's own options, through the Supervisor (hassio_api)."""
+    token = os.environ.get("SUPERVISOR_TOKEN")
+    if not token:
+        return
+    try:
+        with open(os.path.join(data_dir, "options.json")) as f:
+            options = json.load(f)
+        req = urllib.request.Request("http://supervisor/addons/self/options", method="POST",
+                                     data=json.dumps({"options": dict(options, api_key=key)}).encode(),
+                                     headers={"Authorization": "Bearer " + token, "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=10):
+            pass
+        log.info("the API's key is now in the add-on's options (api_key)")
+    except Exception as e:
+        log.warning("couldn't write the API's key into the options (%s: %s); it's in %s/api_key.txt",
+                    type(e).__name__, e, data_dir)
+
+
 def app(rotation):
-    key = api_key(rotation.data)
+    key = api_key(rotation.cfg, rotation.data)
 
     def ingress(request):
         return request.remote == INGRESS
@@ -85,10 +106,7 @@ def app(rotation):
         return await handler(request)
 
     async def status(request):
-        s = rotation.status()
-        if ingress(request):
-            s["api_key"] = key  # for the page, to give to Frame TV
-        return web.json_response(s, headers=CORS)
+        return web.json_response(rotation.status(), headers=CORS)
 
     async def act(request, what):
         try:
@@ -122,21 +140,6 @@ def app(rotation):
             return web.json_response(await rotation.gallery(request.query.get("name", "")), headers=CORS)
         except ValueError as e:
             return web.json_response({"ok": False, "error": str(e)}, status=404, headers=CORS)
-
-    def from_ha(what, look):
-        async def handler(request):
-            if not rotation.ha.ready():
-                return web.json_response([], headers=CORS)
-            try:
-                return web.json_response(await asyncio.to_thread(look, rotation.ha), headers=CORS)
-            except Exception as e:
-                log.info("no %s from Home Assistant (%s: %s)", what, type(e).__name__, e)
-                return web.json_response([], headers=CORS)
-        return handler
-
-    players = from_ha("media players", lambda ha: ha.media_players())
-    calendars = from_ha("calendars", today.calendars)
-    prices = from_ha("prices", today.prices)
 
     thumbs = asyncio.Semaphore(4)  # a page asks for 24 at once; the museums don't like a crowd
 
@@ -201,8 +204,7 @@ def app(rotation):
 
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
-                  web.get("/category", category), web.get("/thumb", thumb), web.get("/players", players),
-                  web.get("/calendars", calendars), web.get("/prices", prices), web.post("/show", show),
+                  web.get("/category", category), web.get("/thumb", thumb), web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/settings", settings),
                   web.post("/schedule", settings), web.post("/saver", saver),
                   web.post("/stasera/link", link), web.post("/stasera/unlink", unlink),

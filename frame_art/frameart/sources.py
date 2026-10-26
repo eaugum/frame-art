@@ -24,12 +24,6 @@ class Skip(Exception):
     pass
 
 
-def _years(text):
-    """'1800-1920' -> (1800, 1920); '' -> None."""
-    m = re.match(r"^\s*(-?\d+)\s*-\s*(-?\d+)\s*$", text or "")
-    return (int(m.group(1)), int(m.group(2))) if m else None
-
-
 def _fields(query, key):
     """'zee' -> {key: 'zee'}; the search's own fields as 'medium=Prints&q=Hokusai' -> as they are."""
     if "=" not in query:
@@ -44,8 +38,8 @@ def _text(html_text, limit=80):
 
 
 class Source:
-    """An entry in the options: name, type, query (several with |), years, weight, category, enabled. Only pictures
-    close to 16:9 are used, cropped to fill the screen; shape in the options is from before and is ignored."""
+    """An entry in the options: name, type, query (several with |) and category; every source in the list is on. Only
+    pictures close to 16:9 are used, cropped to fill the screen."""
     type = None
     pool_hours = 24
     default = []
@@ -53,8 +47,6 @@ class Source:
     def __init__(self, entry, cfg):
         self.name = entry["name"]
         self.queries = [q.strip() for q in (entry.get("query") or "").split("|") if q.strip()] or self.default
-        self.years = _years(entry.get("years"))
-        self.weight = max(1, int(entry.get("weight") or 1))
         self.category = re.sub(r"\s+", " ", str(entry.get("category") or "")).strip() or self.name
 
     def usable(self, width, height):
@@ -63,9 +55,6 @@ class Source:
     def check(self, width, height):
         if not self.usable(width, height):
             raise Skip("%dx%d is too small or not close to 16:9" % (width, height))
-
-    def year_ok(self, year):
-        return not self.years or not year or self.years[0] <= year <= self.years[1]
 
     def thumb(self, key):
         """A small copy: a URL, or a PIL image. Without one of its own, the whole picture (slow)."""
@@ -121,8 +110,6 @@ class Met(Source):
         for q in self.queries:
             params = {"hasImages": "true", "isPublicDomain": "true", "medium": "Paintings", "limit": 100}
             params.update(_fields(q, "q"))
-            if self.years:
-                params.update(dateBegin=self.years[0], dateEnd=self.years[1])
             for offset in range(0, 500, 100):
                 r = net.get_json(self.API + "v1.1/search", dict(params, offset=offset))
                 ids += r.get("objectIDs") or []
@@ -185,10 +172,6 @@ class Rijksmuseum(Source):
         if b"creativecommons.org/publicdomain/" not in raw:
             raise Skip("not marked public domain")
         o = json.loads(raw)
-        span = (o.get("produced_by") or {}).get("timespan") or {}
-        year = int((span.get("begin_of_the_begin") or "0")[:4] or 0)
-        if not self.year_ok(year):
-            raise Skip("from %d" % year)
         iiif = self.iiif(o)
         info = net.get_json(iiif + "/info.json")
         self.check(info["width"], info["height"])
@@ -319,8 +302,6 @@ class Cleveland(Source):
         for q in self.queries:
             params = {"type": "Painting", "has_image": 1, "cc0": 1, "limit": 100, "fields": "id,images"}
             params.update(_fields(q, "q"))
-            if self.years:
-                params.update(created_after=self.years[0], created_before=self.years[1])
             for skip in range(0, 1000, 100):
                 r = net.get_json(self.API, dict(params, skip=skip))
                 for o in r.get("data") or []:
@@ -367,8 +348,7 @@ class SMK(Source):
             for offset in range(0, 2000, 100):
                 r = net.get_json(self.API + "search/", dict(params, offset=offset))
                 for o in r.get("items") or []:
-                    year = int(((o.get("production_date") or [{}])[0].get("start") or "0")[:4] or 0)
-                    if o.get("image_iiif_id") and self.year_ok(year) and \
+                    if o.get("image_iiif_id") and \
                             self.usable(o.get("image_width") or 0, o.get("image_height") or 0):
                         keys.append(o["object_number"])
                 if offset + 100 >= (r.get("found") or 0):
@@ -404,8 +384,6 @@ class NASA(Source):
         for q in self.queries:
             params = {"media_type": "image", "page_size": 100}
             params.update(_fields(q, "q"))
-            if self.years:
-                params.update(year_start=self.years[0], year_end=self.years[1])
             for page in range(1, 6):
                 items = net.get_json(self.API + "search", dict(params, page=page))["collection"]["items"]
                 ids += [i["data"][0]["nasa_id"] for i in items if i.get("data")]
@@ -509,9 +487,6 @@ class TMDB(Source):
                         log.warning("%s: no one called %s on TMDB", self.name, q)
                         continue
                     params["with_people"] = people[0]["id"]
-                if self.years:
-                    params.update({"primary_release_date.gte": "%d-01-01" % self.years[0],
-                                   "primary_release_date.lte": "%d-12-31" % self.years[1]})
             for page in range(1, 6):
                 r = self.get(path, dict(params, page=page))
                 ids += [str(m["id"]) for m in r.get("results") or []]
@@ -591,8 +566,6 @@ def from_config(cfg, stasera=None):
     entries = cfg["sources"] if "sources" in cfg else _old_options(cfg)
     out = []
     for e in entries:
-        if e.get("enabled") is False:
-            continue
         cls = TYPES.get(e.get("type"))
         if not cls:
             log.warning("unknown source type %r (one of %s)", e.get("type"), ", ".join(TYPES))
@@ -613,9 +586,8 @@ def _old_options(cfg):
     if cfg.get("folder"):
         out.append({"name": "folder", "type": "folder", "query": cfg.get("folder_path") or ""})
     if cfg.get("museums"):
-        years = cfg.get("years", "")
         for t, words in (("met", "met_queries"), ("rijksmuseum", "rijksmuseum_queries"),
                          ("nasjonalmuseet", "nasjonalmuseet_artists")):
             if cfg.get(t, True):
-                out.append({"name": t, "type": t, "query": "|".join(cfg.get(words) or []), "years": years})
+                out.append({"name": t, "type": t, "query": "|".join(cfg.get(words) or [])})
     return out

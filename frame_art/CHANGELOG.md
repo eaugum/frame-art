@@ -1,5 +1,14 @@
 # Endringer
 
+## 0.15.0
+
+- Valgene i HA har det som settes opp én gang: `api_key` (tom: add-on-et lager en og skriver den inn), `location`
+  (et stedsnavn for været; tom: hjemmet i HA), `tv_entity`, `calendars` og `price_entity`. Add-on-siden viser ikke
+  lenger nøkkelen og har ikke lenger valgene for TV-en, kalenderne og strømmen. Er de valgt på siden før, må de inn i
+  valgene.
+- Kildene har bare `name`, `category`, `type` og `query`. `years`, `shape`, `weight` og `enabled` overses: alle i
+  lista er med, like ofte, fra alle årstall. Stumfilm (som var av) er fjernet fra standardlista.
+
 ## 0.14.0
 
 - Bare bilder nær 16:9 (1,45–2,0), beskåret så de fyller skjermen. `shape` overses, og ingen bilder vises lenger

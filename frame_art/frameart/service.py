@@ -71,15 +71,6 @@ SETTINGS = {
     # Kept for the screensaver (AUG-1494) and Følg musikken (AUG-1495); the page shows them already
     "screensaver": (True, _bool),  # off: Frame TV doesn't start its screensaver (it reads this from /status)
     "screensaver_stasera": (True, _bool),
-    # The TV turned on through Home Assistant before Morgenbildet, when it's off (Art Mode only answers when it's on)
-    "morning_tv_on": (False, _bool),
-    # Morgenbildet's right-hand column (today.py): Home Assistant's calendars and the electricity price sensor
-    "morning_calendars": ([], lambda v: [str(c) for c in v if str(c).startswith("calendar.")] if isinstance(v, list)
-                          else None),
-    "price_entity": ("", lambda v: str(v).strip() if not str(v).strip() or str(v).strip().startswith("sensor.")
-                     else None),
-    "tv_entity": ("", lambda v: str(v).strip() if not str(v).strip() or str(v).strip().startswith("media_player.")
-                  else None),
     "music": (False, _bool),
     "music_home_only": (True, _bool),
 }
@@ -288,7 +279,7 @@ class Rotation:
             choices = [s for s in self.in_play() if s.name not in empty]
             if not choices:
                 return None
-            src = random.choices(choices, [s.weight for s in choices])[0]
+            src = random.choice(choices)
             keys = [k for k in self.pool(src) if src.name + ":" + k not in bad]
             if not keys:
                 empty.add(src.name)
@@ -364,9 +355,22 @@ class Rotation:
         return image.to_jpeg(img), label, "%s:%s" % (kind, today)
 
     def location(self):
-        """(latitude, longitude) for the weather: the options', else Home Assistant's home, else Oslo."""
-        if self.cfg.get("latitude") is not None and self.cfg.get("longitude") is not None:
-            return self.cfg["latitude"], self.cfg["longitude"]
+        """(latitude, longitude) for the weather: the place in the options, else Home Assistant's home, else Oslo."""
+        name = (self.cfg.get("location") or "").strip()
+        if name:
+            known = self.state.d.get("place") or {}
+            if known.get("name") == name:
+                return known["latitude"], known["longitude"]
+            try:
+                lat, lon, label = weather.place(name)
+                log.info("the weather is for %s (%.4f, %.4f)", label, lat, lon)
+                self.state["place"] = {"name": name, "latitude": lat, "longitude": lon}
+                self.state.save()
+                return lat, lon
+            except LookupError:
+                log.warning("no place called %s; the weather is for Home Assistant's home", name)
+            except Exception as e:
+                log.info("couldn't look up %s (%s: %s)", name, type(e).__name__, e)
         if self.ha.ready():
             try:
                 return self.ha.location()
@@ -378,7 +382,7 @@ class Rotation:
         """What else Morgenbildet says (today.py); what doesn't answer is left out."""
         ha = self.ha.ready()
         return {"names": todaymod.names(now),
-                "events": todaymod.events(self.ha, self.cfg.get("morning_calendars") or [], now) if ha else [],
+                "events": todaymod.events(self.ha, self.cfg.get("calendars") or [], now) if ha else [],
                 "shows": todaymod.shows(self.stasera, now.date()) if self.stasera.state() == "linked" else [],
                 "power": todaymod.power(self.ha, self.cfg["price_entity"], now)
                 if ha and self.cfg.get("price_entity") else []}
@@ -677,7 +681,7 @@ class Rotation:
         if self.state["made"].get("tv_on") == today:
             return True
         entity = self.cfg.get("tv_entity")
-        if not self.cfg.get("morning_tv_on") or not entity or not self.ha.ready():
+        if not entity or not self.ha.ready():
             return False
         try:
             on = (await asyncio.to_thread(self.ha.state, entity)).get("state")

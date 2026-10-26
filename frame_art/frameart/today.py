@@ -41,11 +41,6 @@ def events(ha, calendars, now):
     return sorted({o for o in out if o[1]})[:MAX_EVENTS]
 
 
-def calendars(ha):
-    """[{entity, name}] of Home Assistant's calendars, for the add-on's page."""
-    return sorted(({"entity": c["entity_id"], "name": c.get("name") or c["entity_id"]}
-                   for c in json.loads(ha.get("/api/calendars"))), key=lambda c: c["name"].lower())
-
 
 def shows(stasera, day):
     """[text] for what's new today in Stasera: a new episode, a season or series premiere, a film's premiere."""
@@ -89,16 +84,6 @@ def _hourly(attrs, now):
                 if all(isinstance(x, (int, float)) for x in today[h * step:(h + 1) * step])}
     return {}
 
-
-def prices(ha):
-    """[{entity, name}] of the sensors with today's prices (Nord Pool), for the add-on's page."""
-    out = []
-    for s in json.loads(ha.get("/api/states", timeout=30)):
-        a = s.get("attributes") or {}
-        if s["entity_id"].startswith("sensor.") and (isinstance(a.get("raw_today"), list) or
-                                                     isinstance(a.get("today"), list)):
-            out.append({"entity": s["entity_id"], "name": a.get("friendly_name") or s["entity_id"]})
-    return sorted(out, key=lambda p: p["name"].lower())
 
 
 def _money(v, unit):

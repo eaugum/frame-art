@@ -22,6 +22,25 @@ CODES = {
 SNOW = {71, 73, 75, 77, 85, 86}
 
 
+GEOCODING = "https://geocoding-api.open-meteo.com/v1/search"
+
+
+def place(name):
+    """(latitude, longitude, «Lillehammer, Innlandet, Norge») for a place name; «Moss, Norge» narrows it by country
+    or county. Raises LookupError when there's none."""
+    first, _, rest = name.partition(",")
+    found = net.get_json(GEOCODING, {"name": first.strip(), "count": 20, "language": "nb", "format": "json"})
+    hits = found.get("results") or []
+    rest = rest.strip().lower()
+    if rest:
+        hits = [h for h in hits if rest in (h.get("country") or "").lower() or rest in (h.get("admin1") or "").lower()]
+    if not hits:
+        raise LookupError(name)
+    h = hits[0]  # the most populous first
+    label = ", ".join(x for x in (h.get("name"), h.get("admin1"), h.get("country")) if x)
+    return float(h["latitude"]), float(h["longitude"]), label
+
+
 def today(lat, lon):
     """{high, low, words, kind, wet, sunrise, sunset} for today where the picture hangs."""
     r = net.get_json(API, {"latitude": lat, "longitude": lon, "timezone": "auto", "forecast_days": 1,

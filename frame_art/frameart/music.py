@@ -48,12 +48,6 @@ class HomeAssistant:
         with urllib.request.urlopen(req, timeout=30) as r:
             return r.read()
 
-    def media_players(self):
-        """[{entity, name}] for every media player, for choosing the TV on the add-on's page."""
-        states = json.loads(self.get("/api/states", timeout=30))
-        return sorted(({"entity": s["entity_id"], "name": (s.get("attributes") or {}).get("friendly_name") or
-                        s["entity_id"]} for s in states if s["entity_id"].startswith("media_player.")),
-                      key=lambda p: p["name"].lower())
 
     def _players(self, now):
         if not self.players or now - self.players_at > PLAYERS_SECONDS:
