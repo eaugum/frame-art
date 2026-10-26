@@ -4,11 +4,17 @@ and when, so a restart of the Pi or the TV picks up where it was.
 
 Two pictures we make have a time of their own (AUG-1447): Morgenbildet, with the date and the weather, at morning_time
 (07:00), and tonight's show from Stasera as a poster at tonight_time (18:00). Each is shown once a day, as soon as its
-time comes; the rotation goes on after it. The schedule can be changed on the add-on's page (SCHEDULE), and that is
-kept in settings.json, before the add-on's options.
+time comes; the rotation goes on after it.
+
+The rotation has a mode (AUG-1492): Shuffle draws from every category that's on, Kategori from one. A picture chosen
+on the add-on's page (Fast bilde) stands until the next Morgenbildet, then the mode goes on. What wins is decided in
+one place, wanted().
+
+What the add-on's page changes (SETTINGS, and the fixed picture) is kept in settings.json, before the add-on's options.
 """
 import asyncio
 import datetime
+import hashlib
 import json
 import logging
 import os
@@ -16,7 +22,7 @@ import random
 import time
 from zoneinfo import ZoneInfo
 
-from . import __version__, image, made, sources, weather
+from . import __version__, image, made, net, sources, weather
 from .stasera import Stasera, Unlinked
 from .tv import TV
 
@@ -26,15 +32,31 @@ RECENT = 200  # not the same picture again within this many changes (or the whol
 RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Open-Meteo, Stasera or TMDB didn't answer
 MADE = ("morning", "tonight")
+MODES = ("shuffle", "category")
+HISTORY = 100  # pictures from the rotation remembered for «Nylig vist»
+THUMBS = 600  # small copies kept for the add-on's page
+
+
+def _bool(v):
+    return v if isinstance(v, bool) else None
+
 
 # What the add-on's page can change: name -> (default, check)
-SCHEDULE = {
+SETTINGS = {
     "interval_minutes": (60, lambda v: int(v) if 5 <= int(v) <= 1440 else None),
-    "morning": (True, lambda v: v if isinstance(v, bool) else None),
+    "morning": (True, _bool),
     "morning_time": ("07:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
-    "tonight": (True, lambda v: v if isinstance(v, bool) else None),
+    "tonight": (True, _bool),
     "tonight_time": ("18:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
+    "mode": ("shuffle", lambda v: v if v in MODES else None),
+    "category": ("", lambda v: str(v).strip()),
+    "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
+    # Kept for the screensaver (AUG-1494) and Følg musikken (AUG-1495); the page shows them already
+    "screensaver_stasera": (True, _bool),
+    "music": (False, _bool),
+    "music_home_only": (True, _bool),
 }
+SCHEDULE = ("interval_minutes", "morning", "morning_time", "tonight", "tonight_time")
 
 
 class State:
@@ -66,47 +88,99 @@ class Rotation:
     def __init__(self, cfg, data_dir):
         self.data = data_dir
         self.settings_path = os.path.join(data_dir, "settings.json")
-        self.cfg = dict(cfg, **self._saved_schedule())
+        self.cfg = dict(cfg, **self._saved())
         self.state = State(os.path.join(data_dir, "state.json"))
+        self.state.d.setdefault("history", [])
         self.sources = sources.from_config(cfg)
+        self.by_name = {s.name: s for s in self.sources}
+        self.categories = list(dict.fromkeys(s.category for s in self.sources))
+        self.thumbs = os.path.join(data_dir, "thumbs")
+        self.reading = set()  # categories whose sources are being listed for the page
         self.next_path = os.path.join(data_dir, "next.jpg")
         self.showing_path = os.path.join(data_dir, "showing.jpg")
         self.lock = asyncio.Lock()  # one conversation with the TV at a time: the timer, Home Assistant, Frame TV
         self.stasera = Stasera(cfg.get("stasera_url"), data_dir)
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
 
-    # MARK: - The schedule
+    # MARK: - Settings: the schedule, the mode and the fixed picture
 
-    def _saved_schedule(self):
+    def _saved(self):
         try:
             with open(self.settings_path) as f:
-                return {k: v for k, v in json.load(f).items() if k in SCHEDULE}
+                return {k: v for k, v in json.load(f).items() if k in SETTINGS or k == "fixed"}
         except (OSError, ValueError):
             return {}
 
-    def schedule(self):
-        return {k: self.cfg.get(k, default) for k, (default, _) in SCHEDULE.items()}
-
-    def set_schedule(self, changes):
-        """Checks and keeps what the add-on's page changed; raises ValueError on a bad value."""
-        clean = {}
-        for k, v in changes.items():
-            if k not in SCHEDULE:
-                raise ValueError("unknown setting %s" % k)
-            try:
-                clean[k] = SCHEDULE[k][1](v)
-            except (TypeError, ValueError):
-                clean[k] = None
-            if clean[k] is None:
-                raise ValueError("bad value for %s: %r" % (k, v))
-        saved = dict(self._saved_schedule(), **clean)
+    def _keep(self, changes):
+        saved = dict(self._saved(), **changes)
         tmp = self.settings_path + ".tmp"
         with open(tmp, "w") as f:
             json.dump(saved, f, indent=1)
         os.replace(tmp, self.settings_path)
-        self.cfg.update(clean)
-        log.info("schedule: %s", ", ".join("%s=%s" % kv for kv in sorted(clean.items())))
-        return self.schedule()
+        self.cfg.update(changes)
+
+    def settings(self):
+        return {k: self.cfg.get(k, default) for k, (default, _) in SETTINGS.items()}
+
+    def schedule(self):
+        return {k: v for k, v in self.settings().items() if k in SCHEDULE}
+
+    def set_settings(self, changes):
+        """Checks and keeps what the add-on's page changed; raises ValueError on a bad value. A new mode or category
+        ends a fixed picture: that's the newer choice."""
+        clean = {}
+        for k, v in changes.items():
+            if k not in SETTINGS:
+                raise ValueError("unknown setting %s" % k)
+            try:
+                clean[k] = SETTINGS[k][1](v)
+            except (TypeError, ValueError):
+                clean[k] = None
+            if clean[k] is None:
+                raise ValueError("bad value for %s: %r" % (k, v))
+        if clean.get("category") and clean["category"] not in self.categories:
+            raise ValueError("no category called %s" % clean["category"])
+        after = dict(self.settings(), **clean)
+        if after["mode"] == "category" and after["category"] not in self.categories:
+            raise ValueError("choose a category")
+        if ("mode" in clean or "category" in clean) and self.cfg.get("fixed"):
+            clean["fixed"] = None
+        self._keep(clean)
+        log.info("settings: %s", ", ".join("%s=%s" % kv for kv in sorted(clean.items())))
+        return self.settings()
+
+    # Kept for the API's /schedule
+    set_schedule = set_settings
+
+    def fixed(self):
+        """The picture you chose, while it stands: until the first morning_time after it was chosen."""
+        f = self.cfg.get("fixed")
+        if f and time.time() >= f.get("until", 0):
+            log.info("the fixed picture has had its time; back to %s", self.cfg.get("mode", "shuffle"))
+            self._keep({"fixed": None})
+            return None
+        return f
+
+    def _next_morning(self):
+        now = self.now()
+        at = datetime.datetime.combine(now.date(), self._clock("morning_time"), tzinfo=self.zone)
+        if at <= now:
+            at = datetime.datetime.combine(now.date() + datetime.timedelta(days=1), self._clock("morning_time"),
+                                           tzinfo=self.zone)
+        return at.timestamp()
+
+    def wanted(self):
+        """What should be on the wall now: the first of these that has something to say (AUG-1490).
+
+        1. Følg musikken, while music plays (AUG-1495)
+        2. What you chose yourself: a fixed picture («neste» is a change right away)
+        3. Morgenbildet and tonight's show; a fixed picture is ended by Morgenbildet, not by tonight's show
+        4. The screensaver (AUG-1494)
+        5. The rotation, in its mode
+        """
+        if self.fixed():
+            return "fixed"
+        return self.due() or "rotation"
 
     # MARK: - Picking
 
@@ -124,12 +198,29 @@ class Rotation:
             log.warning("%s: couldn't list pictures (%s)", src.name, e)
             return p["keys"] if p else []
 
+    def in_play(self):
+        """The sources the rotation draws from: in Kategori that category's, in Shuffle those of every category
+        that's on."""
+        if self.cfg.get("mode") == "category":
+            return [s for s in self.sources if s.category == self.cfg.get("category")]
+        off = set(self.cfg.get("categories_off") or [])
+        return [s for s in self.sources if s.category not in off]
+
+    def source_of(self, full):
+        return self.by_name.get(full.split(":", 1)[0])
+
+    def render(self, src, key):
+        """(jpeg, label, full key) for one key; raises sources.Skip when it can't be used."""
+        img, label = src.fetch(key)
+        img = image.fill(img) if image.croppable(*img.size) else image.fit_on_blur(img)
+        return image.to_jpeg(img), "%s: %s" % (src.name, label), src.name + ":" + key
+
     def pick(self):
         """(jpeg, label, key) for a new picture, or None."""
         bad, recent, empty = set(self.state["bad"]), self.state["recent"], set()
         for _ in range(12):
             # a source is listed only when it's drawn, so a big new one doesn't hold up the others
-            choices = [s for s in self.sources if s.name not in empty]
+            choices = [s for s in self.in_play() if s.name not in empty]
             if not choices:
                 return None
             src = random.choices(choices, [s.weight for s in choices])[0]
@@ -141,17 +232,13 @@ class Rotation:
             key = random.choice(fresh)
             full = src.name + ":" + key
             try:
-                img, label = src.fetch(key)
+                return self.render(src, key)
             except sources.Skip as e:
                 log.info("skipping %s: %s", full, e)
                 self.state["bad"].append(full)
                 bad.add(full)
-                continue
             except Exception as e:
                 log.warning("couldn't fetch %s: %s", full, e)
-                continue
-            img = image.fill(img) if image.croppable(*img.size) else image.fit_on_blur(img)
-            return image.to_jpeg(img), "%s: %s" % (src.name, label), full
         return None
 
     # MARK: - The pictures we make
@@ -220,6 +307,8 @@ class Rotation:
             meta = None  # yesterday's, or Morgenbildet still waiting when it's time for the poster
         if meta and kind and not meta.get("made"):
             meta = None  # a picture from the rotation gives way
+        if meta and not meta.get("made") and self.source_of(meta["key"]) not in self.in_play():
+            meta = None  # from a category that's no longer in play
         if meta and os.path.exists(self.next_path):
             with open(self.next_path, "rb") as f:
                 return f.read(), meta["label"], meta["key"]
@@ -239,9 +328,29 @@ class Rotation:
 
     async def change(self, art_mode=False, what=None):
         """A new picture. With art_mode, the TV goes to Art Mode too (Home Assistant, Frame TV); the timer never does.
-        what: 'morning' or 'tonight' for that one now."""
+        what: 'morning' or 'tonight' for that one now. It ends a fixed picture (the timer doesn't change one)."""
         async with self.lock:
-            return await self._change(art_mode, what)
+            ok = await self._change(art_mode, what)
+            if ok and self.cfg.get("fixed"):
+                self._keep({"fixed": None})
+            return ok
+
+    async def choose(self, full):
+        """A picture you chose on the add-on's page: shown now, in Art Mode, standing until the next Morgenbildet."""
+        src = self.source_of(full)
+        if not src:
+            raise ValueError("no source called %s" % full.split(":", 1)[0])
+        async with self.lock:
+            try:
+                got = await asyncio.to_thread(self.render, src, full.split(":", 1)[1])
+            except sources.Skip as e:
+                self.state["bad"].append(full)
+                self.state.save()
+                raise ValueError("that picture can't be used (%s)" % e)
+            await self._put(*got, force=True)
+            self._keep({"fixed": {"key": full, "label": got[1], "until": self._next_morning()}})
+            log.info("fixed until %s", datetime.datetime.fromtimestamp(self.cfg["fixed"]["until"], self.zone))
+        return True
 
     async def _change(self, force, what=None):
         got = await asyncio.to_thread(self.prepared, what)
@@ -249,7 +358,11 @@ class Rotation:
             log.warning("nothing to show: %s", "couldn't make %s" % what if what else
                         "no source is on, or none has pictures")
             return False
-        jpeg, label, key = got
+        await self._put(*got, force=force, prepared=True)
+        return True
+
+    async def _put(self, jpeg, label, key, force, prepared=False):
+        """Up to the TV and shown (or ready for Art Mode); raises when the TV doesn't answer."""
         log.info("connecting to the TV for %s", label)
         async with TV(self.cfg["tv_host"], os.path.join(self.data, "token.txt")) as tv:
             art_mode = await tv.in_art_mode()
@@ -271,14 +384,26 @@ class Rotation:
             kind, _, day = key.partition(":")
             if kind in MADE:
                 self.state["made"][kind] = day
-            self.state.d.pop("next", None)
+            else:
+                self.state["history"] = (self.state["history"] + [{"key": key, "label": label,
+                                                                    "at": int(time.time())}])[-HISTORY:]
+            if prepared:
+                self.state.d.pop("next", None)
             self.state.save()
-            os.replace(self.next_path, self.showing_path)  # for the add-on's page
+            with open(self.showing_path + ".tmp", "wb") as f:  # for the add-on's page
+                f.write(jpeg)
+            os.replace(self.showing_path + ".tmp", self.showing_path)
+            if prepared and os.path.exists(self.next_path):
+                os.remove(self.next_path)
+            if kind not in MADE:
+                try:
+                    self._keep_thumb(key, image.thumbnail(image.open_image(jpeg, draft=image.THUMB)))
+                except Exception as e:
+                    log.debug("no thumbnail for %s (%s)", key, e)
             try:
                 await self.clean(tv)
             except Exception as e:  # the picture is up; what's left is cleaned next time
                 log.warning("couldn't clean up (%s: %s)", type(e).__name__, e)
-        return True
 
     async def art_mode(self):
         """Art Mode on, with the picture it has."""
@@ -294,11 +419,81 @@ class Rotation:
         # None: not listed yet (a source is listed the first time it's drawn); 0: listed, and nothing found
         pools = {s.name: len(self.state["pools"][s.name].get("keys") or []) if s.name in self.state["pools"] else None
                  for s in self.sources}
+        off = set(self.cfg.get("categories_off") or [])
+        categories = []
+        for c in self.categories:
+            names = [s.name for s in self.sources if s.category == c]
+            counts = [pools[n] for n in names if pools[n] is not None]
+            categories.append({"name": c, "on": c not in off, "sources": names,
+                               "pictures": sum(counts) if counts else None, "unread": len(names) - len(counts)})
+        fixed = self.fixed()
+        rotating = not fixed
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
-                "next": int(self.state["changed"] + interval) if self.state["changed"] else None,
+                "next": int(self.state["changed"] + interval) if self.state["changed"] and rotating else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
-                "pools": pools, "schedule": self.schedule(), "stasera": self.stasera.state(),
-                "pairing": self.stasera.pairing, "busy": self.lock.locked()}
+                "source_categories": {s.name: s.category for s in self.sources},
+                "pools": pools, "schedule": self.schedule(), "settings": self.settings(),
+                "mode": "fixed" if fixed else self.cfg.get("mode", "shuffle"), "category": self.cfg.get("category"),
+                "categories": categories, "fixed": fixed, "wanted": self.wanted(),
+                "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked()}
+
+    # MARK: - The add-on's page: choosing a picture
+
+    def _thumb_path(self, full):
+        return os.path.join(self.thumbs, hashlib.sha1(full.encode()).hexdigest() + ".jpg")
+
+    def _keep_thumb(self, full, jpeg):
+        os.makedirs(self.thumbs, exist_ok=True)
+        with open(self._thumb_path(full), "wb") as f:
+            f.write(jpeg)
+        files = sorted(os.scandir(self.thumbs), key=lambda e: e.stat().st_mtime)
+        for e in files[:max(0, len(files) - THUMBS)]:
+            os.remove(e.path)
+
+    def thumb(self, full):
+        """A small JPEG of a picture, kept; raises sources.Skip or a network error."""
+        path = self._thumb_path(full)
+        if os.path.exists(path):
+            with open(path, "rb") as f:
+                return f.read()
+        src = self.source_of(full)
+        if not src:
+            raise sources.Skip("no such source")
+        got = src.thumb(full.split(":", 1)[1])
+        img = image.open_image(net.get(got), draft=image.THUMB) if isinstance(got, str) else got
+        jpeg = image.thumbnail(img)
+        self._keep_thumb(full, jpeg)
+        return jpeg
+
+    def _read(self, category):
+        try:
+            for s in self.sources:
+                if s.category == category and s.name not in self.state["pools"]:
+                    self.pool(s)
+            self.state.save()
+        finally:
+            self.reading.discard(category)
+
+    async def gallery(self, category, n=24):
+        """For a category: what's been on the wall lately (newest first), and n at random from what it has. Sources
+        not listed yet are listed in the background; «reading» says which."""
+        if category not in self.categories:
+            raise ValueError("no category called %s" % category)
+        names = {s.name for s in self.sources if s.category == category}
+        recent, seen = [], set()
+        for h in reversed(self.state["history"]):
+            if h["key"] not in seen and h["key"].split(":", 1)[0] in names:
+                seen.add(h["key"])
+                recent.append({"key": h["key"], "label": h["label"].split(": ", 1)[-1]})
+        bad = set(self.state["bad"])
+        keys = [name + ":" + k for name in names for k in (self.state["pools"].get(name) or {}).get("keys") or []]
+        keys = [k for k in keys if k not in bad]
+        unlisted = sorted(name for name in names if name not in self.state["pools"])
+        if unlisted and category not in self.reading:
+            self.reading.add(category)
+            asyncio.get_running_loop().run_in_executor(None, self._read, category)
+        return {"category": category, "recent": recent[:n],
+                "random": [{"key": k} for k in random.sample(keys, min(n, len(keys)))], "reading": unlisted}
 
     async def clean(self, tv):
         """Deletes our own older uploads, keeping the newest few; never anything else in «Mine bilder»."""
@@ -322,8 +517,9 @@ class Rotation:
                  self.interval() / 60, ", ".join(s.name for s in self.sources) or "none")
         while True:
             wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
-            if wait > 0 and not self.due():
-                await asyncio.sleep(min(wait, 60))  # a change from the API moves the time; look again each minute
+            want = self.wanted()
+            if want == "fixed" or (want == "rotation" and wait > 0):
+                await asyncio.sleep(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
                 continue
             try:
                 ok = await self.change()

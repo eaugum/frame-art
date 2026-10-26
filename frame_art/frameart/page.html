@@ -1,0 +1,244 @@
+<!doctype html>
+<!-- The add-on's page (GET /). Relative paths: through ingress it lives under /api/hassio_ingress/<token>/. -->
+<html lang="nb"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Frame Art</title>
+<style>
+  body { font: 16px/1.4 system-ui, sans-serif; margin: 0; padding: 24px; background: #111; color: #eee; }
+  main { max-width: 760px; margin: 0 auto; }
+  img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #222; border-radius: 6px; }
+  h1 { font-size: 20px; margin: 16px 0 4px; }
+  p { color: #aaa; margin: 0 0 16px; }
+  button { font: inherit; padding: 12px 20px; margin: 0 8px 8px 0; border: 0; border-radius: 6px; cursor: pointer;
+           background: #f2c94c; color: #111; }
+  button.second { background: #333; color: #eee; }
+  button.on { background: #f2c94c; color: #111; }
+  button.small { padding: 6px 12px; margin: 0; }
+  button:disabled { opacity: .5; cursor: default; }
+  h2 { font-size: 15px; margin: 24px 0 8px; color: #aaa; font-weight: 600; }
+  h3 { font-size: 14px; margin: 16px 0 8px; color: #888; font-weight: 600; }
+  table { border-collapse: collapse; width: 100%; color: #ccc; }
+  td { padding: 4px 8px 4px 0; border-top: 1px solid #222; }
+  td.n { text-align: right; color: #888; }
+  label { display: flex; align-items: center; gap: 12px; padding: 6px 0; border-top: 1px solid #222; color: #ccc; }
+  label span { flex: 1; }
+  input, select { font: inherit; background: #222; color: #eee; border: 1px solid #333; border-radius: 6px;
+                  padding: 6px 8px; }
+  input[type=number] { width: 80px; } input[type=checkbox] { width: 20px; height: 20px; }
+  a { color: #f2c94c; cursor: pointer; }
+  .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: 8px; }
+  .grid img { cursor: pointer; border-radius: 4px; }
+  .grid img:hover { outline: 2px solid #f2c94c; }
+  .soon { color: #777; font-size: 13px; }
+</style></head>
+<body><main>
+  <img id="pic" alt="">
+  <h1 id="title">…</h1>
+  <p id="info"></p>
+  <button id="next">Nytt bilde i Kunstmodus</button>
+  <button id="art" class="second">Slå på Kunstmodus</button>
+  <button id="morning" class="second">Vis Morgenbildet</button>
+  <button id="tonight" class="second">Vis kveldens serie</button>
+  <p id="msg"></p>
+
+  <h2>Modus</h2>
+  <button id="mode-shuffle" class="second">Shuffle</button>
+  <button id="mode-category" class="second">Kategori</button>
+  <select id="category"></select>
+  <p id="fixed"></p>
+
+  <h2>Kategoriene</h2>
+  <p>Avkrysset er med i Shuffle. «Velg bilde» viser et bilde nå, og det står til neste Morgenbildet.</p>
+  <table id="categories"></table>
+
+  <div id="gallery" hidden>
+    <h2 id="gallery-title"></h2>
+    <p id="gallery-note"></p>
+    <h3 id="recent-title">Nylig vist</h3>
+    <div id="recent" class="grid"></div>
+    <h3>Tilfeldige</h3>
+    <div id="random" class="grid"></div>
+    <p></p>
+    <button id="more" class="second">Vis andre</button>
+    <button id="close" class="second">Lukk</button>
+  </div>
+
+  <h2>Tidsplan</h2>
+  <label><span>Bytt bilde hvert (Shuffle og Kategori)</span><input id="interval_minutes" type="number" min="5" max="1440"> min</label>
+  <label><span>Morgenbildet (dato og vær)</span><input type="checkbox" data-setting="morning"><input id="morning_time" type="time"></label>
+  <label><span>Kveldens serie fra Stasera</span><input type="checkbox" data-setting="tonight"><input id="tonight_time" type="time"></label>
+
+  <h2>Skjermspareren <span class="soon">kommer</span></h2>
+  <label><span>Bruk Stasera-bildene, med tittel (ellers vanlig rotasjon)</span><input type="checkbox" data-setting="screensaver_stasera"></label>
+
+  <h2>Følg musikken <span class="soon">kommer</span></h2>
+  <label><span>Albumcoveret når det spilles musikk</span><input type="checkbox" data-setting="music"></label>
+  <label><span>Bare når noen er hjemme</span><input type="checkbox" data-setting="music_home_only"></label>
+  <p id="saved"></p>
+
+  <h2>Stasera</h2>
+  <p id="stasera"></p>
+  <button id="link" class="second">Koble til Stasera</button>
+
+  <h2>Kildene</h2>
+  <table id="sources"></table>
+</main>
+<script>
+  var last = {}, open = null;
+  function $(id) { return document.getElementById(id); }
+  function el(tag, props, kids) {
+    var e = Object.assign(document.createElement(tag), props || {});
+    (kids || []).forEach(function (k) { e.append(k); });
+    return e;
+  }
+  function time(s) { return s ? new Date(s * 1000).toLocaleTimeString("nb-NO", {hour: "2-digit", minute: "2-digit"}) : "–"; }
+  function day(s) {
+    var d = new Date(s * 1000), today = new Date();
+    return (d.toDateString() === today.toDateString() ? "i dag" : "i morgen") + " kl. " + time(s);
+  }
+  function count(n) {
+    return n === null || n === undefined ? "ikke lest ennå" : n ? n + " bilder" : "ingen bilder funnet";
+  }
+  function show(s) {
+    last = s;
+    var label = s.showing || "", cut = label.indexOf(": ");
+    var mode = s.mode === "fixed" ? "fast bilde" : s.mode === "category" ? "kategori " + s.category : "shuffle";
+    $("title").textContent = cut < 0 ? (label || "Ikke byttet ennå") : label.slice(cut + 2);
+    $("info").textContent = (cut < 0 ? "" : label.slice(0, cut) + " · ") + "byttet " + time(s.changed) +
+      (s.next ? " · neste " + time(s.next) : "") + " · " + mode + " · versjon " + s.version;
+    $("pic").src = "showing.jpg?" + s.changed;
+    busy(!!s.busy);
+
+    var st = s.settings || {};
+    $("mode-shuffle").className = st.mode === "shuffle" && s.mode !== "fixed" ? "on" : "second";
+    $("mode-category").className = st.mode === "category" && s.mode !== "fixed" ? "on" : "second";
+    var sel = $("category");
+    if (document.activeElement !== sel) {
+      sel.innerHTML = "";
+      sel.append(el("option", {value: "", textContent: "Velg kategori"}));
+      (s.categories || []).forEach(function (c) { sel.append(el("option", {value: c.name, textContent: c.name})); });
+      sel.value = st.category || "";
+    }
+    $("fixed").innerHTML = "";
+    if (s.fixed) {
+      $("fixed").append("Fast bilde til " + day(s.fixed.until) + ", så " +
+        (st.mode === "category" ? "kategori " + st.category : "shuffle") + " igjen. ",
+        el("a", {textContent: "Avslutt nå", onclick: function () { save({mode: st.mode}); }}));
+    }
+
+    var rows = $("categories");
+    rows.innerHTML = "";
+    (s.categories || []).forEach(function (c) {
+      var box = el("input", {type: "checkbox", checked: c.on, onchange: function () {
+        var off = (st.categories_off || []).filter(function (n) { return n !== c.name; });
+        if (!this.checked) off.push(c.name);
+        save({categories_off: off});
+      }});
+      rows.append(el("tr", {}, [el("td", {}, [box]), el("td", {textContent: c.name}),
+        el("td", {className: "n", textContent: count(c.pictures) +
+          (c.pictures !== null && c.unread ? " (" + c.unread + " kilder ikke lest)" : "")}),
+        el("td", {className: "n"}, [el("a", {textContent: "Velg bilde", onclick: function () { gallery(c.name); }})])]));
+    });
+
+    if (document.activeElement.tagName !== "INPUT") {
+      $("interval_minutes").value = st.interval_minutes;
+      $("morning_time").value = st.morning_time || "";
+      $("tonight_time").value = st.tonight_time || "";
+      document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
+    }
+
+    var p = s.pairing;
+    $("stasera").innerHTML = "";
+    if (s.stasera === "off") $("stasera").textContent = "Av: stasera_url mangler i valgene til add-on-et.";
+    else if (s.stasera === "linked") $("stasera").textContent = "Koblet. Kveldens serie kommer fra «I kveld».";
+    else if (p) $("stasera").append("Godkjenn koden ", el("b", {textContent: p.code}), " i ",
+      el("a", {href: p.url, target: "_blank", textContent: "Stasera"}), ".");
+    else $("stasera").textContent = "Ikke koblet.";
+    $("link").textContent = s.stasera === "linked" ? "Koble fra" : "Koble til Stasera";
+    $("link").hidden = s.stasera === "off" || !!p;
+
+    var src = $("sources");
+    src.innerHTML = "";
+    (s.sources || []).forEach(function (name) {
+      src.append(el("tr", {}, [el("td", {textContent: name}),
+        el("td", {className: "n", textContent: (s.source_categories || {})[name] || ""}),
+        el("td", {className: "n", textContent: count((s.pools || {})[name])})]));
+    });
+  }
+  function busy(b) {
+    ["next", "art", "morning", "tonight"].forEach(function (id) { $(id).disabled = b; });
+  }
+  function load() { fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {}); }
+  function act(path, doing) {
+    busy(true);
+    $("msg").textContent = doing;
+    window.scrollTo({top: 0, behavior: "smooth"});
+    fetch(path, {method: "POST"}).then(function (r) { return r.json(); }).then(function (s) {
+      show(s);
+      $("msg").textContent = s.ok ? "Ferdig." : "Gikk ikke: " + (s.error || "ukjent feil");
+    }).catch(function () { $("msg").textContent = "Fikk ikke svar."; load(); });
+  }
+  function save(changes) {
+    fetch("settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(changes)})
+      .then(function (r) { return r.json(); }).then(function (s) {
+        $("saved").textContent = s.ok ? "Lagret." : "Ikke lagret: " + s.error;
+        if (!s.ok) $("msg").textContent = "Ikke lagret: " + s.error;
+        document.activeElement.blur();
+        show(s);
+      }).catch(function () { $("saved").textContent = "Fikk ikke lagret."; });
+  }
+  function thumbs(box, items) {
+    box.innerHTML = "";
+    items.forEach(function (it) {
+      box.append(el("img", {src: "thumb?key=" + encodeURIComponent(it.key), title: it.label || "", loading: "lazy",
+        onerror: function () { this.remove(); },
+        onclick: function () { act("show?key=" + encodeURIComponent(it.key), "Viser bildet og låser det til Morgenbildet …"); }}));
+    });
+  }
+  function gallery(name) {
+    open = name;
+    $("gallery").hidden = false;
+    $("gallery-title").textContent = "Velg et bilde: " + name;
+    $("gallery-note").textContent = "Henter …";
+    fetch("category?name=" + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (g) {
+      if (open !== name) return;
+      $("recent-title").hidden = !g.recent.length;
+      thumbs($("recent"), g.recent);
+      thumbs($("random"), g.random);
+      $("gallery-note").textContent = g.reading.length ?
+        "Leser " + g.reading.join(", ") + " (første gang tar det litt). Trykk «Vis andre» om litt." :
+        g.random.length ? "" : "Ingen bilder her.";
+      $("gallery").scrollIntoView({behavior: "smooth"});
+    }).catch(function () { $("gallery-note").textContent = "Fikk ikke svar."; });
+  }
+  $("next").onclick = function () { act("next?art_mode=1", "Henter et nytt bilde og sender det til TV-en …"); };
+  $("art").onclick = function () { act("artmode", "Slår på Kunstmodus …"); };
+  $("morning").onclick = function () { act("next?art_mode=1&what=morning", "Lager Morgenbildet …"); };
+  $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", "Lager plakaten for kveldens serie …"); };
+  $("mode-shuffle").onclick = function () { save({mode: "shuffle"}); };
+  $("mode-category").onclick = function () {
+    var c = $("category").value || (last.settings || {}).category;
+    if (!c) { $("msg").textContent = "Velg en kategori i lista først."; $("category").focus(); return; }
+    save({mode: "category", category: c});
+  };
+  $("category").onchange = function () {
+    if (this.value) save({mode: "category", category: this.value});
+  };
+  $("more").onclick = function () { if (open) gallery(open); };
+  $("close").onclick = function () { open = null; $("gallery").hidden = true; };
+  $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
+  $("morning_time").onchange = function () { if (this.value) save({morning_time: this.value}); };
+  $("tonight_time").onchange = function () { if (this.value) save({tonight_time: this.value}); };
+  document.querySelectorAll("[data-setting]").forEach(function (b) {
+    b.onchange = function () { var c = {}; c[this.dataset.setting] = this.checked; save(c); };
+  });
+  $("link").onclick = function () {
+    var linked = this.textContent === "Koble fra";
+    fetch(linked ? "stasera/unlink" : "stasera/link", {method: "POST"}).then(function (r) { return r.json(); })
+      .then(function (s) { show(s); if (!s.ok) $("stasera").textContent = s.error || "Fikk ikke svar fra Stasera."; });
+  };
+  load();
+  if (location.hash.length > 1) gallery(decodeURIComponent(location.hash.slice(1)));  // a link to a category
+  setInterval(load, 30000);
+  setInterval(function () { if ($("stasera").querySelector("b")) load(); }, 3000);  // waiting for the code
+</script>
+</body></html>

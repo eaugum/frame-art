@@ -3,7 +3,9 @@
 The sources are a list in the options, each with a type and a query (see TYPES and README.md), so a new one is a few
 lines in Home Assistant. keys() may be slow (it searches); the service keeps the list for a day. fetch() returns
 (PIL image, label), or raises Skip when that key can never be used (not free, no image, the wrong shape), so it's not
-tried again.
+tried again. thumb() is a small copy for the add-on's page, as a URL to fetch or the picture itself.
+
+A source belongs to a category (the field category, else its own name); several sources can share one.
 """
 import json
 import logging
@@ -11,6 +13,7 @@ import os
 import random
 import re
 import time
+import urllib.parse
 
 from . import image, net
 
@@ -42,7 +45,7 @@ def _text(html_text, limit=80):
 
 class Source:
     """An entry in the options: name, type, query (several with |), years, shape (wide: crop to 16:9 and skip the
-    rest; any: anything, shown whole on a blurred copy of itself), weight, enabled."""
+    rest; any: anything, shown whole on a blurred copy of itself), weight, category, enabled."""
     type = None
     pool_hours = 24
     whole = False  # the default shape
@@ -55,6 +58,7 @@ class Source:
         if entry.get("shape") in ("wide", "any"):
             self.whole = entry["shape"] == "any"
         self.weight = max(1, int(entry.get("weight") or 1))
+        self.category = re.sub(r"\s+", " ", str(entry.get("category") or "")).strip() or self.name
 
     def usable(self, width, height):
         return image.usable(width, height, self.whole)
@@ -65,6 +69,10 @@ class Source:
 
     def year_ok(self, year):
         return not self.years or not year or self.years[0] <= year <= self.years[1]
+
+    def thumb(self, key):
+        """A small copy: a URL, or a PIL image. Without one of its own, the whole picture (slow)."""
+        return self.fetch(key)[0]
 
 
 class Folder(Source):
@@ -97,6 +105,11 @@ class Folder(Source):
             except Exception as e:
                 raise Skip("not a picture Pillow reads: %s" % e)
         return img, key
+
+    def thumb(self, key):
+        with open(os.path.join(self.path, key), "rb") as f:
+            img = image.open_image(f.read(), draft=image.THUMB)
+        return img
 
 
 class Met(Source):
@@ -137,6 +150,12 @@ class Met(Source):
         self.check(*img.size)
         return img, "%s, %s (%s)" % (o.get("title"), o.get("artistDisplayName") or "unknown", o.get("objectDate"))
 
+    def thumb(self, key):
+        o = net.get_json(self.API + "v1/objects/" + key)
+        if not o.get("primaryImageSmall"):
+            raise Skip("no image")
+        return o["primaryImageSmall"]
+
 
 class Rijksmuseum(Source):
     """Rijksmuseum: works with an image (they're public domain), through its Linked Art search and IIIF.
@@ -173,16 +192,22 @@ class Rijksmuseum(Source):
         year = int((span.get("begin_of_the_begin") or "0")[:4] or 0)
         if not self.year_ok(year):
             raise Skip("from %d" % year)
-        try:
-            visual = net.get_json(o["shows"][0]["id"], accept=self.LD)
-            digital = net.get_json(visual["digitally_shown_by"][0]["id"], accept=self.LD)
-            iiif = digital["access_point"][0]["id"].split("/full/")[0]
-        except (KeyError, IndexError):
-            raise Skip("no image")
+        iiif = self.iiif(o)
         info = net.get_json(iiif + "/info.json")
         self.check(info["width"], info["height"])
         img = image.open_image(net.get(iiif + "/full/!4000,4000/0/default.jpg", timeout=180))
         return img, "%s (%s)" % (_rijks_title(o), year)
+
+    def iiif(self, o):
+        try:
+            visual = net.get_json(o["shows"][0]["id"], accept=self.LD)
+            digital = net.get_json(visual["digitally_shown_by"][0]["id"], accept=self.LD)
+            return digital["access_point"][0]["id"].split("/full/")[0]
+        except (KeyError, IndexError):
+            raise Skip("no image")
+
+    def thumb(self, key):
+        return self.iiif(net.get_json(key, accept=self.LD)) + "/full/!%d,%d/0/default.jpg" % (image.THUMB, image.THUMB)
 
 
 def _rijks_title(o):
@@ -246,6 +271,14 @@ class Commons(Source):
         # thumburl is the 3840-wide copy, or the original when that's smaller
         img = image.open_image(net.get(info.get("thumburl") or info["url"], timeout=180))
         return img, self.label(key, info.get("extmetadata") or {})
+
+    def thumb(self, key):
+        r = net.get_json(self.API, {"action": "query", "format": "json", "titles": key, "prop": "imageinfo",
+                                    "iiprop": "url", "iiurlwidth": image.THUMB})
+        info = (list(r["query"]["pages"].values())[0].get("imageinfo") or [None])[0]
+        if not info:
+            raise Skip("gone")
+        return info.get("thumburl") or info["url"]
 
     def label(self, key, meta):
         title, artist, date = (_text((meta.get(k) or {}).get("value")) for k in ("ObjectName", "Artist",
@@ -311,6 +344,12 @@ class Cleveland(Source):
         artist = ((o.get("creators") or [{}])[0].get("description") or "unknown").split(" (")[0]
         return img, "%s, %s (%s)" % (o.get("title"), artist, o.get("creation_date"))
 
+    def thumb(self, key):
+        url = ((net.get_json(self.API + key)["data"].get("images") or {}).get("web") or {}).get("url")
+        if not url:
+            raise Skip("no image")
+        return url
+
 
 class SMK(Source):
     """Statens Museum for Kunst in Copenhagen, public domain. The query is search words ("landskab"), or "*" for
@@ -349,6 +388,12 @@ class SMK(Source):
         period = ((o.get("production_date") or [{}])[0].get("period")) or ""
         return img, "%s, %s (%s)" % (title, ", ".join(o.get("artist") or ["unknown"]), period)
 
+    def thumb(self, key):
+        items = net.get_json(self.API, {"object_number": key}).get("items") or []
+        if not items or not items[0].get("image_iiif_id"):
+            raise Skip("gone")
+        return items[0]["image_iiif_id"] + "/full/!%d,%d/0/default.jpg" % (image.THUMB, image.THUMB)
+
 
 class NASA(Source):
     """NASA's Image and Video Library: search words ("nebula", "earth from space"). NASA's own pictures are free.
@@ -385,6 +430,9 @@ class NASA(Source):
         d = data[0]["data"][0]
         return img, "%s (%s)" % (d.get("title") or key, (d.get("date_created") or "")[:4])
 
+    def thumb(self, key):
+        return "https://images-assets.nasa.gov/image/%s/%s~thumb.jpg" % (urllib.parse.quote(key), urllib.parse.quote(key))
+
 
 class Wellcome(Source):
     """Wellcome Collection: search words ("botanical", "anatomy", "astronomy"), public domain and CC0 only. Mostly
@@ -418,6 +466,13 @@ class Wellcome(Source):
         self.check(info["width"], info["height"])
         img = image.open_image(net.get(iiif[:-len("/info.json")] + "/full/!3840,3840/0/default.jpg", timeout=180))
         return img, (o.get("source") or {}).get("title") or key
+
+    def thumb(self, key):
+        o = net.get_json(self.API + "/" + key)
+        iiif = next((l["url"] for l in o.get("locations") or [] if l.get("url", "").endswith("/info.json")), None)
+        if not iiif:
+            raise Skip("no IIIF image")
+        return iiif[:-len("/info.json")] + "/full/!%d,%d/0/default.jpg" % (image.THUMB, image.THUMB)
 
 
 class TMDB(Source):
@@ -478,6 +533,12 @@ class TMDB(Source):
         img = image.open_image(net.get("https://image.tmdb.org/t/p/original" + random.choice(best)["file_path"],
                                        timeout=180))
         return img, "%s (%s)" % (m.get("title"), (m.get("release_date") or "")[:4])
+
+    def thumb(self, key):
+        m = self.get("movie/" + key)
+        if not m.get("backdrop_path"):
+            raise Skip("no backdrop")
+        return "https://image.tmdb.org/t/p/w500" + m["backdrop_path"]
 
 
 TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome, TMDB)}

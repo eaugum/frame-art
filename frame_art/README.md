@@ -20,6 +20,7 @@ fant; 0 betyr som regel et feil navn (loggen sier hvilket).
 
 ```yaml
 - name: Abstrakt                  # vises foran tittelen; uten kolon
+  category: Abstrakt              # flere kilder kan dele en kategori; uten den er kategorien navnet
   type: commons
   query: Paintings by Hilma af Klint|Paintings by Piet Mondrian   # flere med |
   shape: any                      # wide (beskjær til 16:9, hopp over resten) eller any (alt, vist helt)
@@ -61,6 +62,28 @@ mange av våre egne bilder som blir liggende på TV-en.
 Tilgang: Kunstmodus-kanalen spør aldri om «Tillat», den bare tier uten token. Uten token kobler tjenesten seg derfor
 først til fjernkontroll-kanalen (uten å sende taster). Da kommer spørsmålet på TV-en, og tokenet virker for begge.
 
+## Kategorier og moduser
+
+Hver kilde hører til en kategori (`category`). Standardvalgene har sju: Mine bilder, Malerier, Abstrakt, Japan,
+Plakater, Natur og rommet og Film. Modusen velges på add-on-siden:
+
+- **Shuffle:** alle kategoriene som er krysset av, med `weight` som før.
+- **Kategori:** bare én kategori.
+- **Fast bilde:** «Velg bilde» ved en kategori viser det som er vist nylig og 24 tilfeldige. Et bilde du trykker på,
+  vises med en gang og står til neste Morgenbildet; så går modusen videre. «Nytt bilde», en ny modus eller «Avslutt
+  nå» avslutter det før.
+
+Intervallet gjelder Shuffle og Kategori. Modus, kategori og avkryssingen lagres i `/data/settings.json`, som
+tidsplanen.
+
+**Hva som vinner**, øverst først. Når den øverste er ferdig, tar den neste over.
+
+1. Følg musikken, når den er på og det spilles musikk (kommer)
+2. Det du velger selv: et fast bilde, eller «Nytt bilde»
+3. Morgenbildet og kveldens serie. Et fast bilde avsluttes av Morgenbildet, ikke av kveldens serie.
+4. Skjermspareren (kommer)
+5. Vanlig rotasjon, i modusen
+
 ## Morgenbildet og kveldens serie (AUG-1447)
 
 To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der. Etterpå går rotasjonen videre som før.
@@ -87,10 +110,13 @@ Add-on-et svarer på port 8099 på hjemmenettet, uten innlogging (som TV-ens ege
 
 | Kall | Hva |
 |---|---|
-| `GET /status` | Hva som vises, når det ble byttet og når det byttes neste gang |
-| `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også, `?what=morning` viser Morgenbildet og `?what=tonight` kveldens serie |
+| `GET /status` | Hva som vises, når det ble byttet og når det byttes neste gang, modusen (`mode`: `shuffle`, `category` eller `fixed`), kategoriene og valgene |
+| `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også, `?what=morning` viser Morgenbildet og `?what=tonight` kveldens serie. Avslutter et fast bilde |
 | `POST /artmode` | Kunstmodus på, med bildet den har |
-| `POST /schedule` | Endrer tidsplanen, med JSON: `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time` |
+| `GET /category?name=Japan` | Nylig vist og 24 tilfeldige fra kategorien, til å velge et bilde |
+| `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |
+| `POST /show?key=…` | Det bildet nå, i Kunstmodus, som fast bilde til neste Morgenbildet |
+| `POST /settings` | Endrer valgene, med JSON: `mode` (`shuffle`, `category`), `category`, `categories_off` (en liste, for Shuffle), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver_stasera`, `music`, `music_home_only`. `/schedule` er det samme |
 | `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 
 Kunstmodus slås på med `set_artmode`. Tar ikke det, sendes ett kort trykk på av/på over fjernkontroll-kanalen, men bare

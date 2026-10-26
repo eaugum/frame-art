@@ -8,10 +8,13 @@ W, H = 3840, 2160
 # Paintings this close to 16:9 are cropped; the rest are skipped (museums) or shown whole on a blurred copy (folder).
 CROP_MIN, CROP_MAX = 1.3, 2.1
 MIN_WIDTH = 1920  # museum pictures smaller than this look soft on a 4K wall
+THUMB = 480  # the add-on page's grid
 
 
-def open_image(data):
+def open_image(data, draft=None):
     img = Image.open(io.BytesIO(data))
+    if draft:
+        img.draft("RGB", (draft, draft))  # a JPEG decodes at a fraction of its size: fast for a thumbnail
     img = ImageOps.exif_transpose(img)  # phone photos are stored sideways with a tag
     return img.convert("RGB")
 
@@ -45,7 +48,13 @@ def fit_on_blur(img):
     return back
 
 
-def to_jpeg(img):
+def to_jpeg(img, quality=90):
     out = io.BytesIO()
-    img.save(out, "JPEG", quality=90, optimize=True)
+    img.save(out, "JPEG", quality=quality, optimize=True)
     return out.getvalue()
+
+
+def thumbnail(img):
+    img = img.copy()
+    img.thumbnail((THUMB, THUMB), Image.LANCZOS)
+    return to_jpeg(img.convert("RGB"), 80)

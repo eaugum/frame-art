@@ -1,5 +1,14 @@
 # Endringer
 
+## 0.6.0
+
+- Kategorier: feltet `category` på kildene, sju i standardvalgene. Legg det til i dine egne kilder (uten det er
+  kategorien kildens navn).
+- Moduser på add-on-siden: Shuffle (kategoriene som er krysset av), Kategori (én) og Fast bilde (velg et bilde fra en
+  kategori; det står til neste Morgenbildet).
+- Hva som vinner avgjøres ett sted: det du velger selv, så Morgenbildet og kveldens serie, så rotasjonen.
+- API: `/settings`, `/category`, `/thumb` og `/show`.
+
 ## 0.5.4
 
 - `/status` og add-on-siden viser riktig versjon.
