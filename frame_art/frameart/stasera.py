@@ -83,7 +83,7 @@ class Stasera:
         if status == 429:
             raise RuntimeError("Stasera is busy, try again in a minute")
         if status != 200 or not isinstance(j, dict) or not j.get("secret"):
-            raise RuntimeError("%s/tv/pair/start answered %s; stasera_url should be https://<deployment>.convex.site"
+            raise RuntimeError("%s/tv/pair/start answered %s; stasera_url should be https://www.stasera.app"
                                % (self.base, status))
         self.pairing = {"code": j["code"], "url": j["url"], "expiresAt": j["expiresAt"]}
         if self._poller:

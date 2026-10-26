@@ -1,5 +1,10 @@
 # Endringer
 
+## 0.9.1
+
+- `stasera_url` er `https://www.stasera.app` som standard. Den gamle adressen (`https://<deployment>.convex.site`)
+  virker fortsatt. Bruk www: `stasera.app` sender videre dit, og koblingen tåler det ikke.
+
 ## 0.9.0
 
 - Skjermspareren (`POST /saver`): med «Stasera i skjermspareren» på kommer det vi ser på og vil begynne på i Stasera, som

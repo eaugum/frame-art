@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.9.0"
+version: "0.9.1"
 slug: frame_art
 description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kategorier, Morgenbildet og kveldens serie
 url: https://github.com/eaugum/frame-art
@@ -33,7 +33,7 @@ options:
   tonight_time: "18:00"
   latitude: 59.9139
   longitude: 10.7522
-  stasera_url: ""
+  stasera_url: "https://www.stasera.app"
   # A source: category (several sources can share one; without it, the name), name, type, query (several with |),
   # and if needed years ("1800-1930"), shape (wide: crop to 16:9 and skip the rest; any: anything, shown whole),
   # weight (1-10, how often) and enabled. Types and queries: README.md.
