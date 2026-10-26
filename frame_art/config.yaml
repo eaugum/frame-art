@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.13.0"
+version: "0.14.0"
 slug: frame_art
 description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kildene du krysser av, Morgenbildet og kveldens serie
 url: https://github.com/eaugum/frame-art
@@ -22,22 +22,15 @@ homeassistant_api: true  # Følg musikken reads the Spotify player from Home Ass
 map:
   - type: media
     read_only: true
+# Here only what the add-on needs to start: the TV, Stasera and the sources. The rest (the interval, the times,
+# Morgenbildet, how many pictures stay on the TV ...) is on the add-on's page; the weather is for Home Assistant's
+# home, unless latitude and longitude are given here.
 options:
   tv_host: 10.1.2.36
-  interval_minutes: 60
-  keep: 3
-  # Morgenbildet (the date and the weather) and tonight's show from Stasera, once a day each. The add-on's page can
-  # change the times and the interval; what it sets is kept and wins over these.
-  morning: true
-  morning_time: "07:00"
-  tonight: true
-  tonight_time: "18:00"
-  latitude: 59.9139
-  longitude: 10.7522
   stasera_url: "https://www.stasera.app"
   # A source: category (several sources can share one; without it, the name), name, type, query (several with |),
-  # and if needed years ("1800-1930"), shape (wide: crop to 16:9 and skip the rest; any: anything, shown whole),
-  # weight (1-10, how often) and enabled. Types and queries: README.md.
+  # and if needed years ("1800-1930"), weight (1-10, how often) and enabled. Only pictures close to 16:9 are used,
+  # cropped to fill the screen. Types and queries: README.md.
   sources:
     # Mine egne
     - {category: Mine bilder, name: Mine bilder, type: folder, query: /media/frame-art}
@@ -55,17 +48,17 @@ options:
     - {category: Malerier, name: Nordisk lys, type: commons,
        query: Paintings by Peder Severin Krøyer|Paintings by Akseli Gallen-Kallela|Paintings by Anders Zorn|Paintings by Vilhelm Hammershøi}
     # Abstrakt
-    - {category: Abstrakt, name: Abstrakt, type: commons, shape: any,
+    - {category: Abstrakt, name: Abstrakt, type: commons,
        query: Paintings by Wassily Kandinsky|Paintings by Piet Mondrian|Paintings by Kazimir Malevich|Paintings by Paul Klee|Paintings by Robert Delaunay|Paintings by Hilma af Klint|Paintings by Sophie Taeuber-Arp|Paintings by Lyubov Popova}
     # Japan
-    - {category: Japan, name: Japanske tresnitt (The Met), type: met, shape: any, query: medium=Prints&q=Hiroshige|medium=Prints&q=Hokusai}
-    - {category: Japan, name: Japanske tresnitt (Cleveland), type: cleveland, shape: any,
+    - {category: Japan, name: Japanske tresnitt (The Met), type: met, query: medium=Prints&q=Hiroshige|medium=Prints&q=Hokusai}
+    - {category: Japan, name: Japanske tresnitt (Cleveland), type: cleveland,
        query: type=Print&q=Hiroshige|type=Print&q=Hokusai}
-    - {category: Japan, name: Kawase Hasui, type: commons, shape: any, query: Kawase Hasui}
+    - {category: Japan, name: Kawase Hasui, type: commons, query: Kawase Hasui}
     # Plakater
-    - {category: Plakater, name: Art nouveau-plakater, type: commons, shape: any, query: Art Nouveau posters|Posters by Alfons Mucha}
-    - {category: Plakater, name: Art deco-plakater, type: commons, shape: any, query: Art Deco posters}
-    - {category: Plakater, name: Nasjonalparkplakater, type: commons, shape: any, query: "WPA posters, National Park Service"}
+    - {category: Plakater, name: Art nouveau-plakater, type: commons, query: Art Nouveau posters|Posters by Alfons Mucha}
+    - {category: Plakater, name: Art deco-plakater, type: commons, query: Art Deco posters}
+    - {category: Plakater, name: Nasjonalparkplakater, type: commons, query: "WPA posters, National Park Service"}
     # Natur og rommet
     - {category: Natur og rommet, name: Botanikk, type: wellcome, query: botanical}
     - {category: Natur og rommet, name: Naturfoto, type: commons,
@@ -74,22 +67,16 @@ options:
     - {category: Natur og rommet, name: Jorda fra rommet, type: nasa, query: earth from space}
     - {category: Natur og rommet, name: Astrofoto, type: commons, query: Featured pictures of astronomy}
     # Film og serier: fra Stasera (stasera_url, og koblet på add-on-siden)
-    - {category: Film, name: Filmplakater, type: commons, shape: any, query: 1920s film posters|Film posters of the United States}
-    - {category: Film, name: Stumfilm, type: commons, shape: any, query: Film stills, enabled: false}
+    - {category: Film, name: Filmplakater, type: commons, query: 1920s film posters|Film posters of the United States}
+    - {category: Film, name: Stumfilm, type: commons, query: Film stills, enabled: false}
     - {category: Film, name: Det vi ser på, type: stasera, query: watching|wantToStart}
     - {category: Film, name: Filmene våre, type: stasera, query: movies}
     - {category: Film, name: Anbefalt, type: stasera, query: recommendations}
 schema:
   tv_host: str
-  interval_minutes: int(5,1440)
-  keep: int(1,20)
   tmdb_key: password?
-  morning: bool
-  morning_time: match(^\d\d:\d\d$)
-  tonight: bool
-  tonight_time: match(^\d\d:\d\d$)
-  latitude: float
-  longitude: float
+  latitude: float?
+  longitude: float?
   stasera_url: url?
   back_app: str?
   sources:

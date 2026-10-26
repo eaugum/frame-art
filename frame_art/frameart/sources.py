@@ -44,28 +44,25 @@ def _text(html_text, limit=80):
 
 
 class Source:
-    """An entry in the options: name, type, query (several with |), years, shape (wide: crop to 16:9 and skip the
-    rest; any: anything, shown whole on a blurred copy of itself), weight, category, enabled."""
+    """An entry in the options: name, type, query (several with |), years, weight, category, enabled. Only pictures
+    close to 16:9 are used, cropped to fill the screen; shape in the options is from before and is ignored."""
     type = None
     pool_hours = 24
-    whole = False  # the default shape
     default = []
 
     def __init__(self, entry, cfg):
         self.name = entry["name"]
         self.queries = [q.strip() for q in (entry.get("query") or "").split("|") if q.strip()] or self.default
         self.years = _years(entry.get("years"))
-        if entry.get("shape") in ("wide", "any"):
-            self.whole = entry["shape"] == "any"
         self.weight = max(1, int(entry.get("weight") or 1))
         self.category = re.sub(r"\s+", " ", str(entry.get("category") or "")).strip() or self.name
 
     def usable(self, width, height):
-        return image.usable(width, height, self.whole)
+        return image.big_enough(width, height)
 
     def check(self, width, height):
         if not self.usable(width, height):
-            raise Skip("%dx%d is too small%s" % (width, height, "" if self.whole else " or not close to 16:9"))
+            raise Skip("%dx%d is too small or not close to 16:9" % (width, height))
 
     def year_ok(self, year):
         return not self.years or not year or self.years[0] <= year <= self.years[1]
@@ -76,10 +73,10 @@ class Source:
 
 
 class Folder(Source):
-    """Pictures in a folder (and its subfolders); the query is the path. Any shape goes."""
+    """Pictures in a folder (and its subfolders); the query is the path. One that isn't close to 16:9 is skipped when
+    it's drawn."""
     type = "folder"
     pool_hours = 0  # cheap: look again every time
-    whole = True
     EXT = (".jpg", ".jpeg", ".png", ".webp", ".gif", ".bmp", ".tif", ".tiff")
 
     def __init__(self, entry, cfg):
@@ -142,7 +139,7 @@ class Met(Source):
             raise Skip("not public domain or no image")
         if self.paintings_only() and o.get("classification") != "Paintings":
             raise Skip("a %s, not a painting" % (o.get("classification") or "something"))
-        if o.get("primaryImageSmall") and not self.whole:  # the shape from the small copy; the original can be 50 MB
+        if o.get("primaryImageSmall"):  # the shape from the small copy; the original can be 50 MB
             small = image.open_image(net.get(o["primaryImageSmall"]))
             if not image.croppable(*small.size):
                 raise Skip("%dx%d isn't close to 16:9" % small.size)
@@ -397,10 +394,9 @@ class SMK(Source):
 
 class NASA(Source):
     """NASA's Image and Video Library: search words ("nebula", "earth from space"). NASA's own pictures are free.
-    Many are square; on black they're shown whole unless shape is wide."""
+    Many are square, and only the wide ones are used."""
     type = "nasa"
     default = ["nebula"]
-    whole = True
     API = "https://images-api.nasa.gov/"
 
     def keys(self):
@@ -436,10 +432,9 @@ class NASA(Source):
 
 class Wellcome(Source):
     """Wellcome Collection: search words ("botanical", "anatomy", "astronomy"), public domain and CC0 only. Mostly
-    old illustrations of every shape, so shown whole unless shape is wide."""
+    old illustrations of every shape, and only the wide ones are used."""
     type = "wellcome"
     default = ["botanical"]
-    whole = True
     API = "https://api.wellcomecollection.org/catalogue/v2/images"
 
     def keys(self):
@@ -451,7 +446,7 @@ class Wellcome(Source):
                 r = net.get_json(self.API, dict(params, page=page))
                 for o in r.get("results") or []:
                     ratio = o.get("aspectRatio") or 0
-                    if self.whole or image.croppable(ratio, 1):
+                    if image.croppable(ratio, 1):
                         ids.append(o["id"])
                 if page >= (r.get("totalPages") or 0):
                     break

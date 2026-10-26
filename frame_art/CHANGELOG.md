@@ -1,5 +1,15 @@
 # Endringer
 
+## 0.14.0
+
+- Bare bilder nær 16:9 (1,45–2,0), beskåret så de fyller skjermen. `shape` overses, og ingen bilder vises lenger
+  hele på en uskarp bakgrunn. Kildene leses på nytt ved oppstart; plakater og tresnitt får derfor langt færre bilder.
+- Valgene i HA er bare det add-on-et trenger for å starte: TV-en, Stasera, `tmdb_key`, `back_app` og kildene.
+  Intervallet, tidene og Morgenbildet står på add-on-siden som før, og «Bilder som blir liggende på TV-en» (`keep`)
+  er flyttet dit. Været er for hjemmet i HA, med mindre `latitude` og `longitude` står i valgene.
+- Add-on-siden: lista over TV-er og strømsensorer viser entiteten også. «Slå på Kunstmodus» er borte; de andre
+  knappene slår den på.
+
 ## 0.13.0
 
 - Morgenbildet: uka og navnedagen under datoen, og til høyre dagens avtaler fra kalenderne i HA, nytt i Stasera i dag

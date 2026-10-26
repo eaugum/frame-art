@@ -23,7 +23,6 @@ fant; 0 betyr som regel et feil navn (loggen sier hvilket).
   category: Abstrakt              # flere kilder kan dele en kategori; uten den er kategorien navnet
   type: commons
   query: Paintings by Hilma af Klint|Paintings by Piet Mondrian   # flere med |
-  shape: any                      # wide (beskjær til 16:9, hopp over resten) eller any (alt, vist helt)
   years: 1800-1930                # bare met, rijksmuseum, cleveland, smk, nasa og tmdb
   weight: 2                       # 1-10: hvor ofte, mot de andre (1)
   enabled: false                  # av, uten å slette den
@@ -31,21 +30,22 @@ fant; 0 betyr som regel et feil navn (loggen sier hvilket).
 
 | Type | Hva | `query` |
 |---|---|---|
-| `folder` | Bildene i en mappe (og undermapper), alle former | Mappa (`/media/frame-art`) |
+| `folder` | Bildene i en mappe (og undermapper) | Mappa (`/media/frame-art`) |
 | `met` | The Met, public domain; malerier om ikke annet er sagt | Søkeord, eller søkets felt: `medium=Prints&q=Hiroshige` |
 | `rijksmuseum` | Rijksmuseum (alt med bilde er public domain); malerier om ikke annet er sagt | Ord i beskrivelsen (`zee`), eller felt: `creator=Vermeer` |
 | `nasjonalmuseet` | Nasjonalmuseets malerier på Wikimedia Commons | Kunstnere (`Hans Gude`) |
 | `cleveland` | Cleveland Museum of Art, CC0; malerier om ikke annet er sagt | Søkeord, eller felt: `type=Print&q=Hokusai` |
 | `smk` | Statens Museum for Kunst, København, public domain; malerier om ikke annet er sagt | Søkeord (`landskab`), `*` for alt, eller felt: `keys=*&object_names=tegning` |
 | `commons` | Wikimedia Commons-kategorier, med underkategorier to nivåer ned (alt der er fritt) | Kategorinavn uten `Category:`, f.eks. `Featured pictures of Norway` |
-| `nasa` | NASAs bildebibliotek, alle former | Søkeord (`nebula`) |
-| `wellcome` | Wellcome Collection, public domain og CC0: gamle illustrasjoner, alle former | Søkeord (`botanical`) |
+| `nasa` | NASAs bildebibliotek | Søkeord (`nebula`) |
+| `wellcome` | Wellcome Collection, public domain og CC0: gamle illustrasjoner | Søkeord (`botanical`) |
 | `stasera` | Bakgrunnsbildene (uten tekst når de finnes) av det vi ser på i Stasera. Trenger `stasera_url` og at add-on-et er koblet til Stasera; ingen TMDB-nøkkel | Listene: `watching`, `wantToStart`, `movies`, `recommendations` |
 | `tmdb` | Stillbilder fra filmer på TMDB, uten tekst. Trenger en egen `tmdb_key`; `stasera` gjør det samme uten | `top_rated`, `popular`, en person (`Christopher Nolan`), eller discover-felt: `with_genres=878` |
 
-Uten `shape` beskjærer museene, Commons, Stasera og TMDB (bildene må være nær 16:9, 1,3–2,1, og minst 1920 px brede);
-mappa, NASA og Wellcome viser alt helt, på en uskarp kopi av seg selv. `any` passer for plakater, tresnitt og
-abstrakt. Art Institute of Chicago er ikke med: bildene ligger bak en Cloudflare-sjekk som et skript ikke kommer forbi. Nasjonalmuseets eget
+Bare bilder nær 16:9 brukes (fra 3:2 til litt bredere enn 16:9, 1,45–2,0), beskåret så de fyller skjermen; fra
+museene, Commons, NASA, Wellcome, Stasera og TMDB må de også være minst 1920 px brede. Resten tas ikke med når kilden
+leses, og et bilde i mappa som ikke passer, hoppes over og kommer ikke igjen. `shape` fra før 0.14 overses. Kilder med
+mest stående bilder (plakater, tresnitt) får derfor få bilder. Art Institute of Chicago er ikke med: bildene ligger bak en Cloudflare-sjekk som et skript ikke kommer forbi. Nasjonalmuseets eget
 API er nede til v2 kommer, og DigitaltMuseum gir høyst 1200 px, derfor Commons. Europeana, Smithsonian og Harvard
 trenger en nøkkel hver og er ikke med ennå. TMDB-bildene (også de fra Stasera) er ikke frie, men til bruk hjemme.
 
@@ -57,8 +57,8 @@ vist (eller hele kilden, om den er mindre).
 
 Byttet: er TV-en i Kunstmodus, vises bildet med en gang; ellers blir det valgt og står klart til neste gang
 Kunstmodus slås på, og det som er på skjermen blir stående. Svarer ikke kunst-appen (TV-en av, AirPlay, rett etter at
-Kunstmodus slås på), prøver den igjen hvert 5. minutt med det samme bildet, uten å avbryte noe. `keep` (3) er hvor
-mange av våre egne bilder som blir liggende på TV-en.
+Kunstmodus slås på), prøver den igjen hvert 5. minutt med det samme bildet, uten å avbryte noe. Hvor mange av våre
+egne bilder som blir liggende på TV-en (3), står på add-on-siden.
 
 Tilgang: Kunstmodus-kanalen spør aldri om «Tillat», den bare tier uten token. Uten token kobler tjenesten seg derfor
 først til fjernkontroll-kanalen (uten å sende taster). Da kommer spørsmålet på TV-en, og tokenet virker for begge.
@@ -93,7 +93,7 @@ To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der.
 
 - **Morgenbildet** (`morning_time`, 07:00): ukedag, dato, dagens høyeste og laveste temperatur, været i ord («regn fra
   kl. 15») og sola opp og ned, i rolig skrift på en flate med farge etter været. Været kommer fra Open-Meteo for
-  `latitude`/`longitude`, uten HA. Svarer ikke Open-Meteo, kommer bildet uten vær. Under datoen står uka og
+  hjemmet i HA (eller `latitude`/`longitude` i valgene). Svarer ikke Open-Meteo, kommer bildet uten vær. Under datoen står uka og
   navnedagen (Almanakkforlagets liste, revidert desember 2025, i `navnedager.json`; `scripts/navnedager.py` lager den
   på nytt). Til høyre, når de har noe:
   - **I dag:** avtalene fra kalenderne du krysser av på add-on-siden (`morning_calendars`, fra HA).
@@ -159,7 +159,7 @@ ikke. Svarene venter på TV-en.
 | `GET /calendars`, `/prices` | Kalenderne og prissensorene i HA, til Morgenbildet (`morning_calendars`, `price_entity`) |
 | `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |
 | `POST /show?key=…` | Det bildet nå, i Kunstmodus, som fast bilde til neste Morgenbildet |
-| `POST /settings` | Endrer valgene, med JSON: `sources_off` (kildene som ikke er krysset av), `mode` (`shuffle` avslutter et fast bilde; `category` med `category` krysser av bare den kategorien), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`, `morning_tv_on`, `tv_entity`, `morning_calendars`, `price_entity`. `/schedule` er det samme |
+| `POST /settings` | Endrer valgene, med JSON: `sources_off` (kildene som ikke er krysset av), `mode` (`shuffle` avslutter et fast bilde; `category` med `category` krysser av bare den kategorien), `interval_minutes`, `keep`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`, `morning_tv_on`, `tv_entity`, `morning_calendars`, `price_entity`. `/schedule` er det samme |
 | `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på, og Stasera-bildene til Kunstmodus slås av (se over). `?minutes=5` bytter bildet så ofte i mellomtiden (valget står i Frame TV) |
 | `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 

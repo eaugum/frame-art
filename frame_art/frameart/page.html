@@ -20,7 +20,7 @@
   .now b { flex: none; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: #111;
            background: var(--accent); padding: 2px 8px; border-radius: 4px; }
   select { font: inherit; background: #222; color: var(--text); border: 1px solid #333; border-radius: 6px;
-           padding: 5px 8px; max-width: 260px; }
+           padding: 5px 8px; max-width: 360px; }
   .note { color: var(--dim); margin: 8px 0 0; font-size: 14px; }
   .note:empty { display: none; }
 
@@ -87,7 +87,6 @@
 
   <div class="actions">
     <button id="next">Nytt bilde</button>
-    <button id="art">Slå på Kunstmodus</button>
     <button id="morning">Vis Morgenbildet</button>
     <button id="tonight">Vis kveldens serie</button>
   </div>
@@ -114,6 +113,8 @@
   <section>
     <header><h2>Innstillinger</h2><span id="saved"></span></header>
     <div class="row"><span>Bytt bilde hvert</span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
+    <div class="row"><span>Bilder som blir liggende på TV-en<small>Under «Mine bilder» i Kunstmodus; de eldre slettes</small></span>
+      <input id="keep" type="number" min="1" max="20"></div>
     <div class="row"><span>Morgenbildet<small>Dato, vær, uke og navnedag, og nytt i Stasera i dag</small></span><input id="morning_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
     <div class="row sub" id="tv-row"><span>Skru på TV-en først<small>Gjennom Home Assistant, når den er av</small></span>
@@ -247,6 +248,7 @@
   function settings(st) {
     if (document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox") return;
     $("interval_minutes").value = st.interval_minutes;
+    $("keep").value = st.keep;
     $("morning_time").value = st.morning_time || "";
     $("tonight_time").value = st.tonight_time || "";
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
@@ -274,7 +276,7 @@
   }
 
   function busy(b) {
-    ["next", "art", "morning", "tonight"].forEach(function (id) { $(id).disabled = b; });
+    ["next", "morning", "tonight"].forEach(function (id) { $(id).disabled = b; });
   }
   function load() { fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {}); }
   function act(path, doing) {
@@ -332,12 +334,12 @@
   }
 
   $("next").onclick = function () { act("next?art_mode=1", "Henter et nytt bilde og sender det til TV-en …"); };
-  $("art").onclick = function () { act("artmode", "Slår på Kunstmodus …"); };
   $("morning").onclick = function () { act("next?art_mode=1&what=morning", "Lager Morgenbildet …"); };
   $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", "Lager plakaten for kveldens serie …"); };
   $("more").onclick = function () { if (open) gallery(open); };
   $("close").onclick = function () { open = null; gal.hidden = true; };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
+  $("keep").onchange = function () { save({keep: +this.value}); };
   $("morning_time").onchange = function () { if (this.value) save({morning_time: this.value}); };
   $("tv_entity").onchange = function () { save({tv_entity: this.value}); };
   $("price_entity").onchange = function () { save({price_entity: this.value}); };
@@ -355,7 +357,7 @@
   [["players", "tv_entity"], ["prices", "price_entity"]].forEach(function (p) {
     entities(p[0], function (list) {
       var sel = $(p[1]), chosen = sel.value;
-      list.forEach(function (e) { option(sel, e.entity).textContent = e.name; });
+      list.forEach(function (e) { option(sel, e.entity).textContent = e.name + " (" + e.entity + ")"; });
       sel.value = chosen;
     });
   });

@@ -59,6 +59,7 @@ def _bool(v):
 # What the add-on's page can change: name -> (default, check)
 SETTINGS = {
     "interval_minutes": (60, lambda v: int(v) if 5 <= int(v) <= 1440 else None),
+    "keep": (3, lambda v: int(v) if 1 <= int(v) <= 20 else None),  # our own pictures left on the TV
     "morning": (True, _bool),
     "morning_time": ("07:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
     "tonight": (True, _bool),
@@ -251,13 +252,13 @@ class Rotation:
 
     def pool(self, src):
         p = self.state["pools"].get(src.name)
-        if p and src.pool_hours and time.time() - p["at"] < src.pool_hours * 3600 and p["keys"]:
-            return p["keys"]
+        if p and p.get("wide") and src.pool_hours and time.time() - p["at"] < src.pool_hours * 3600 and p["keys"]:
+            return p["keys"]  # wide: listed since only 16:9 is used (0.14.0)
         try:
             keys = src.keys()
             if not p or len(p["keys"]) != len(keys):
                 log.info("%s: %d pictures", src.name, len(keys))
-            self.state["pools"][src.name] = {"at": time.time(), "keys": keys}
+            self.state["pools"][src.name] = {"at": time.time(), "keys": keys, "wide": True}
             return keys
         except Exception as e:
             log.warning("%s: couldn't list pictures (%s)", src.name, e)
@@ -274,7 +275,9 @@ class Rotation:
     def render(self, src, key):
         """(jpeg, label, full key) for one key; raises sources.Skip when it can't be used."""
         img, label = src.fetch(key)
-        img = image.fill(img) if image.croppable(*img.size) else image.fit_on_blur(img)
+        if not image.croppable(*img.size):
+            raise sources.Skip("%dx%d isn't close to 16:9" % img.size)
+        img = image.fill(img)
         return image.to_jpeg(img), "%s: %s" % (src.name, label), src.name + ":" + key
 
     def pick(self):
@@ -337,7 +340,7 @@ class Rotation:
         try:
             if kind == "morning":
                 try:
-                    w = weather.today(self.cfg.get("latitude", 59.9139), self.cfg.get("longitude", 10.7522))
+                    w = weather.today(*self.location())
                 except Exception as e:
                     log.warning("no weather for Morgenbildet (%s)", e)
                     w = None
@@ -359,6 +362,17 @@ class Rotation:
             self.state.save()
             return None
         return image.to_jpeg(img), label, "%s:%s" % (kind, today)
+
+    def location(self):
+        """(latitude, longitude) for the weather: the options', else Home Assistant's home, else Oslo."""
+        if self.cfg.get("latitude") is not None and self.cfg.get("longitude") is not None:
+            return self.cfg["latitude"], self.cfg["longitude"]
+        if self.ha.ready():
+            try:
+                return self.ha.location()
+            except Exception as e:
+                log.info("no location from Home Assistant (%s: %s); Oslo", type(e).__name__, e)
+        return 59.9139, 10.7522
 
     def _day(self, now):
         """What else Morgenbildet says (today.py); what doesn't answer is left out."""
@@ -688,9 +702,9 @@ class Rotation:
 
     def status(self):
         interval = self.interval()
-        # None: not listed yet (a source is listed the first time it's drawn); 0: listed, and nothing found
-        pools = {s.name: len(self.state["pools"][s.name].get("keys") or []) if s.name in self.state["pools"] else None
-                 for s in self.sources}
+        # None: not listed yet (or not since only 16:9 is used); 0: listed, and nothing found
+        pools = {s.name: len(self.state["pools"][s.name].get("keys") or [])
+                 if (self.state["pools"].get(s.name) or {}).get("wide") else None for s in self.sources}
         off = set(self.cfg.get("sources_off") or [])
         categories = []
         for c in self.categories:
@@ -721,13 +735,16 @@ class Rotation:
                 return c
         return None
 
+    def unlisted(self):
+        """The sources never listed, or not since only 16:9 is used."""
+        return [s for s in self.sources if not (self.state["pools"].get(s.name) or {}).get("wide")]
+
     def read_unlisted(self):
-        """Lists every source that's never been listed, so the page has the numbers; in the background, at the start."""
+        """Lists the unlisted sources, so the page has the numbers; in the background, at the start."""
         try:
-            for s in self.sources:
-                if s.name not in self.state["pools"]:
-                    self.pool(s)
-                    self.state.save()
+            for s in self.unlisted():
+                self.pool(s)
+                self.state.save()
         finally:
             self.reading.discard("*")
 
@@ -755,6 +772,9 @@ class Rotation:
             raise sources.Skip("no such source")
         got = src.thumb(full.split(":", 1)[1])
         img = image.open_image(net.get(got), draft=image.THUMB) if isinstance(got, str) else got
+        if not image.croppable(*img.size):
+            self.state["bad"].append(full)  # never drawn, and not offered again
+            raise sources.Skip("%dx%d isn't close to 16:9" % img.size)
         jpeg = image.thumbnail(img)
         self._keep_thumb(full, jpeg)
         return jpeg
@@ -791,7 +811,7 @@ class Rotation:
 
     async def clean(self, tv):
         """Deletes our own older uploads, keeping the newest few; never anything else in «Mine bilder»."""
-        keep = max(1, int(self.cfg.get("keep", 3)))
+        keep = max(1, int(self.cfg.get("keep") or 3))
         on_tv = await tv.my_photos()  # raises rather than giving an empty list, so nothing is forgotten by mistake
         ours = [u for u in self.state["uploaded"] if u["content_id"] in on_tv]  # forget what someone deleted
         old = ours[:-keep]
@@ -811,7 +831,7 @@ class Rotation:
     async def run(self):
         log.info("Frame Art %s for %s, every %g min, sources: %s", __version__, self.cfg["tv_host"],
                  self.interval() / 60, ", ".join(s.name for s in self.sources) or "none")
-        if any(s.name not in self.state["pools"] for s in self.sources):
+        if self.unlisted():
             self.reading.add("*")
             asyncio.get_running_loop().run_in_executor(None, self.read_unlisted)
         if self.cfg.get("music") and self.ha.ready():
