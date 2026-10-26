@@ -1,5 +1,9 @@
 # Endringer
 
+## 0.5.4
+
+- `/status` og add-on-siden viser riktig versjon.
+
 ## 0.5.3
 
 - Eget repo, `eaugum/frame-art`: installeres og oppdateres fra Add-on Store.
