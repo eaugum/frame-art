@@ -22,23 +22,32 @@ CODES = {
 SNOW = {71, 73, 75, 77, 85, 86}
 
 
-GEOCODING = "https://geocoding-api.open-meteo.com/v1/search"
+# Home Assistant's conditions (met.no and others): (words, kind)
+CONDITIONS = {
+    "sunny": ("Klart", "clear"), "clear-night": ("Klart", "clear"), "partlycloudy": ("Delvis skyet", "partly"),
+    "cloudy": ("Overskyet", "cloudy"), "fog": ("Tåke", "fog"), "rainy": ("Regn", "rain"),
+    "pouring": ("Kraftig regn", "rain"), "snowy": ("Snø", "snow"), "snowy-rainy": ("Sludd", "rain"),
+    "hail": ("Hagl", "rain"), "lightning": ("Torden", "thunder"), "lightning-rainy": ("Torden og regn", "thunder"),
+    "windy": ("Vind", "cloudy"), "windy-variant": ("Vind og skyer", "cloudy"), "exceptional": ("Uvanlig vær", "cloudy"),
+}
 
 
-def place(name):
-    """(latitude, longitude, «Lillehammer, Innlandet, Norge») for a place name; «Moss, Norge» narrows it by country
-    or county. Raises LookupError when there's none."""
-    first, _, rest = name.partition(",")
-    found = net.get_json(GEOCODING, {"name": first.strip(), "count": 20, "language": "nb", "format": "json"})
-    hits = found.get("results") or []
-    rest = rest.strip().lower()
-    if rest:
-        hits = [h for h in hits if rest in (h.get("country") or "").lower() or rest in (h.get("admin1") or "").lower()]
-    if not hits:
-        raise LookupError(name)
-    h = hits[0]  # the most populous first
-    label = ", ".join(x for x in (h.get("name"), h.get("admin1"), h.get("country")) if x)
-    return float(h["latitude"]), float(h["longitude"]), label
+def from_ha(ha, entity, now):
+    """The same as today(), from a weather entity in Home Assistant (weather.forecast_home: met.no) and sun.sun."""
+    def forecast(kind):
+        r = ha.post("/api/services/weather/get_forecasts?return_response", {"entity_id": entity, "type": kind})
+        return [dict(f, at=datetime.datetime.fromisoformat(f["datetime"]).astimezone(now.tzinfo))
+                for f in r["service_response"][entity]["forecast"]]
+    day = next(f for f in forecast("daily") if f["at"].date() == now.date())
+    hours = [(f["at"].hour, f.get("precipitation"), f.get("condition") == "snowy")
+             for f in forecast("hourly") if f["at"].date() == now.date()]
+    words, kind = CONDITIONS.get(day.get("condition"), ("", "cloudy"))
+    sun = ha.state("sun.sun").get("attributes") or {}
+
+    def clock(k):  # the next sunrise or sunset: today's, or tomorrow's (a few minutes off) once it's passed
+        return datetime.datetime.fromisoformat(sun[k]).astimezone(now.tzinfo).strftime("%H.%M") if sun.get(k) else "–"
+    return {"high": round(day["temperature"]), "low": round(day.get("templow", day["temperature"])), "words": words,
+            "kind": kind, "wet": _wet_hours(hours), "sunrise": clock("next_rising"), "sunset": clock("next_setting")}
 
 
 def today(lat, lon):
@@ -53,12 +62,17 @@ def today(lat, lon):
 
 
 def _wet(h):
-    """When it rains or snows in the waking hours: «regn fra kl. 15», «regn det meste av dagen», or ''."""
-    hours = [(int(t[11:13]), mm, code) for t, mm, code in zip(h["time"], h["precipitation"], h["weather_code"])]
-    wet = [(hour, code) for hour, mm, code in hours if 7 <= hour <= 22 and (mm or 0) >= WET]
+    hours = [(int(t[11:13]), mm, code in SNOW) for t, mm, code in zip(h["time"], h["precipitation"], h["weather_code"])]
+    return _wet_hours(hours)
+
+
+def _wet_hours(hours):
+    """When it rains or snows in the waking hours, from [(hour, mm, snow)]: «regn fra kl. 15», «regn det meste av
+    dagen», or ''."""
+    wet = [(hour, snow) for hour, mm, snow in hours if 7 <= hour <= 22 and (mm or 0) >= WET]
     if not wet:
         return ""
-    what = "snø" if sum(code in SNOW for _, code in wet) * 2 > len(wet) else "regn"
+    what = "snø" if sum(snow for _, snow in wet) * 2 > len(wet) else "regn"
     if len(wet) >= 10:
         return what + " det meste av dagen"
     first, last = wet[0][0], wet[-1][0]

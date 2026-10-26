@@ -332,11 +332,7 @@ class Rotation:
         today = now.date().isoformat()
         try:
             if kind == "morning":
-                try:
-                    w = weather.today(*self.location())
-                except Exception as e:
-                    log.warning("no weather for Morgenbildet (%s)", e)
-                    w = None
+                w = self.weather(now)
                 img, label = made.morning_picture(now, w, self._day(now)), "Morgenbildet"
             else:
                 items = [i for i in self.stasera.tonight() if i.get("textlessBackdropPath") or i.get("backdropPath")]
@@ -356,23 +352,23 @@ class Rotation:
             return None
         return image.to_jpeg(img), label, "%s:%s" % (kind, today)
 
-    def location(self):
-        """(latitude, longitude) for the weather: the place in the options, else Home Assistant's home, else Oslo."""
-        name = (self.cfg.get("location") or "").strip()
-        if name:
-            known = self.state.d.get("place") or {}
-            if known.get("name") == name:
-                return known["latitude"], known["longitude"]
+    def weather(self, now):
+        """Today's weather for Morgenbildet: from weather_entity in Home Assistant, else (or when it doesn't answer)
+        Open-Meteo for Home Assistant's home; None when neither answers."""
+        entity = self.cfg.get("weather_entity")
+        if entity and self.ha.ready():
             try:
-                lat, lon, label = weather.place(name)
-                log.info("the weather is for %s (%.4f, %.4f)", label, lat, lon)
-                self.state["place"] = {"name": name, "latitude": lat, "longitude": lon}
-                self.state.save()
-                return lat, lon
-            except LookupError:
-                log.warning("no place called %s; the weather is for Home Assistant's home", name)
+                return weather.from_ha(self.ha, entity, now)
             except Exception as e:
-                log.info("couldn't look up %s (%s: %s)", name, type(e).__name__, e)
+                log.warning("no weather from %s (%s: %s); Open-Meteo", entity, type(e).__name__, e)
+        try:
+            return weather.today(*self.location())
+        except Exception as e:
+            log.warning("no weather for Morgenbildet (%s)", e)
+            return None
+
+    def location(self):
+        """(latitude, longitude) for Open-Meteo: Home Assistant's home, else Oslo."""
         if self.ha.ready():
             try:
                 return self.ha.location()

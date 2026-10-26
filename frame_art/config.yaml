@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.16.0"
+version: "0.17.0"
 slug: frame_art
 description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kildene du krysser av, Morgenbildet og kveldens serie
 url: https://github.com/eaugum/frame-art
@@ -23,14 +23,14 @@ hassio_api: true  # a key the add-on makes is written into its own options (api_
 map:
   - type: media
     read_only: true
-# What's set up once: the TV, the key, the place, Home Assistant's entities and the sources. What changes from day to
+# What's set up once: the TV, the key, Home Assistant's entities and the sources. What changes from day to
 # day (the sources that are ticked, the interval, the times, the switches) is on the add-on's page.
 options:
   tv_host: 10.1.2.36
   # The key Frame TV and others send (art_key in Frame TV); left empty, the add-on makes one and writes it here
   api_key: ""
-  # The weather's place, a name ("Lillehammer"); empty: Home Assistant's home
-  location: ""
+  # Morgenbildet's weather (met.no in Home Assistant); empty, or when it doesn't answer: Open-Meteo for the home
+  weather_entity: weather.forecast_home
   # The TV in Home Assistant, turned on before Morgenbildet when it's off; empty: never
   tv_entity: ""
   # Calendars whose events today are in Morgenbildet, and a Nord Pool sensor for the electricity price
@@ -83,7 +83,7 @@ options:
 schema:
   tv_host: str
   api_key: password?
-  location: str?
+  weather_entity: match(^(weather\..+)?$)?
   tv_entity: match(^(media_player\..+)?$)?
   calendars:
     - match(^calendar\..+$)

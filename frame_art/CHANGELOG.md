@@ -1,5 +1,10 @@
 # Endringer
 
+## 0.17.0
+
+- Morgenbildet: været fra HA (`weather_entity`, standard `weather.forecast_home`, met.no) og sol opp og ned fra
+  `sun.sun`. Open-Meteo for hjemmet i HA er reserven. `location` er fjernet.
+
 ## 0.16.0
 
 - `tmdb_key`, `back_app` og kildetypen `tmdb` er fjernet; Stasera gir filmbildene, og Frame TV er alltid appen som

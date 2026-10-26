@@ -40,13 +40,15 @@ class HomeAssistant:
         c = json.loads(self.get("/api/config"))
         return float(c["latitude"]), float(c["longitude"])
 
-    def call(self, domain, service, data):
-        req = urllib.request.Request("%s/api/services/%s/%s" % (self.url, domain, service),
-                                     data=json.dumps(data).encode(), method="POST",
+    def post(self, path, data):
+        req = urllib.request.Request(self.url + path, data=json.dumps(data).encode(), method="POST",
                                      headers={"Authorization": "Bearer " + self.token,
                                               "Content-Type": "application/json"})
         with urllib.request.urlopen(req, timeout=30) as r:
-            return r.read()
+            return json.loads(r.read() or b"null")
+
+    def call(self, domain, service, data):
+        return self.post("/api/services/%s/%s" % (domain, service), data)
 
 
     def _players(self, now):
