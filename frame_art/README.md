@@ -93,7 +93,7 @@ To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der.
 - **Morgenbildet** (`morning_time`, 07:00): ukedag, dato, dagens høyeste og laveste temperatur, været i ord («regn fra
   kl. 15») og sola opp og ned, i rolig skrift på en flate med farge etter været. Været kommer fra
   `weather_entity` i valgene (`weather.forecast_home`: met.no, som Yr) og sola fra `sun.sun` i HA. Er den tom eller
-  svarer ikke, kommer det fra Open-Meteo for hjemmet i HA; svarer ingen, kommer bildet uten vær. Under datoen står
+  svarer ikke, kommer bildet uten vær. Under datoen står
   uka og navnedagen (Almanakkforlagets liste, revidert desember 2025, i `navnedager.json`; `scripts/navnedager.py` lager den
   på nytt). Til høyre, når de har noe:
   - **I dag:** avtalene fra kalenderne i `calendars` i valgene (`calendar.*` i HA).

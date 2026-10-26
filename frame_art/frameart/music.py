@@ -35,10 +35,6 @@ class HomeAssistant:
     def state(self, entity_id):
         return json.loads(self.get("/api/states/" + entity_id))
 
-    def location(self):
-        """(latitude, longitude) of Home Assistant's home."""
-        c = json.loads(self.get("/api/config"))
-        return float(c["latitude"]), float(c["longitude"])
 
     def post(self, path, data):
         req = urllib.request.Request(self.url + path, data=json.dumps(data).encode(), method="POST",

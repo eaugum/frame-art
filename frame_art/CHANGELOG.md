@@ -1,9 +1,13 @@
 # Endringer
 
-## 0.17.0
+## 0.17.1
 
 - Morgenbildet: været fra HA (`weather_entity`, standard `weather.forecast_home`, met.no) og sol opp og ned fra
-  `sun.sun`. Open-Meteo for hjemmet i HA er reserven. `location` er fjernet.
+  `sun.sun`. Uten den, eller når HA ikke svarer, kommer bildet uten vær. Open-Meteo og `location` er fjernet.
+
+## 0.17.0
+
+- Morgenbildet: været fra HA (`weather_entity`) med Open-Meteo som reserve (fjernet igjen i 0.17.1).
 
 ## 0.16.0
 

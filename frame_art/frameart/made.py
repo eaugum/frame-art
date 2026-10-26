@@ -49,7 +49,7 @@ def _gradient(top, bottom):
 # MARK: - The morning picture
 
 def morning_picture(now, weather, extra=None):
-    """now: a local datetime. weather: from weather.today(), or None when Open-Meteo didn't answer. extra: what else
+    """now: a local datetime. weather: from weather.from_ha(), or None without it. extra: what else
     the day has (today.py): names, events [(time, text)], shows [text] and power, each left out when empty."""
     extra = extra or {}
     top, bottom, ink = PALETTES[(weather or {}).get("kind", "cloudy")]

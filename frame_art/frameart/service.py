@@ -39,7 +39,7 @@ log = logging.getLogger(__name__)
 
 RECENT = 200  # not the same picture again within this many changes (or the whole pool, if it's smaller)
 RETRY_MINUTES = 5  # TV off or away
-MADE_RETRY_MINUTES = 15  # Open-Meteo, Stasera or TMDB didn't answer
+MADE_RETRY_MINUTES = 15  # Stasera didn't answer
 MADE = ("morning", "tonight")
 MODES = ("shuffle", "category")  # «category» only from older callers: it becomes that category's sources
 BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is on (AUG-1494)
@@ -353,28 +353,16 @@ class Rotation:
         return image.to_jpeg(img), label, "%s:%s" % (kind, today)
 
     def weather(self, now):
-        """Today's weather for Morgenbildet: from weather_entity in Home Assistant, else (or when it doesn't answer)
-        Open-Meteo for Home Assistant's home; None when neither answers."""
+        """Today's weather for Morgenbildet, from weather_entity in Home Assistant; None without one, or when it
+        doesn't answer (the picture comes without the weather)."""
         entity = self.cfg.get("weather_entity")
-        if entity and self.ha.ready():
-            try:
-                return weather.from_ha(self.ha, entity, now)
-            except Exception as e:
-                log.warning("no weather from %s (%s: %s); Open-Meteo", entity, type(e).__name__, e)
-        try:
-            return weather.today(*self.location())
-        except Exception as e:
-            log.warning("no weather for Morgenbildet (%s)", e)
+        if not entity or not self.ha.ready():
             return None
-
-    def location(self):
-        """(latitude, longitude) for Open-Meteo: Home Assistant's home, else Oslo."""
-        if self.ha.ready():
-            try:
-                return self.ha.location()
-            except Exception as e:
-                log.info("no location from Home Assistant (%s: %s); Oslo", type(e).__name__, e)
-        return 59.9139, 10.7522
+        try:
+            return weather.from_ha(self.ha, entity, now)
+        except Exception as e:
+            log.warning("no weather from %s (%s: %s)", entity, type(e).__name__, e)
+            return None
 
     def _day(self, now):
         """What else Morgenbildet says (today.py); what doesn't answer is left out."""
