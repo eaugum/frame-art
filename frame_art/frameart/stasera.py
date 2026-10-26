@@ -124,7 +124,7 @@ class Stasera:
 
     def titles(self, lists):
         """Titles from Stasera's lists: watching, wantToStart and movies (/tv/home) and recommendations, each
-        {kind, tmdbId, title, year, backdropPath, textlessBackdropPath?}. Raises Unlinked."""
+        {kind, tmdbId, title, year, backdropPath, textlessBackdropPath?, logoPath?, list}. Raises Unlinked."""
         out = []
         home = [l for l in lists if l in ("watching", "wantToStart", "movies")]
         if home:
@@ -132,12 +132,12 @@ class Stasera:
             if status != 200 or not j:
                 raise RuntimeError("Stasera answered %s" % status)
             for l in home:
-                out += j.get(l) or []
+                out += [dict(t, list=l) for t in j.get(l) or []]
         if "recommendations" in lists:
             status, j = self._request("GET", "/tv/recommendations")
             if status != 200 or not j:
                 raise RuntimeError("Stasera answered %s" % status)
-            out += j.get("items") or []
+            out += [dict(t, list="recommendations") for t in j.get("items") or []]
         return out
 
     # MARK: - Tonight

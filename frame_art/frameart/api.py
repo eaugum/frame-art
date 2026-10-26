@@ -17,7 +17,8 @@ POST /settings JSON with what to change: mode (shuffle or category), category, c
 POST /stasera/link    a code to approve in Stasera (in /status under pairing until it's approved)
 POST /stasera/unlink  forgets the Stasera token
 
-POST /saver    Frame TV's screensaver started: Art Mode on (AUG-1496; Stasera's pictures come with AUG-1494)
+POST /saver    Frame TV's screensaver started: Art Mode on, with what we watch in Stasera when screensaver_stasera is
+               on, until Art Mode goes off (AUG-1494)
 
 Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: the
 add-on makes it in api_key.txt, and its page in Home Assistant shows it. The page itself, through ingress, doesn't
@@ -161,7 +162,7 @@ def app(rotation):
 
     async def saver(request):
         log.info("Frame TV's screensaver started")
-        return await act(request, rotation.art_mode)
+        return await act(request, rotation.start_saver)
 
     async def page(request):
         return web.Response(text=PAGE, content_type="text/html")

@@ -53,10 +53,12 @@ async def run(rot, cfg, port):
     if port:
         await api.serve(rot, port)
     device = asyncio.create_task(mqtt.serve(rot, cfg))  # Home Assistant, when there's a broker
+    watcher = asyncio.create_task(rot.watch())  # back to Frame TV when Art Mode goes off
     try:
         await rot.run()
     finally:
         device.cancel()
+        watcher.cancel()
 
 
 main()

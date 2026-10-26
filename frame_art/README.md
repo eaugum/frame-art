@@ -99,6 +99,19 @@ To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der.
 Er TV-en av når tiden kommer, venter bildet til den er på igjen, men Morgenbildet bare til kveldens tid. Får den ikke
 laget bildet (nettet), prøver den igjen om 15 minutter.
 
+## Skjermspareren og veien tilbake (AUG-1494)
+
+Når Frame TV-s skjermsparer starter (`POST /saver`), slår add-on-et på Kunstmodus. Med «Stasera i skjermspareren» på
+(`screensaver_stasera`) kommer så det vi ser på og vil begynne på i Stasera, som plakater med «SER PÅ» eller «VIL
+BEGYNNE PÅ», tittelen (eller logoen) og neste episode, på rundgang med intervallet. Uten det, eller uten Stasera: vanlig
+rotasjon. Et fast bilde, Morgenbildet og kveldens serie går foran. Et bilde som fortsatt ligger på TV-en, velges der i
+stedet for å sendes på nytt.
+
+Skjermspareren varer til Kunstmodus slås av. En tast på fjernkontrollen i Kunstmodus (Tilbake, av/på) gir TV-ens egen
+Kunstmodus-meny, som bare har veien Hjem → appen. Add-on-et lytter derfor på kunst-kanalen: går Kunstmodus av mens TV-en
+er på, åpner den `back_app` (`FrameTVapp.FrameTV`) over TV-ens REST-API på port 8001. Det gjelder hver gang, ikke bare
+etter skjermspareren. `back_app: ""` i valgene slår det av; en annen app-id åpner den i stedet.
+
 **Tidsplanen på add-on-siden:** hvor ofte bildet byttes, og av/på og klokkeslett for de to bildene. Det virker med en
 gang, uten omstart, og lagres i `/data/settings.json`, foran valgene i add-on-et.
 
@@ -120,7 +133,7 @@ ikke. Svarene venter på TV-en.
 | `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |
 | `POST /show?key=…` | Det bildet nå, i Kunstmodus, som fast bilde til neste Morgenbildet |
 | `POST /settings` | Endrer valgene, med JSON: `mode` (`shuffle`, `category`), `category`, `categories_off` (en liste, for Shuffle), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver_stasera`, `music`, `music_home_only`. `/schedule` er det samme |
-| `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på |
+| `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på, og Stasera-bildene til Kunstmodus slås av (se over) |
 | `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 
 Kunstmodus slås på med `set_artmode`. Tar ikke det, sendes ett kort trykk på av/på over fjernkontroll-kanalen, men bare
@@ -145,7 +158,7 @@ tilkoblingen kommer fra Supervisor, uten noe i valgene. Uten Mosquitto går add-
 | `switch.frame_art_morning`, `_tonight` | Morgenbildet og kveldens serie |
 | `switch.frame_art_screensaver_stasera`, `_music`, `_music_home_only` | Skjermspareren og Følg musikken |
 | `sensor.frame_art_showing` | Tittelen på bildet; kilde, kategori, når det ble byttet og neste bytte som attributter |
-| `sensor.frame_art_wanted` | Hva som bestemmer nå: `rotation`, `fixed`, `morning` eller `tonight` |
+| `sensor.frame_art_wanted` | Hva som bestemmer nå: `rotation`, `fixed`, `morning`, `tonight` eller `saver` |
 | `image.frame_art_picture` | Bildet på veggen, 1280 px bredt |
 
 Tilstanden sendes når den endrer seg (fra HA, add-on-siden eller timeren). En ny kategori i kildene kommer med i

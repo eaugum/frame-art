@@ -1,6 +1,9 @@
-"""The Frame's Art Mode, through samsungtvws. One connection per change: the TV sleeps, wakes and restarts between."""
+"""The Frame's Art Mode, through samsungtvws. One connection per change: the TV sleeps, wakes and restarts between.
+Besides, watch() keeps one open to hear when Art Mode goes off, and launch() opens an app (AUG-1494)."""
 import asyncio
+import json
 import logging
+import urllib.request
 
 from samsungtvws.async_art import SamsungTVAsyncArt
 from samsungtvws.async_remote import SamsungTVWSAsyncRemote
@@ -132,3 +135,61 @@ class TV:
     async def delete(self, content_ids):
         if content_ids:
             await asyncio.wait_for(self.art.delete_list(list(content_ids)), 60)
+
+
+# MARK: - Leaving Art Mode (AUG-1494)
+
+async def watch(host, token_file, on_event, name="FrameArtWatch"):
+    """Listens on the art channel for good, connecting again when the TV has been away; on_event(sub_event, data)
+    for each of the art app's events (art_mode_changed, go_to_standby...). Only listens: it sends nothing but the
+    library's own question about Art Mode when it connects."""
+    while True:
+        art = SamsungTVAsyncArt(host=host, port=8002, token_file=token_file, name=name, timeout=30)
+        seen = art.process_event
+
+        async def heard(event=None, response=None):
+            try:
+                if event == "d2d_service_message":
+                    data = json.loads(response["data"])
+                    await on_event(data.get("event"), data)
+            except Exception as e:
+                log.warning("watching Art Mode: %s: %s", type(e).__name__, e)
+            await seen(event, response)
+
+        art.process_event = heard
+        try:
+            await asyncio.wait_for(art.start_listening(), 60)
+            log.info("listening for Art Mode going off")
+            while art.is_alive():
+                await asyncio.sleep(10)
+            log.info("the TV closed the art channel; connecting again in a minute")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            log.debug("art channel not answering (%s: %s)", type(e).__name__, e)  # off or away: tried each minute
+        finally:
+            try:
+                await art.close()
+            except Exception:
+                pass
+        await asyncio.sleep(60)
+
+
+def _rest(host, method, path, timeout=10):
+    req = urllib.request.Request("http://%s:8001/api/v2/%s" % (host, path), method=method)
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        return json.loads(r.read() or b"null")
+
+
+def powered_on(host):
+    """True when the TV says it's on (not in standby); False when it doesn't answer."""
+    try:
+        return (_rest(host, "GET", "").get("device") or {}).get("PowerState") == "on"
+    except Exception:
+        return False
+
+
+def launch(host, app_id):
+    """Opens an app on the TV, or brings it forward when it's running: the REST API on port 8001, with no token. The
+    websocket's ed.apps.launch doesn't do it from Art Mode's menu; this does (tested 26.10.2026)."""
+    return _rest(host, "POST", "applications/" + app_id, timeout=15) is True

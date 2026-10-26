@@ -1,5 +1,13 @@
 # Endringer
 
+## 0.9.0
+
+- Skjermspareren (`POST /saver`): med «Stasera i skjermspareren» på kommer det vi ser på og vil begynne på i Stasera, som
+  plakater med tittel, på rundgang med intervallet, til Kunstmodus slås av. `wanted` kan være `saver`.
+- Tilbake til Frame TV: går Kunstmodus av mens TV-en er på (Tilbake eller av/på på fjernkontrollen), åpner add-on-et
+  Frame TV. Valget `back_app` (tom slår det av).
+- Et bilde som fortsatt ligger på TV-en, sendes ikke på nytt.
+
 ## 0.8.1
 
 - Koblingen til Stasera sier at den er Home Assistant, så den står under Home Assistant på Staseras side

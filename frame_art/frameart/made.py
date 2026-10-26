@@ -1,5 +1,6 @@
 """The pictures we make ourselves (AUG-1447): the morning picture (Morgenbildet) with the date and the weather, and in the
-evening a poster of tonight's show from Stasera. Both are 3840x2160 PIL images.
+evening a poster of tonight's show from Stasera. Both are 3840x2160 PIL images. The screensaver's pictures (AUG-1494) are
+the same poster, for what we watch.
 """
 import io
 import os
@@ -77,8 +78,8 @@ def morning_picture(now, weather):
 
 # MARK: - Tonight's poster
 
-def poster(item):
-    """item: one from Stasera's /tv/tonight. Raises when there's no backdrop to make it from."""
+def poster(item, heading="I KVELD"):
+    """item: one from Stasera's /tv/tonight or /tv/home. Raises when there's no backdrop to make it from."""
     path = item.get("textlessBackdropPath") or item.get("backdropPath")
     if not path:
         raise ValueError("no backdrop")
@@ -110,7 +111,7 @@ def poster(item):
         title_font = font(200, 600)
         top = y - 80 - 230
         d.text((x, top), item.get("title") or "", font=title_font, fill=(255, 255, 255))
-    d.text((x, top - 150), "I KVELD", font=font(64, 600), fill=ACCENT)
+    d.text((x, top - 150), heading, font=font(64, 600), fill=ACCENT)
     return img
 
 

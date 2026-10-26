@@ -10,6 +10,10 @@ The rotation has a mode (AUG-1492): Shuffle draws from every category that's on,
 on the add-on's page (Fast bilde) stands until the next Morgenbildet, then the mode goes on. What wins is decided in
 one place, wanted().
 
+Frame TV's screensaver (AUG-1494) says so with POST /saver: Art Mode on, and with screensaver_stasera what we watch and
+want to start in Stasera, with the title, in turn with the interval, until Art Mode goes off. Art Mode going off while
+the TV is on opens Frame TV (back_app), since the remote's keys only give the TV's own Art Mode menu.
+
 What the add-on's page changes (SETTINGS, and the fixed picture) is kept in settings.json, before the add-on's options.
 """
 import asyncio
@@ -24,6 +28,7 @@ from zoneinfo import ZoneInfo
 
 from . import __version__, image, made, net, sources, weather
 from .stasera import Stasera, Unlinked
+from . import tv as tvmod
 from .tv import TV
 
 log = logging.getLogger(__name__)
@@ -33,6 +38,8 @@ RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Open-Meteo, Stasera or TMDB didn't answer
 MADE = ("morning", "tonight")
 MODES = ("shuffle", "category")
+BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is on (AUG-1494); back_app: "" for none
+SAVER = {"watching": "SER PÅ", "wantToStart": "VIL BEGYNNE PÅ"}  # Stasera's lists for the screensaver, and the heading
 HISTORY = 100  # pictures from the rotation remembered for «Nylig vist»
 THUMBS = 600  # small copies kept for the add-on's page
 
@@ -101,6 +108,8 @@ class Rotation:
         self.showing_path = os.path.join(data_dir, "showing.jpg")
         self.lock = asyncio.Lock()  # one conversation with the TV at a time: the timer, Home Assistant, Frame TV
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
+        self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
+        self.back_at = 0  # when back_app was last opened; the TV says «off» twice
 
     # MARK: - Settings: the schedule, the mode and the fixed picture
 
@@ -183,12 +192,17 @@ class Rotation:
         1. Følg musikken, while music plays (AUG-1495)
         2. What you chose yourself: a fixed picture («neste» is a change right away)
         3. Morgenbildet and tonight's show; a fixed picture is ended by Morgenbildet, not by tonight's show
-        4. The screensaver (AUG-1494)
+        4. The screensaver, with Stasera's pictures (AUG-1494)
         5. The rotation, in its mode
         """
         if self.fixed():
             return "fixed"
-        return self.due() or "rotation"
+        due = self.due()
+        if due:
+            return due
+        if self.saver and self.cfg.get("screensaver_stasera", True) and self.stasera.state() == "linked":
+            return "saver"
+        return "rotation"
 
     # MARK: - Picking
 
@@ -256,9 +270,9 @@ class Rotation:
 
     def _clock(self, name):
         try:
-            return datetime.time.fromisoformat(self.cfg.get(name) or SCHEDULE[name][0])
+            return datetime.time.fromisoformat(self.cfg.get(name) or SETTINGS[name][0])
         except ValueError:
-            return datetime.time.fromisoformat(SCHEDULE[name][0])
+            return datetime.time.fromisoformat(SETTINGS[name][0])
 
     def due(self):
         """'tonight' or 'morning' when its time has come and it hasn't been shown today, else None."""
@@ -306,9 +320,39 @@ class Rotation:
             return None
         return image.to_jpeg(img), label, "%s:%s" % (kind, today)
 
+    def make_saver(self):
+        """(jpeg, label, key) for the screensaver: the next of what we watch and want to start, in turn, or None."""
+        try:
+            items = [i for i in self.stasera.titles(list(SAVER)) if i.get("textlessBackdropPath") or
+                     i.get("backdropPath")]
+        except Unlinked:
+            return None
+        except Exception as e:
+            log.warning("nothing from Stasera for the screensaver (%s: %s)", type(e).__name__, e)
+            return None
+        if not items:
+            log.info("nothing in Stasera for the screensaver")
+            return None
+        # the next episode is in the key, so a new one makes a new picture
+        keys = ["saver:%s:%s%s" % (i.get("kind"), i.get("tmdbId"), ":%sx%s" % (i["seasonNumber"], i.get(
+            "episodeNumber")) if i.get("kind") == "show" and i.get("seasonNumber") is not None else "") for i in items]
+        recent = self.state["recent"][-(len(keys) - 1):] if len(keys) > 1 else []
+        n = next((n for n, k in enumerate(keys) if k not in recent), 0)
+        try:
+            img = made.poster(items[n], SAVER[items[n]["list"]])
+        except Exception as e:
+            log.warning("couldn't make the screensaver's picture (%s: %s)", type(e).__name__, e)
+            return None
+        return image.to_jpeg(img), "Stasera: %s" % (items[n].get("title") or "?"), keys[n]
+
     def prepared(self, what=None):
         """The picture for the next change, made once and kept until it's on the TV (the TV may be off for hours).
         what ('morning' or 'tonight') makes that one now; otherwise one that's due comes before the rotation."""
+        if what == "saver":
+            got = self.make_saver()
+            if got:
+                return got
+            what = None  # the rotation, rather than nothing
         meta = self.state.d.get("next")
         kind = what or self.due()
         if meta and meta.get("made") and meta["key"] != "%s:%s" % (kind, self.now().date().isoformat()):
@@ -366,7 +410,7 @@ class Rotation:
             log.warning("nothing to show: %s", "couldn't make %s" % what if what else
                         "no source is on, or none has pictures")
             return False
-        await self._put(*got, force=force, prepared=True)
+        await self._put(*got, force=force, prepared=not got[2].startswith("saver:"))
         return True
 
     async def _put(self, jpeg, label, key, force, prepared=False):
@@ -374,7 +418,16 @@ class Rotation:
         log.info("connecting to the TV for %s", label)
         async with TV(self.cfg["tv_host"], os.path.join(self.data, "token.txt")) as tv:
             art_mode = await tv.in_art_mode()
-            content_id = await tv.upload(jpeg)
+            if self.saver and not art_mode and not force:
+                log.info("not in Art Mode: the screensaver is over")
+                self.saver = False
+            # the same picture again (the screensaver's come round) is chosen where it is, not sent again
+            old = next((u for u in reversed(self.state["uploaded"]) if u["key"] == key), None)
+            if old and old["content_id"] in await tv.my_photos():
+                content_id = old["content_id"]
+                self.state["uploaded"].remove(old)
+            else:
+                content_id = await tv.upload(jpeg)
             if not content_id:
                 raise RuntimeError("the TV didn't say it got the picture")
             if force and not art_mode:
@@ -392,7 +445,7 @@ class Rotation:
             kind, _, day = key.partition(":")
             if kind in MADE:
                 self.state["made"][kind] = day
-            else:
+            elif kind != "saver":
                 self.state["history"] = (self.state["history"] + [{"key": key, "label": label,
                                                                     "at": int(time.time())}])[-HISTORY:]
             if prepared:
@@ -403,7 +456,7 @@ class Rotation:
             os.replace(self.showing_path + ".tmp", self.showing_path)
             if prepared and os.path.exists(self.next_path):
                 os.remove(self.next_path)
-            if kind not in MADE:
+            if kind not in MADE and kind != "saver":
                 try:
                     self._keep_thumb(key, image.thumbnail(image.open_image(jpeg, draft=image.THUMB)))
                 except Exception as e:
@@ -421,6 +474,56 @@ class Rotation:
                     await tv.art_mode_on()
                     log.info("Art Mode on")
         return True
+
+    # MARK: - Leaving Art Mode (AUG-1494)
+
+    async def watch(self):
+        await tvmod.watch(self.cfg["tv_host"], os.path.join(self.data, "token.txt"), self._art_event)
+
+    async def start_saver(self):
+        """Frame TV's screensaver started: Art Mode on, and the answer, at once (Frame TV waits a minute); then
+        Stasera's pictures when that's on, until Art Mode goes off."""
+        self.saver = True
+        try:
+            await self.art_mode()
+        except Exception:
+            self.saver = False  # Frame TV shows its own
+            raise
+        if self.wanted() == "saver":
+            asyncio.create_task(self._saver_picture())
+        return True
+
+    async def _saver_picture(self):
+        try:
+            await self.change(what="saver")
+        except Exception as e:
+            log.info("no picture for the screensaver (%s: %s)", type(e).__name__, e)
+
+    async def _art_event(self, event, data):
+        off = event == "art_mode_changed" and data.get("status") == "off"
+        if (off or event == "go_to_standby") and self.saver:
+            self.saver = False
+            log.info("the screensaver is over")
+        if off:
+            await self._back()
+
+    async def _back(self):
+        """Art Mode went off: a key on the remote opens the TV's own Art Mode menu, which has no way back but Home
+        and the app. Open back_app instead, when the TV is on (not going to standby)."""
+        app = self.cfg.get("back_app", BACK_APP)
+        if not app or time.time() - self.back_at < 10:
+            return
+        self.back_at = time.time()
+        await asyncio.sleep(1)
+        host = self.cfg["tv_host"]
+        if not await asyncio.to_thread(tvmod.powered_on, host):
+            log.info("Art Mode off, and the TV isn't on: nothing opened")
+            return
+        try:
+            ok = await asyncio.to_thread(tvmod.launch, host, app)
+            log.info("Art Mode off: %s %s", "opened" if ok else "the TV didn't open", app)
+        except Exception as e:
+            log.warning("Art Mode off, but couldn't open %s (%s: %s)", app, type(e).__name__, e)
 
     def status(self):
         interval = self.interval()
@@ -443,7 +546,8 @@ class Rotation:
                 "pools": pools, "schedule": self.schedule(), "settings": self.settings(),
                 "mode": "fixed" if fixed else self.cfg.get("mode", "shuffle"), "category": self.cfg.get("category"),
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
-                "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked()}
+                "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
+                "saver": self.saver}
 
     # MARK: - The add-on's page: choosing a picture
 
@@ -526,11 +630,11 @@ class Rotation:
         while True:
             wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
             want = self.wanted()
-            if want == "fixed" or (want == "rotation" and wait > 0):
+            if want == "fixed" or (want in ("rotation", "saver") and wait > 0):
                 await asyncio.sleep(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
                 continue
             try:
-                ok = await self.change()
+                ok = await self.change(what="saver" if want == "saver" else None)
             except Exception as e:
                 # off, away, or busy with something that stops the art app (AirPlay, some apps): never interrupted
                 log.info("Art Mode not answering (%s: %s); trying again in %d min", type(e).__name__, e, RETRY_MINUTES)
