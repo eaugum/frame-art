@@ -14,8 +14,8 @@ Frame TV's screensaver (AUG-1494) says so with POST /saver: Art Mode on, and wit
 want to start in Stasera, with the title, in turn with the interval, until Art Mode goes off. Art Mode going off while
 the TV is on opens Frame TV (back_app), since the remote's keys only give the TV's own Art Mode menu.
 
-Følg musikken (AUG-1495): while Spotify plays (read from Home Assistant), the album's cover, one picture per album, in
-front of everything else. A few minutes after it stops, what was on the wall before comes back.
+Følg musikken (AUG-1495): while Spotify plays (read from Home Assistant), the album's cover with the song, a picture
+per song, in front of everything else. A few minutes after it stops, what was on the wall before comes back.
 
 What the add-on's page changes (SETTINGS, and the fixed picture) is kept in settings.json, before the add-on's options.
 """
@@ -47,7 +47,7 @@ SAVER = {"watching": "SER PÅ", "wantToStart": "VIL BEGYNNE PÅ"}  # Stasera's l
 HISTORY = 100  # pictures from the rotation remembered for «Nylig vist»
 THUMBS = 600  # small copies kept for the add-on's page
 OWN = ("saver", "music")  # pictures of the moment: not in «Nylig vist», and not prepared ahead
-MUSIC_LOOK = 10  # seconds between looks at Home Assistant's player
+MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 
 
@@ -363,11 +363,11 @@ class Rotation:
         m = self.music
         try:
             cover = image.open_image(self.ha.cover(m["cover"]))
-            img = made.music_picture(cover, m["album"], m["artist"])
+            img = made.music_picture(cover, m["title"], m["artist"], m["album"])
         except Exception as e:
             log.warning("couldn't make the cover's picture (%s: %s)", type(e).__name__, e)
             return None
-        return image.to_jpeg(img), "Musikk: %s – %s" % (m["album"], m["artist"]), m["key"]
+        return image.to_jpeg(img), "Musikk: %s – %s" % (m["title"], m["artist"]), m["key"]
 
     def prepared(self, what=None):
         """The picture for the next change, made once and kept until it's on the TV (the TV may be off for hours).
@@ -578,7 +578,7 @@ class Rotation:
 
     async def follow(self):
         """Looks at Home Assistant's Spotify player every few seconds while Følg musikken is on, and wakes the timer
-        when the album changes or the music stops."""
+        when the song changes or the music stops."""
         if not self.ha.ready():
             log.info("Følg musikken: no Home Assistant (homeassistant_api, or ha_url and ha_token)")
             return
@@ -598,7 +598,7 @@ class Rotation:
                     failing = True
             key = self.music["key"] if self.playing() else None
             if key != was:
-                log.info("Følg musikken: %s", "%s – %s" % (self.music["album"], self.music["artist"]) if key else
+                log.info("Følg musikken: %s", "%s – %s" % (self.music["title"], self.music["artist"]) if key else
                          "the music stopped")
                 self.wake.set()
                 was = key
@@ -639,7 +639,7 @@ class Rotation:
             categories.append({"name": c, "on": c not in off, "sources": names,
                                "pictures": sum(counts) if counts else None, "unread": len(names) - len(counts)})
         fixed = self.fixed()
-        rotating = not fixed
+        rotating = not fixed and not self.playing()  # no next change while the music or a fixed picture stands
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
                 "next": int(self.state["changed"] + interval) if self.state["changed"] and rotating else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
@@ -733,7 +733,7 @@ class Rotation:
             wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
             want = self.wanted()
             if want == "music" and self.state.d.get("music_shown") == self.music["key"]:
-                await self._nap(60)  # a new song on the same album: the same picture
+                await self._nap(60)  # the same song still
                 continue
             if want != "music" and (self.state.d.get("music_shown") or self.state.d.get("before")):
                 job = self._after_music(want)

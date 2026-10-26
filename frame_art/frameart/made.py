@@ -144,9 +144,9 @@ def _runtime(minutes):
 
 # MARK: - Følg musikken (AUG-1495)
 
-def music_picture(cover, album, artist):
-    """cover: the album's cover, a PIL image. The cover big, on a flat in its own colours, with the album and the
-    artist; one picture per album, so not the song."""
+def music_picture(cover, title, artist, album):
+    """cover: the album's cover, a PIL image. The cover big, on a flat in its own colours, with the song, the artist
+    and the album (not when it's the song's own name, as for a single)."""
     colour = _cover_colour(cover)
     top = _toward(colour, 0.38)
     bottom = _toward(colour, 0.24)
@@ -160,12 +160,19 @@ def music_picture(cover, album, artist):
     ink, soft = (240, 238, 234), tuple(round(240 * 0.62 + b * 0.38) for b in bottom)
     tx, width = x + side + 170, image.W - (x + side + 170) - 280
     title_font, artist_font = font(130, 450), font(84, 400)
-    lines = _wrap(d, album, title_font, width)[:3]
-    height = len(lines) * 160 + 40 + 100
+    lines = _wrap(d, title, title_font, width)[:3]
+    if album and album.lower() != (title or "").lower():
+        album = _wrap(d, album, font(64, 400), width)[0]
+    else:
+        album = ""
+    height = len(lines) * 160 + 40 + 100 + (90 if album else 0)
     ty = image.H // 2 - height // 2
     for i, line in enumerate(lines):
         d.text((tx, ty + i * 160), line, font=title_font, fill=ink)
-    d.text((tx, ty + len(lines) * 160 + 40), _wrap(d, artist, artist_font, width)[0], font=artist_font, fill=soft)
+    y = ty + len(lines) * 160 + 40
+    d.text((tx, y), _wrap(d, artist, artist_font, width)[0], font=artist_font, fill=ink)
+    if album:
+        d.text((tx, y + 130), album, font=font(64, 400), fill=soft)
     return img
 
 

@@ -1,5 +1,12 @@
 # Endringer
 
+## 0.10.1
+
+- Følg musikken: et nytt bilde for hver sang, med sangen, artisten og albumet (når det ikke heter det samme som
+  sangen). Spilleren sjekkes hvert 4. sekund.
+- Add-on-siden: Skjermspareren og Følg musikken står ikke lenger som «kommer», og «neste» vises ikke mens musikken
+  styrer.
+
 ## 0.10.0
 
 - Følg musikken: når Spotify spiller (`media_player.spotify*` i HA, også SpotifyPlus), kommer albumcoveret på veggen,

@@ -121,9 +121,9 @@ Tokenet ligger i `/data/stasera_token.txt`. «Koble fra» glemmer det.
 ## Følg musikken (AUG-1495)
 
 Med «Følg musikken» på (`music`, av som standard) kommer albumcoveret på veggen når Spotify spiller: stort, på en
-flate i coverets farger, med albumet og artisten. Spilleren leses fra Home Assistant (`homeassistant_api`), så det
+flate i coverets farger, med sangen, artisten og albumet. Spilleren leses fra Home Assistant (`homeassistant_api`), så det
 trengs ingen Spotify-nøkkel her, bare Spotify- eller SpotifyPlus-integrasjonen i HA: den første
-`media_player.spotify*` som spiller. Det er ett bilde per album, så en ny låt på samme album bytter det ikke.
+`media_player.spotify*` som spiller. Bildet byttes for hver sang, 10–20 sekunder etter at den begynner.
 
 Det går foran alt annet, også et fast bilde, men slår ikke på Kunstmodus selv. Tre minutter etter at musikken
 stopper (pause, stopp) kommer bildet som var der før. Har Morgenbildet eller kveldens serie fått sin tid i mellomtiden,

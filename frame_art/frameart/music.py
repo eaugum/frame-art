@@ -22,6 +22,7 @@ class HomeAssistant:
         else:
             self.url, self.token = (cfg.get("ha_url") or "").rstrip("/"), cfg.get("ha_token")
         self.players, self.players_at = [], 0
+        self.last_cover = (None, None)  # (url, bytes): the next song on the album needs no download
 
     def ready(self):
         return bool(self.url and self.token)
@@ -57,9 +58,10 @@ class HomeAssistant:
             if s.get("state") != "playing" or a.get("media_content_type") not in (None, "music"):
                 continue
             cover = a.get("sp_nowplaying_image_url") or a.get("entity_picture") or ""
-            # one picture per album: Spotify's cover id, or the album's name where there's none
-            album_id = cover.rsplit("/", 1)[-1] if cover.startswith("https://i.scdn.co/") else ""
-            key = album_id or "%s/%s" % (a.get("media_album_name") or a.get("media_title"), a.get("media_artist"))
+            # one picture per song: Spotify's track id, or the title where there's none
+            track = a.get("media_content_id") or ""
+            key = track.rsplit(":", 1)[-1] if track.startswith("spotify:") else "%s/%s" % (a.get("media_title"),
+                                                                                         a.get("media_artist"))
             return {"key": "music:" + key, "album": a.get("media_album_name") or a.get("media_title") or "",
                     "artist": a.get("media_artist") or "", "title": a.get("media_title") or "", "cover": cover,
                     "entity": entity}
@@ -67,6 +69,13 @@ class HomeAssistant:
 
     def cover(self, url):
         """The cover's bytes, as big as Spotify has it; a path from Home Assistant (entity_picture) goes through it."""
+        if self.last_cover[0] == url:
+            return self.last_cover[1]
+        data = self._cover(url)
+        self.last_cover = (url, data)
+        return data
+
+    def _cover(self, url):
         if url.startswith("/"):
             return self.get(url, timeout=30)
         if url.startswith("https://i.scdn.co/image/" + BIG[0]):
