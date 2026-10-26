@@ -110,7 +110,7 @@ når TV-en nettopp har sagt at den er på og ikke i Kunstmodus. Timeren alene sl
 3. En ny versjon her gir «Oppdatering tilgjengelig» i HA (⋮ → Se etter oppdateringer for å se den med en gang).
 
 **Egne bilder:** Media → Lokale medier → lag mappa `frame-art` og last opp bildene der (eller kopier dem til
-`/media/frame-art` over Samba). Kilden `type: folder` med `query: /media/frame-art` viser dem.
+`/media/frame-art` over Samba). Kilden `type: folder` med `query: /media/frame-art` viser dem. JPEG og PNG går fint; HEIC fra iPhone leses ikke.
 
 ## På en Mac eller en annen maskin
 
