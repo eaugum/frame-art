@@ -76,7 +76,8 @@ class Stasera:
     async def link(self):
         """A new code; the add-on's page shows it until it's approved on the phone or runs out."""
         try:
-            status, j = await asyncio.to_thread(self._request, "POST", "/tv/pair/start", {"name": self.name}, False)
+            status, j = await asyncio.to_thread(self._request, "POST", "/tv/pair/start",
+                                                {"name": self.name, "type": "homeassistant"}, False)
         except Exception as e:  # DNS, no route, TLS
             raise RuntimeError("no answer from %s (%s)" % (self.base, e))
         if status == 429:

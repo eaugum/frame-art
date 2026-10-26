@@ -1,5 +1,10 @@
 # Endringer
 
+## 0.8.1
+
+- Koblingen til Stasera sier at den er Home Assistant, så den står under Home Assistant på Staseras side
+  Tilkoblinger, ikke som en TV. En kobling fra før står som TV til den kobles på nytt.
+
 ## 0.8.0
 
 - API-et krever en nøkkel (header `Authorization: Bearer …` eller `?key=`). Add-on-et lager den, og add-on-siden viser
