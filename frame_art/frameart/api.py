@@ -5,16 +5,18 @@ GET  /         a page with what's showing, the buttons, the sources to tick, the
 GET  /status   what's showing, when it changed and when it changes next, the mode, the categories, how many pictures
                each source has (null: not read yet; reading says some are being read), the settings and Stasera
 GET  /showing.jpg  the picture
-GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random
+GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random, from the
+               category's sources that are ticked
 GET  /thumb?key=…  a small copy of a picture (a key from /category)
+GET  /players  Home Assistant's media players, for choosing the TV (tv_entity)
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture.
 POST /show?key=…  that picture now, in Art Mode, standing until the next Morgenbildet (Fast bilde)
 POST /artmode  Art Mode on, with the picture it has
 POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, morning,
-               morning_time, tonight, tonight_time, screensaver_stasera, music, music_home_only; mode shuffle ends a
-               fixed picture, and mode category with category ticks only that category's sources. New sources_off ends
-               a fixed picture too. /schedule is the same.
+               morning_time, tonight, tonight_time, screensaver, screensaver_stasera, music, music_home_only, morning_tv_on,
+               tv_entity; mode shuffle ends a fixed picture, and mode category with category ticks only that
+               category's sources. New sources_off ends a fixed picture too. /schedule is the same.
 POST /stasera/link    a code to approve in Stasera (in /status under pairing until it's approved)
 POST /stasera/unlink  forgets the Stasera token
 
@@ -119,6 +121,15 @@ def app(rotation):
         except ValueError as e:
             return web.json_response({"ok": False, "error": str(e)}, status=404, headers=CORS)
 
+    async def players(request):
+        if not rotation.ha.ready():
+            return web.json_response([], headers=CORS)
+        try:
+            return web.json_response(await asyncio.to_thread(rotation.ha.media_players), headers=CORS)
+        except Exception as e:
+            log.info("no media players from Home Assistant (%s: %s)", type(e).__name__, e)
+            return web.json_response([], headers=CORS)
+
     thumbs = asyncio.Semaphore(4)  # a page asks for 24 at once; the museums don't like a crowd
 
     async def thumb(request):
@@ -178,7 +189,7 @@ def app(rotation):
 
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
-                  web.get("/category", category), web.get("/thumb", thumb), web.post("/show", show),
+                  web.get("/category", category), web.get("/thumb", thumb), web.get("/players", players), web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/settings", settings),
                   web.post("/schedule", settings), web.post("/saver", saver),
                   web.post("/stasera/link", link), web.post("/stasera/unlink", unlink),

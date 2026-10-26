@@ -49,6 +49,7 @@ THUMBS = 600  # small copies kept for the add-on's page
 OWN = ("saver", "music")  # pictures of the moment: not in «Nylig vist», and not prepared ahead
 MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
+TV_ON_WAIT = 30  # seconds from Home Assistant turning the TV on until Art Mode answers
 
 
 def _bool(v):
@@ -67,7 +68,12 @@ SETTINGS = {
     "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),  # before sources_off
     "sources_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
     # Kept for the screensaver (AUG-1494) and Følg musikken (AUG-1495); the page shows them already
+    "screensaver": (True, _bool),  # off: Frame TV doesn't start its screensaver (it reads this from /status)
     "screensaver_stasera": (True, _bool),
+    # The TV turned on through Home Assistant before Morgenbildet, when it's off (Art Mode only answers when it's on)
+    "morning_tv_on": (False, _bool),
+    "tv_entity": ("", lambda v: str(v).strip() if not str(v).strip() or str(v).strip().startswith("media_player.")
+                  else None),
     "music": (False, _bool),
     "music_home_only": (True, _bool),
 }
@@ -180,7 +186,7 @@ class Rotation:
                 raise ValueError("choose a category")
             clean.update(mode="shuffle", category=c, sources_off=[s.name for s in self.sources if s.category != c])
         if "sources_off" in clean:  # a source renamed or gone in the options is forgotten
-            clean["sources_off"] = [n for n in clean["sources_off"] if n in self.by_name]
+            clean["sources_off"] = [n for n in dict.fromkeys(clean["sources_off"]) if n in self.by_name]
         if ("mode" in clean or "sources_off" in clean) and self.cfg.get("fixed"):
             clean["fixed"] = None
         self._keep(clean)
@@ -635,6 +641,29 @@ class Rotation:
             await self._put(jpeg, b["label"], b["key"], force=False)
         log.info("the music stopped: back to %s", b["label"])
 
+    async def _tv_on(self):
+        """Before Morgenbildet: the TV on through Home Assistant when it's off, once a day. True when we turned it on
+        today, so Morgenbildet goes to Art Mode (and on a try after that too)."""
+        today = self.now().date().isoformat()
+        if self.state["made"].get("tv_on") == today:
+            return True
+        entity = self.cfg.get("tv_entity")
+        if not self.cfg.get("morning_tv_on") or not entity or not self.ha.ready():
+            return False
+        try:
+            on = (await asyncio.to_thread(self.ha.state, entity)).get("state")
+            if on not in ("off", "standby", "unavailable"):
+                return False
+            await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
+        except Exception as e:
+            log.info("couldn't turn the TV on through Home Assistant (%s: %s)", type(e).__name__, e)
+            return False
+        log.info("turned the TV on through Home Assistant (%s) for Morgenbildet", entity)
+        self.state["made"]["tv_on"] = today
+        self.state.save()
+        await asyncio.sleep(TV_ON_WAIT)
+        return True
+
     async def _nap(self, seconds):
         try:
             await asyncio.wait_for(self.wake.wait(), seconds)
@@ -729,7 +758,7 @@ class Rotation:
         not listed yet are listed in the background; «reading» says which."""
         if category not in self.categories:
             raise ValueError("no category called %s" % category)
-        names = {s.name for s in self.sources if s.category == category}
+        names = {s.name for s in self.in_play() if s.category == category}  # what's ticked
         recent, seen = [], set()
         for h in reversed(self.state["history"]):
             if h["key"] not in seen and h["key"].split(":", 1)[0] in names:
@@ -742,7 +771,7 @@ class Rotation:
         if unlisted and category not in self.reading:
             self.reading.add(category)
             asyncio.get_running_loop().run_in_executor(None, self._read, category)
-        return {"category": category, "recent": recent[:n],
+        return {"category": category, "off": not names, "recent": recent[:n],
                 "random": [{"key": k} for k in random.sample(keys, min(n, len(keys)))], "reading": unlisted}
 
     async def clean(self, tv):
@@ -785,7 +814,8 @@ class Rotation:
                 await self._nap(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
                 continue
             else:
-                job = self.change(what=want if want in OWN else None)
+                woke = want == "morning" and await self._tv_on()
+                job = self.change(art_mode=woke, what=want if want in OWN else None)
             try:
                 ok = (await job) is not False
             except Exception as e:

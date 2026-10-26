@@ -72,7 +72,8 @@ rommet og Film. Krysset ved en kategori slår alle kildene i den av eller på.
 En kilde leses (listen over bildene hentes) første gang den trekkes, og alle som aldri er lest, leses i bakgrunnen
 når add-on-et starter.
 
-**Fast bilde:** «Velg bilde» ved en kategori viser det som er vist nylig og 24 tilfeldige. Et bilde du trykker på,
+**Fast bilde:** «Velg bilde» ved en kategori viser det som er vist nylig og 24 tilfeldige, fra kildene i den som er
+krysset av. Et bilde du trykker på,
 vises med en gang og står til neste Morgenbildet; så går rotasjonen videre. «Nytt bilde», en ny avkrysning eller
 «Fortsett rotasjonen nå» avslutter det før.
 
@@ -100,9 +101,14 @@ To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der.
 Er TV-en av når tiden kommer, venter bildet til den er på igjen, men Morgenbildet bare til kveldens tid. Får den ikke
 laget bildet (nettet), prøver den igjen om 15 minutter.
 
+**Skru på TV-en først:** på add-on-siden, under Morgenbildet, velges TV-en blant mediespillerne i HA (`tv_entity`,
+f.eks. `media_player.stue_the_frame_stue`). Er den av når Morgenbildet skal komme, skrur HA den på
+(`media_player.turn_on`, én gang om dagen), og Morgenbildet kommer i Kunstmodus.
+
 ## Skjermspareren og veien tilbake (AUG-1494)
 
-Når Frame TV-s skjermsparer starter (`POST /saver`), slår add-on-et på Kunstmodus. Med «Stasera i skjermspareren» på
+Når Frame TV-s skjermsparer starter (`POST /saver`), slår add-on-et på Kunstmodus. Med «Skjermsparer» av
+(`screensaver`, `switch.frame_art_screensaver`) starter Frame TV ingen skjermsparer; den leser valget fra `/status`. Med «Stasera i skjermspareren» på
 (`screensaver_stasera`) kommer så det vi ser på og vil begynne på i Stasera, som plakater med «SER PÅ» eller «VIL
 BEGYNNE PÅ», tittelen (eller logoen) og neste episode, på rundgang med intervallet. Uten det, eller uten Stasera: vanlig
 rotasjon. Et fast bilde, Morgenbildet og kveldens serie går foran. Et bilde som fortsatt ligger på TV-en, velges der i
@@ -142,10 +148,11 @@ ikke. Svarene venter på TV-en.
 | `GET /status` | Hva som vises, når det ble byttet og når det byttes neste gang, modusen (`mode`: `shuffle` eller `fixed`), kategoriene, antall bilder per kilde (`pools`, `null` før den er lest) og valgene |
 | `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også, `?what=morning` viser Morgenbildet og `?what=tonight` kveldens serie. Avslutter et fast bilde |
 | `POST /artmode` | Kunstmodus på, med bildet den har |
-| `GET /category?name=Japan` | Nylig vist og 24 tilfeldige fra kategorien, til å velge et bilde |
+| `GET /category?name=Japan` | Nylig vist og 24 tilfeldige fra kildene i kategorien som er krysset av, til å velge et bilde |
+| `GET /players` | Mediespillerne i HA, til å velge TV-en (`tv_entity`) |
 | `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |
 | `POST /show?key=…` | Det bildet nå, i Kunstmodus, som fast bilde til neste Morgenbildet |
-| `POST /settings` | Endrer valgene, med JSON: `sources_off` (kildene som ikke er krysset av), `mode` (`shuffle` avslutter et fast bilde; `category` med `category` krysser av bare den kategorien), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver_stasera`, `music`, `music_home_only`. `/schedule` er det samme |
+| `POST /settings` | Endrer valgene, med JSON: `sources_off` (kildene som ikke er krysset av), `mode` (`shuffle` avslutter et fast bilde; `category` med `category` krysser av bare den kategorien), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`, `morning_tv_on`, `tv_entity`. `/schedule` er det samme |
 | `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på, og Stasera-bildene til Kunstmodus slås av (se over) |
 | `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 
@@ -169,7 +176,7 @@ tilkoblingen kommer fra Supervisor, uten noe i valgene. Uten Mosquitto går add-
 | `select.frame_art_category` | Kategoriene fra kildene; å velge en krysser av bare kildene i den |
 | `number.frame_art_interval` | Minutter mellom byttene |
 | `switch.frame_art_morning`, `_tonight` | Morgenbildet og kveldens serie |
-| `switch.frame_art_screensaver_stasera`, `_music`, `_music_home_only` | Skjermspareren og Følg musikken |
+| `switch.frame_art_screensaver`, `_screensaver_stasera`, `_music`, `_music_home_only` | Skjermspareren og Følg musikken |
 | `sensor.frame_art_showing` | Tittelen på bildet; kilde, kategori, når det ble byttet og neste bytte som attributter |
 | `sensor.frame_art_wanted` | Hva som bestemmer nå: `music`, `rotation`, `fixed`, `morning`, `tonight` eller `saver` |
 | `image.frame_art_picture` | Bildet på veggen, 1280 px bredt |

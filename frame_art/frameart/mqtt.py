@@ -30,6 +30,7 @@ MODES = {"shuffle": "Shuffle", "fixed": "Fast bilde"}
 SWITCHES = {  # setting -> name
     "morning": "Morgenbildet",
     "tonight": "Kveldens serie",
+    "screensaver": "Skjermsparer",
     "screensaver_stasera": "Stasera i skjermspareren",
     "music": "Følg musikken",
     "music_home_only": "Bare når noen er hjemme",

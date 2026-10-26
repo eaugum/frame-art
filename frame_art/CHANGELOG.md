@@ -1,5 +1,13 @@
 # Endringer
 
+## 0.12.0
+
+- Morgenbildet kan skru på TV-en først: velg TV-en blant mediespillerne i HA på add-on-siden og slå på «Skru på
+  TV-en først». Er den av, skrur HA den på, og Morgenbildet kommer i Kunstmodus.
+- Add-on-siden: en linje under tittelen sier hva som styrer nå (Rotasjon, Fast bilde, Følg musikken, Morgenbildet,
+  Skjermspareren), og knappene er like. Kategorien står foran kilden; versjonen er borte.
+- «Velg bilde» viser bare bilder fra kildene som er krysset av.
+
 ## 0.11.0
 
 - Add-on-siden: hver kilde har sin avkrysning, og rotasjonen trekker fra dem som er krysset av. Kildene står under

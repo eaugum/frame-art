@@ -5,6 +5,7 @@
 <style>
   :root { --bg: #111; --card: #1a1a1a; --line: #262626; --text: #eee; --dim: #999; --faint: #666; --accent: #f2c94c; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { font: 15px/1.4 system-ui, sans-serif; margin: 0; padding: 24px 16px 48px; background: var(--bg);
          color: var(--text); }
   main { max-width: 820px; margin: 0 auto; }
@@ -15,6 +16,11 @@
   #pic { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #222; border-radius: 10px; }
   h1 { font-size: 22px; margin: 16px 0 2px; }
   .info { color: var(--dim); margin: 0; font-size: 14px; }
+  .now { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 0; font-size: 14px; color: #ccc; }
+  .now b { flex: none; font-size: 12px; letter-spacing: .04em; text-transform: uppercase; color: #111;
+           background: var(--accent); padding: 2px 8px; border-radius: 4px; }
+  select { font: inherit; background: #222; color: var(--text); border: 1px solid #333; border-radius: 6px;
+           padding: 5px 8px; max-width: 260px; }
   .note { color: var(--dim); margin: 8px 0 0; font-size: 14px; }
   .note:empty { display: none; }
 
@@ -22,7 +28,6 @@
   button { font: inherit; padding: 10px 16px; border: 0; border-radius: 8px; cursor: pointer; background: #2a2a2a;
            color: var(--text); }
   button:hover { background: #333; }
-  button.primary { background: var(--accent); color: #111; font-weight: 600; }
   button.small { padding: 6px 12px; font-size: 14px; }
   button:disabled { opacity: .5; cursor: default; }
 
@@ -75,10 +80,10 @@
   <img id="pic" alt="" onerror="this.style.visibility = 'hidden'" onload="this.style.visibility = ''">
   <h1 id="title">…</h1>
   <p class="info" id="info"></p>
-  <p class="note" id="fixed"></p>
+  <p class="now"><b id="now-what"></b><span id="now"></span></p>
 
   <div class="actions">
-    <button id="next" class="primary">Nytt bilde</button>
+    <button id="next">Nytt bilde</button>
     <button id="art">Slå på Kunstmodus</button>
     <button id="morning">Vis Morgenbildet</button>
     <button id="tonight">Vis kveldens serie</button>
@@ -108,9 +113,14 @@
     <div class="row"><span>Bytt bilde hvert</span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
     <div class="row"><span>Morgenbildet<small>Datoen og været</small></span><input id="morning_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
+    <div class="row sub" id="tv-row"><span>Skru på TV-en først<small>Gjennom Home Assistant, når den er av</small></span>
+      <select id="tv_entity"><option value="">Velg TV-en</option></select>
+      <label class="switch"><input type="checkbox" data-setting="morning_tv_on"><i></i></label></div>
     <div class="row"><span>Kveldens serie<small>Fra «I kveld» i Stasera</small></span><input id="tonight_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="tonight"><i></i></label></div>
-    <div class="row"><span>Skjermspareren med Stasera-bildene<small>Med tittel; ellers vanlig rotasjon</small></span>
+    <div class="row"><span>Skjermsparer<small>Frame TV går i Kunstmodus når den står urørt</small></span>
+      <label class="switch"><input type="checkbox" data-setting="screensaver"><i></i></label></div>
+    <div class="row sub"><span>Skjermspareren med Stasera-bildene<small>Med tittel; ellers vanlig rotasjon</small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver_stasera"><i></i></label></div>
     <div class="row"><span>Følg musikken<small>Albumcoveret når det spilles musikk</small></span>
       <label class="switch"><input type="checkbox" data-setting="music"><i></i></label></div>
@@ -154,22 +164,43 @@
     last = s;
     var label = s.showing || "", cut = label.indexOf(": ");
     $("title").textContent = cut < 0 ? (label || "Ikke byttet ennå") : label.slice(cut + 2);
-    $("info").textContent = (cut < 0 ? "" : label.slice(0, cut) + " · ") + "byttet " + time(s.changed) +
-      (s.next ? " · neste " + time(s.next) : "") + " · versjon " + s.version;
+    var source = cut < 0 ? "" : label.slice(0, cut), category = (s.source_categories || {})[source];
+    $("info").textContent = [category !== source && category, source, s.changed && "byttet " + time(s.changed)]
+      .filter(Boolean).join(" · ");
     $("pic").src = "showing.jpg?" + s.changed;
     busy(!!s.busy);
-
-    $("fixed").innerHTML = "";
-    if (s.fixed) {
-      $("fixed").append("Bildet står til " + day(s.fixed.until) + ". ",
-        el("a", {textContent: "Fortsett rotasjonen nå", onclick: function () { save({mode: "shuffle"}); }}));
-    } else if (s.music) {
-      $("fixed").textContent = "Følg musikken styrer: " + s.music.title + " – " + s.music.artist + ".";
-    }
+    now(s);
 
     sources(s);
     settings(s.settings || {});
     connections(s);
+  }
+
+  // What decides what's on the wall: the same order as wanted() in service.py
+  function now(s) {
+    var st = s.settings || {}, what, words = [];
+    if (s.wanted === "music") {
+      what = "Følg musikken";
+      words = [s.music.title + " – " + s.music.artist];
+    } else if (s.wanted === "fixed") {
+      what = "Fast bilde";
+      words = ["står til " + day(s.fixed.until) + " ",
+        el("a", {textContent: "Fortsett rotasjonen nå", onclick: function () { save({mode: "shuffle"}); }})];
+    } else if (s.wanted === "morning" || s.wanted === "tonight") {
+      what = s.wanted === "morning" ? "Morgenbildet" : "Kveldens serie";
+      words = ["kommer straks"];
+    } else if (s.wanted === "saver") {
+      what = "Skjermspareren";
+      words = ["Stasera-bildene, ett hvert " + st.interval_minutes + ". minutt"];
+    } else {
+      var on = (s.sources || []).filter(function (n) { return off().indexOf(n) < 0; }).length;
+      what = "Rotasjon";
+      words = [on ? "nytt bilde hvert " + st.interval_minutes + ". minutt fra " + on + (on === 1 ? " kilde" : " kilder") +
+        (s.next ? " · neste " + time(s.next) : "") : "står stille: ingen kilder er krysset av"];
+    }
+    $("now-what").textContent = what;
+    $("now").innerHTML = "";
+    $("now").append.apply($("now"), words);
   }
 
   function sources(s) {
@@ -213,6 +244,10 @@
     $("tonight_time").value = st.tonight_time || "";
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     $("morning_time").disabled = !st.morning;
+    $("tv-row").hidden = !st.morning;
+    if (st.tv_entity && !$("tv_entity").querySelector('[value="' + st.tv_entity + '"]'))
+      $("tv_entity").append(el("option", {value: st.tv_entity, textContent: st.tv_entity}));
+    $("tv_entity").value = st.tv_entity || "";
     $("tonight_time").disabled = !st.tonight;
   }
 
@@ -280,7 +315,7 @@
       part("recent-title").hidden = !g.recent.length;
       thumbs(part("recent"), g.recent);
       thumbs(part("random"), g.random);
-      part("gallery-note").textContent = (g.reading.length ?
+      part("gallery-note").textContent = g.off ? "Ingen av kildene i " + name + " er krysset av." : (g.reading.length ?
         "Leser " + g.reading.join(", ") + " (første gang tar det litt). Trykk «Vis andre» om litt. " :
         g.random.length ? "" : "Ingen bilder her. ") + "Et bilde du trykker på, står til neste Morgenbildet.";
       if (first) gal.scrollIntoView({behavior: "smooth", block: "nearest"});
@@ -295,6 +330,14 @@
   $("close").onclick = function () { open = null; gal.hidden = true; };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
   $("morning_time").onchange = function () { if (this.value) save({morning_time: this.value}); };
+  $("tv_entity").onchange = function () { save({tv_entity: this.value}); };
+  fetch("players").then(function (r) { return r.json(); }).then(function (players) {
+    var sel = $("tv_entity"), chosen = sel.value;
+    players.forEach(function (p) {
+      if (!sel.querySelector('[value="' + p.entity + '"]')) sel.append(el("option", {value: p.entity, textContent: p.name}));
+    });
+    sel.value = chosen;
+  }).catch(function () {});
   $("tonight_time").onchange = function () { if (this.value) save({tonight_time: this.value}); };
   document.querySelectorAll("[data-setting]").forEach(function (b) {
     b.onchange = function () { var c = {}; c[this.dataset.setting] = this.checked; save(c); };
