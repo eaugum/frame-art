@@ -63,19 +63,20 @@ mange av våre egne bilder som blir liggende på TV-en.
 Tilgang: Kunstmodus-kanalen spør aldri om «Tillat», den bare tier uten token. Uten token kobler tjenesten seg derfor
 først til fjernkontroll-kanalen (uten å sende taster). Da kommer spørsmålet på TV-en, og tokenet virker for begge.
 
-## Kategorier og moduser
+## Kildene og kategoriene
 
-Hver kilde hører til en kategori (`category`). Standardvalgene har sju: Mine bilder, Malerier, Abstrakt, Japan,
-Plakater, Natur og rommet og Film. Modusen velges på add-on-siden:
+Rotasjonen trekker fra kildene som er krysset av på add-on-siden, med `weight` som før. Hver kilde står under
+kategorien sin (`category`); standardvalgene har sju: Mine bilder, Malerier, Abstrakt, Japan, Plakater, Natur og
+rommet og Film. Krysset ved en kategori slår alle kildene i den av eller på.
 
-- **Shuffle:** alle kategoriene som er krysset av, med `weight` som før.
-- **Kategori:** bare én kategori.
-- **Fast bilde:** «Velg bilde» ved en kategori viser det som er vist nylig og 24 tilfeldige. Et bilde du trykker på,
-  vises med en gang og står til neste Morgenbildet; så går modusen videre. «Nytt bilde», en ny modus eller «Avslutt
-  nå» avslutter det før.
+En kilde leses (listen over bildene hentes) første gang den trekkes, og alle som aldri er lest, leses i bakgrunnen
+når add-on-et starter.
 
-Intervallet gjelder Shuffle og Kategori. Modus, kategori og avkryssingen lagres i `/data/settings.json`, som
-tidsplanen.
+**Fast bilde:** «Velg bilde» ved en kategori viser det som er vist nylig og 24 tilfeldige. Et bilde du trykker på,
+vises med en gang og står til neste Morgenbildet; så går rotasjonen videre. «Nytt bilde», en ny avkrysning eller
+«Fortsett rotasjonen nå» avslutter det før.
+
+Avkrysningen lagres i `/data/settings.json` (`sources_off`), som tidsplanen.
 
 **Hva som vinner**, øverst først. Når den øverste er ferdig, tar den neste over.
 
@@ -138,13 +139,13 @@ ikke. Svarene venter på TV-en.
 
 | Kall | Hva |
 |---|---|
-| `GET /status` | Hva som vises, når det ble byttet og når det byttes neste gang, modusen (`mode`: `shuffle`, `category` eller `fixed`), kategoriene og valgene |
+| `GET /status` | Hva som vises, når det ble byttet og når det byttes neste gang, modusen (`mode`: `shuffle` eller `fixed`), kategoriene, antall bilder per kilde (`pools`, `null` før den er lest) og valgene |
 | `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også, `?what=morning` viser Morgenbildet og `?what=tonight` kveldens serie. Avslutter et fast bilde |
 | `POST /artmode` | Kunstmodus på, med bildet den har |
 | `GET /category?name=Japan` | Nylig vist og 24 tilfeldige fra kategorien, til å velge et bilde |
 | `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |
 | `POST /show?key=…` | Det bildet nå, i Kunstmodus, som fast bilde til neste Morgenbildet |
-| `POST /settings` | Endrer valgene, med JSON: `mode` (`shuffle`, `category`), `category`, `categories_off` (en liste, for Shuffle), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver_stasera`, `music`, `music_home_only`. `/schedule` er det samme |
+| `POST /settings` | Endrer valgene, med JSON: `sources_off` (kildene som ikke er krysset av), `mode` (`shuffle` avslutter et fast bilde; `category` med `category` krysser av bare den kategorien), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver_stasera`, `music`, `music_home_only`. `/schedule` er det samme |
 | `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på, og Stasera-bildene til Kunstmodus slås av (se over) |
 | `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 
@@ -164,8 +165,8 @@ tilkoblingen kommer fra Supervisor, uten noe i valgene. Uten Mosquitto går add-
 | Entitet | Hva |
 |---|---|
 | `button.frame_art_next`, `_morning_now`, `_tonight_now`, `_artmode` | Neste bilde, Morgenbildet nå, kveldens serie nå, Kunstmodus på |
-| `select.frame_art_mode` | Shuffle, Kategori eller Fast bilde (det som vises nå står til neste Morgenbildet) |
-| `select.frame_art_category` | Kategoriene fra kildene; å velge en setter modusen til Kategori |
+| `select.frame_art_mode` | Shuffle eller Fast bilde (det som vises nå står til neste Morgenbildet) |
+| `select.frame_art_category` | Kategoriene fra kildene; å velge en krysser av bare kildene i den |
 | `number.frame_art_interval` | Minutter mellom byttene |
 | `switch.frame_art_morning`, `_tonight` | Morgenbildet og kveldens serie |
 | `switch.frame_art_screensaver_stasera`, `_music`, `_music_home_only` | Skjermspareren og Følg musikken |

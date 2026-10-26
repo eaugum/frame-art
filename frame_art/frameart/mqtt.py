@@ -26,7 +26,7 @@ AVAILABILITY = BASE + "/status"
 LOOK_SECONDS = 5
 PICTURE_WIDTH = 1280  # the image entity: big enough for a card, small enough for MQTT
 
-MODES = {"shuffle": "Shuffle", "category": "Kategori", "fixed": "Fast bilde"}
+MODES = {"shuffle": "Shuffle", "fixed": "Fast bilde"}
 SWITCHES = {  # setting -> name
     "morning": "Morgenbildet",
     "tonight": "Kveldens serie",
@@ -118,8 +118,8 @@ class Device:
                                            "changed": s["changed"] or None, "next": s["next"],
                                            "fixed_until": (s["fixed"] or {}).get("until")}, ensure_ascii=False),
         }
-        if st.get("category") in self.rot.categories:
-            out[BASE + "/category"] = st["category"]
+        if s["category"]:  # what's ticked is one category's sources
+            out[BASE + "/category"] = s["category"]
         for key in SWITCHES:
             out["%s/%s" % (BASE, key)] = "ON" if st.get(key) else "OFF"
         return out

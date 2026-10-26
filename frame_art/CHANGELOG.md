@@ -1,5 +1,15 @@
 # Endringer
 
+## 0.11.0
+
+- Add-on-siden: hver kilde har sin avkrysning, og rotasjonen trekker fra dem som er krysset av. Kildene står under
+  kategorien sin, som krysser av alle i den på en gang. Modusene Shuffle og Kategori er borte; det som var valgt, blir
+  avkrysningen (`sources_off` i `/data/settings.json`).
+- Siden er ryddet: knappene samlet under bildet, kildene i én liste, innstillingene og tilkoblingene for seg.
+  «Velg bilde» åpner bildene under kategorien.
+- Kilder som aldri er lest, leses i bakgrunnen ved oppstart, så antallet bilder står der med en gang.
+- HA: `select.frame_art_mode` er Shuffle eller Fast bilde; `select.frame_art_category` krysser av bare den kategorien.
+
 ## 0.10.2
 
 - Følg musikken: en omstart mens musikken spiller viser ikke lenger bildet fra før et øyeblikk.

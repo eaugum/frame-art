@@ -6,9 +6,9 @@ Two pictures we make have a time of their own (AUG-1447): Morgenbildet, with the
 (07:00), and tonight's show from Stasera as a poster at tonight_time (18:00). Each is shown once a day, as soon as its
 time comes; the rotation goes on after it.
 
-The rotation has a mode (AUG-1492): Shuffle draws from every category that's on, Kategori from one. A picture chosen
-on the add-on's page (Fast bilde) stands until the next Morgenbildet, then the mode goes on. What wins is decided in
-one place, wanted().
+The rotation draws from the sources that are ticked on the add-on's page (sources_off are the others); they're grouped
+in categories only to be found. A picture chosen on the add-on's page (Fast bilde) stands until the next Morgenbildet,
+then the rotation goes on. What wins is decided in one place, wanted().
 
 Frame TV's screensaver (AUG-1494) says so with POST /saver: Art Mode on, and with screensaver_stasera what we watch and
 want to start in Stasera, with the title, in turn with the interval, until Art Mode goes off. Art Mode going off while
@@ -41,7 +41,7 @@ RECENT = 200  # not the same picture again within this many changes (or the whol
 RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Open-Meteo, Stasera or TMDB didn't answer
 MADE = ("morning", "tonight")
-MODES = ("shuffle", "category")
+MODES = ("shuffle", "category")  # «category» only from older callers: it becomes that category's sources
 BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is on (AUG-1494); back_app: "" for none
 SAVER = {"watching": "SER PÅ", "wantToStart": "VIL BEGYNNE PÅ"}  # Stasera's lists for the screensaver, and the heading
 HISTORY = 100  # pictures from the rotation remembered for «Nylig vist»
@@ -64,7 +64,8 @@ SETTINGS = {
     "tonight_time": ("18:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
     "mode": ("shuffle", lambda v: v if v in MODES else None),
     "category": ("", lambda v: str(v).strip()),
-    "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
+    "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),  # before sources_off
+    "sources_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
     # Kept for the screensaver (AUG-1494) and Følg musikken (AUG-1495); the page shows them already
     "screensaver_stasera": (True, _bool),
     "music": (False, _bool),
@@ -110,7 +111,7 @@ class Rotation:
         self.by_name = {s.name: s for s in self.sources}
         self.categories = list(dict.fromkeys(s.category for s in self.sources))
         self.thumbs = os.path.join(data_dir, "thumbs")
-        self.reading = set()  # categories whose sources are being listed for the page
+        self.reading = set()  # categories whose sources are being listed for the page; "*" all of them
         self.next_path = os.path.join(data_dir, "next.jpg")
         self.showing_path = os.path.join(data_dir, "showing.jpg")
         self.lock = asyncio.Lock()  # one conversation with the TV at a time: the timer, Home Assistant, Frame TV
@@ -122,6 +123,18 @@ class Rotation:
         self.music, self.music_at = None, 0  # what played last, and when it was last seen playing
         self.wake = asyncio.Event()  # the music changed: the timer looks at once
         self.listened = asyncio.Event()  # the player has been looked at once since the start
+        self._from_categories()
+
+    def _from_categories(self):
+        """Settings from before sources_off: Kategori or the categories that were off become the sources that are."""
+        if "sources_off" in self._saved():
+            return
+        if self.cfg.get("mode") == "category" and self.cfg.get("category") in self.categories:
+            off = [s.name for s in self.sources if s.category != self.cfg["category"]]
+        else:
+            cats = set(self.cfg.get("categories_off") or [])
+            off = [s.name for s in self.sources if s.category in cats]
+        self._keep({"sources_off": off, "mode": "shuffle"})
 
     # MARK: - Settings: the schedule, the mode and the fixed picture
 
@@ -161,10 +174,14 @@ class Rotation:
                 raise ValueError("bad value for %s: %r" % (k, v))
         if clean.get("category") and clean["category"] not in self.categories:
             raise ValueError("no category called %s" % clean["category"])
-        after = dict(self.settings(), **clean)
-        if after["mode"] == "category" and after["category"] not in self.categories:
-            raise ValueError("choose a category")
-        if ("mode" in clean or "category" in clean) and self.cfg.get("fixed"):
+        if clean.get("mode") == "category":  # only that category's sources, from Home Assistant or an older caller
+            c = clean.get("category") or self.cfg.get("category")
+            if c not in self.categories:
+                raise ValueError("choose a category")
+            clean.update(mode="shuffle", category=c, sources_off=[s.name for s in self.sources if s.category != c])
+        if "sources_off" in clean:  # a source renamed or gone in the options is forgotten
+            clean["sources_off"] = [n for n in clean["sources_off"] if n in self.by_name]
+        if ("mode" in clean or "sources_off" in clean) and self.cfg.get("fixed"):
             clean["fixed"] = None
         self._keep(clean)
         log.info("settings: %s", ", ".join("%s=%s" % kv for kv in sorted(clean.items())))
@@ -177,7 +194,7 @@ class Rotation:
         """The picture you chose, while it stands: until the first morning_time after it was chosen."""
         f = self.cfg.get("fixed")
         if f and time.time() >= f.get("until", 0):
-            log.info("the fixed picture has had its time; back to %s", self.cfg.get("mode", "shuffle"))
+            log.info("the fixed picture has had its time; back to the rotation")
             self._keep({"fixed": None})
             return None
         return f
@@ -235,12 +252,9 @@ class Rotation:
             return p["keys"] if p else []
 
     def in_play(self):
-        """The sources the rotation draws from: in Kategori that category's, in Shuffle those of every category
-        that's on."""
-        if self.cfg.get("mode") == "category":
-            return [s for s in self.sources if s.category == self.cfg.get("category")]
-        off = set(self.cfg.get("categories_off") or [])
-        return [s for s in self.sources if s.category not in off]
+        """The sources the rotation draws from: those that are ticked."""
+        off = set(self.cfg.get("sources_off") or [])
+        return [s for s in self.sources if s.name not in off]
 
     def source_of(self, full):
         return self.by_name.get(full.split(":", 1)[0])
@@ -387,7 +401,7 @@ class Rotation:
         if meta and kind and not meta.get("made"):
             meta = None  # a picture from the rotation gives way
         if meta and not meta.get("made") and self.source_of(meta["key"]) not in self.in_play():
-            meta = None  # from a category that's no longer in play
+            meta = None  # from a source that's no longer ticked
         if meta and os.path.exists(self.next_path):
             with open(self.next_path, "rb") as f:
                 return f.read(), meta["label"], meta["key"]
@@ -633,12 +647,13 @@ class Rotation:
         # None: not listed yet (a source is listed the first time it's drawn); 0: listed, and nothing found
         pools = {s.name: len(self.state["pools"][s.name].get("keys") or []) if s.name in self.state["pools"] else None
                  for s in self.sources}
-        off = set(self.cfg.get("categories_off") or [])
+        off = set(self.cfg.get("sources_off") or [])
         categories = []
         for c in self.categories:
             names = [s.name for s in self.sources if s.category == c]
             counts = [pools[n] for n in names if pools[n] is not None]
-            categories.append({"name": c, "on": c not in off, "sources": names,
+            categories.append({"name": c, "on": any(n not in off for n in names), "sources": names,
+                               "sources_on": [n for n in names if n not in off],
                                "pictures": sum(counts) if counts else None, "unread": len(names) - len(counts)})
         fixed = self.fixed()
         rotating = not fixed and not self.playing()  # no next change while the music or a fixed picture stands
@@ -647,11 +662,30 @@ class Rotation:
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
                 "source_categories": {s.name: s.category for s in self.sources},
                 "pools": pools, "schedule": self.schedule(), "settings": self.settings(),
-                "mode": "fixed" if fixed else self.cfg.get("mode", "shuffle"), "category": self.cfg.get("category"),
+                "mode": "fixed" if fixed else "shuffle", "category": self._one_category(),
+                "reading": bool(self.reading),
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
                 "saver": self.saver, "music": {k: self.music[k] for k in ("album", "artist", "title")}
                 if self.playing() else None}
+
+    def _one_category(self):
+        """The category, when what's ticked is exactly one category's sources (for Home Assistant's select)."""
+        on = {s.name for s in self.in_play()}
+        for c in self.categories:
+            if on == {s.name for s in self.sources if s.category == c}:
+                return c
+        return None
+
+    def read_unlisted(self):
+        """Lists every source that's never been listed, so the page has the numbers; in the background, at the start."""
+        try:
+            for s in self.sources:
+                if s.name not in self.state["pools"]:
+                    self.pool(s)
+                    self.state.save()
+        finally:
+            self.reading.discard("*")
 
     # MARK: - The add-on's page: choosing a picture
 
@@ -731,6 +765,9 @@ class Rotation:
     async def run(self):
         log.info("Frame Art %s for %s, every %g min, sources: %s", __version__, self.cfg["tv_host"],
                  self.interval() / 60, ", ".join(s.name for s in self.sources) or "none")
+        if any(s.name not in self.state["pools"] for s in self.sources):
+            self.reading.add("*")
+            asyncio.get_running_loop().run_in_executor(None, self.read_unlisted)
         if self.cfg.get("music") and self.ha.ready():
             try:  # music playing through a restart: not what was before it first, then the cover again
                 await asyncio.wait_for(self.listened.wait(), 30)

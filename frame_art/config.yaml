@@ -1,9 +1,9 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.10.2"
+version: "0.11.0"
 slug: frame_art
-description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kategorier, Morgenbildet og kveldens serie
+description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kildene du krysser av, Morgenbildet og kveldens serie
 url: https://github.com/eaugum/frame-art
 arch: [aarch64, amd64]
 init: false

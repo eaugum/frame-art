@@ -1,9 +1,9 @@
 """A small HTTP API on the home network, for Home Assistant (rest_command) and Frame TV on the TV.
 
-GET  /         a page with what's showing, the buttons, the mode and the categories, the schedule and Stasera (the
+GET  /         a page with what's showing, the buttons, the sources to tick, the settings and Stasera (the
                add-on's page in Home Assistant, through ingress)
 GET  /status   what's showing, when it changed and when it changes next, the mode, the categories, how many pictures
-               each source has, the settings and Stasera
+               each source has (null: not read yet; reading says some are being read), the settings and Stasera
 GET  /showing.jpg  the picture
 GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random
 GET  /thumb?key=…  a small copy of a picture (a key from /category)
@@ -11,9 +11,10 @@ POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture.
 POST /show?key=…  that picture now, in Art Mode, standing until the next Morgenbildet (Fast bilde)
 POST /artmode  Art Mode on, with the picture it has
-POST /settings JSON with what to change: mode (shuffle or category), category, categories_off (a list, for Shuffle),
-               interval_minutes, morning, morning_time, tonight, tonight_time, screensaver_stasera, music,
-               music_home_only. A new mode or category ends a fixed picture. /schedule is the same.
+POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, morning,
+               morning_time, tonight, tonight_time, screensaver_stasera, music, music_home_only; mode shuffle ends a
+               fixed picture, and mode category with category ticks only that category's sources. New sources_off ends
+               a fixed picture too. /schedule is the same.
 POST /stasera/link    a code to approve in Stasera (in /status under pairing until it's approved)
 POST /stasera/unlink  forgets the Stasera token
 
