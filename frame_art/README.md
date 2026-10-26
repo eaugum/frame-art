@@ -79,10 +79,10 @@ tidsplanen.
 
 **Hva som vinner**, øverst først. Når den øverste er ferdig, tar den neste over.
 
-1. Følg musikken, når den er på og det spilles musikk (kommer)
+1. Følg musikken, når den er på og det spilles musikk
 2. Det du velger selv: et fast bilde, eller «Nytt bilde»
 3. Morgenbildet og kveldens serie. Et fast bilde avsluttes av Morgenbildet, ikke av kveldens serie.
-4. Skjermspareren (kommer)
+4. Skjermspareren
 5. Vanlig rotasjon, i modusen
 
 ## Morgenbildet og kveldens serie (AUG-1447)
@@ -117,6 +117,18 @@ gang, uten omstart, og lagres i `/data/settings.json`, foran valgene i add-on-et
 
 **Stasera:** «Koble til Stasera» på add-on-siden gir en kode og en lenke; godkjenn den i Stasera, som når TV-en kobles.
 Tokenet ligger i `/data/stasera_token.txt`. «Koble fra» glemmer det.
+
+## Følg musikken (AUG-1495)
+
+Med «Følg musikken» på (`music`, av som standard) kommer albumcoveret på veggen når Spotify spiller: stort, på en
+flate i coverets farger, med albumet og artisten. Spilleren leses fra Home Assistant (`homeassistant_api`), så det
+trengs ingen Spotify-nøkkel her, bare Spotify- eller SpotifyPlus-integrasjonen i HA: den første
+`media_player.spotify*` som spiller. Det er ett bilde per album, så en ny låt på samme album bytter det ikke.
+
+Det går foran alt annet, også et fast bilde, men slår ikke på Kunstmodus selv. Tre minutter etter at musikken
+stopper (pause, stopp) kommer bildet som var der før. Har Morgenbildet eller kveldens serie fått sin tid i mellomtiden,
+kommer det i stedet. «Bare når noen er hjemme» (`music_home_only`) følger musikken bare når `zone.home` har noen i
+seg; uten den følges all avspilling på kontoen. Utenfor HA trenger den `ha_url` og `ha_token` i valgene.
 
 ## Styre den: Home Assistant og Frame TV
 
@@ -158,7 +170,7 @@ tilkoblingen kommer fra Supervisor, uten noe i valgene. Uten Mosquitto går add-
 | `switch.frame_art_morning`, `_tonight` | Morgenbildet og kveldens serie |
 | `switch.frame_art_screensaver_stasera`, `_music`, `_music_home_only` | Skjermspareren og Følg musikken |
 | `sensor.frame_art_showing` | Tittelen på bildet; kilde, kategori, når det ble byttet og neste bytte som attributter |
-| `sensor.frame_art_wanted` | Hva som bestemmer nå: `rotation`, `fixed`, `morning`, `tonight` eller `saver` |
+| `sensor.frame_art_wanted` | Hva som bestemmer nå: `music`, `rotation`, `fixed`, `morning`, `tonight` eller `saver` |
 | `image.frame_art_picture` | Bildet på veggen, 1280 px bredt |
 
 Tilstanden sendes når den endrer seg (fra HA, add-on-siden eller timeren). En ny kategori i kildene kommer med i

@@ -140,3 +140,62 @@ def _logo(path):
 def _runtime(minutes):
     h, m = divmod(int(minutes), 60)
     return ("%d t %d min" % (h, m) if m else "%d t" % h) if h else "%d min" % m
+
+
+# MARK: - Følg musikken (AUG-1495)
+
+def music_picture(cover, album, artist):
+    """cover: the album's cover, a PIL image. The cover big, on a flat in its own colours, with the album and the
+    artist; one picture per album, so not the song."""
+    colour = _cover_colour(cover)
+    top = _toward(colour, 0.38)
+    bottom = _toward(colour, 0.24)
+    img = _gradient(top, bottom)
+    side = 1400
+    y = (image.H - side) // 2
+    x = 330
+    img.paste(cover.convert("RGB").resize((side, side), Image.LANCZOS), (x, y))
+
+    d = ImageDraw.Draw(img)
+    ink, soft = (240, 238, 234), tuple(round(240 * 0.62 + b * 0.38) for b in bottom)
+    tx, width = x + side + 170, image.W - (x + side + 170) - 280
+    title_font, artist_font = font(130, 450), font(84, 400)
+    lines = _wrap(d, album, title_font, width)[:3]
+    height = len(lines) * 160 + 40 + 100
+    ty = image.H // 2 - height // 2
+    for i, line in enumerate(lines):
+        d.text((tx, ty + i * 160), line, font=title_font, fill=ink)
+    d.text((tx, ty + len(lines) * 160 + 40), _wrap(d, artist, artist_font, width)[0], font=artist_font, fill=soft)
+    return img
+
+
+def _cover_colour(cover):
+    """The cover's own colour: of its few main colours, the most common, with a push for the colourful ones."""
+    small = cover.convert("RGB").resize((64, 64)).quantize(6)
+    pal = small.getpalette()
+    best, score = (90, 90, 90), -1
+    for count, i in small.getcolors():
+        r, g, b = pal[i * 3:i * 3 + 3]
+        s = count * (0.25 + (max(r, g, b) - min(r, g, b)) / 255)
+        if s > score:
+            best, score = (r, g, b), s
+    return best
+
+
+def _toward(colour, light):
+    """The colour's hue at about this lightness (0-1): dark enough for light text on any cover."""
+    now = (0.299 * colour[0] + 0.587 * colour[1] + 0.114 * colour[2]) / 255
+    return tuple(min(255, round(c * light / max(now, 0.05))) for c in colour)
+
+
+def _wrap(d, text, f, width):
+    words, lines = (text or "").split(), [""]
+    for w in words:
+        line = (lines[-1] + " " + w).strip()
+        if d.textlength(line, font=f) <= width or not lines[-1]:
+            lines[-1] = line
+        else:
+            lines.append(w)
+    if len(lines) > 3:
+        lines[2] = lines[2] + " …"
+    return lines

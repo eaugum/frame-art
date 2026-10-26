@@ -1,5 +1,13 @@
 # Endringer
 
+## 0.10.0
+
+- Følg musikken: når Spotify spiller (`media_player.spotify*` i HA, også SpotifyPlus), kommer albumcoveret på veggen,
+  stort på en flate i coverets farger, med albumet og artisten. Ett bilde per album. Tre minutter etter at musikken
+  stopper, kommer det som var der før. Det går foran alt annet; `wanted` kan være `music`. Bryteren «Bare når noen er
+  hjemme» bruker `zone.home`.
+- Add-on-et leser tilstanden i HA (`homeassistant_api`), uten eget Spotify-token. `GET /status` har `music`.
+
 ## 0.9.1
 
 - `stasera_url` er `https://www.stasera.app` som standard. Den gamle adressen (`https://<deployment>.convex.site`)

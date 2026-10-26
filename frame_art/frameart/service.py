@@ -14,6 +14,9 @@ Frame TV's screensaver (AUG-1494) says so with POST /saver: Art Mode on, and wit
 want to start in Stasera, with the title, in turn with the interval, until Art Mode goes off. Art Mode going off while
 the TV is on opens Frame TV (back_app), since the remote's keys only give the TV's own Art Mode menu.
 
+Følg musikken (AUG-1495): while Spotify plays (read from Home Assistant), the album's cover, one picture per album, in
+front of everything else. A few minutes after it stops, what was on the wall before comes back.
+
 What the add-on's page changes (SETTINGS, and the fixed picture) is kept in settings.json, before the add-on's options.
 """
 import asyncio
@@ -23,10 +26,11 @@ import json
 import logging
 import os
 import random
+import shutil
 import time
 from zoneinfo import ZoneInfo
 
-from . import __version__, image, made, net, sources, weather
+from . import __version__, image, made, music, net, sources, weather
 from .stasera import Stasera, Unlinked
 from . import tv as tvmod
 from .tv import TV
@@ -42,6 +46,9 @@ BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is
 SAVER = {"watching": "SER PÅ", "wantToStart": "VIL BEGYNNE PÅ"}  # Stasera's lists for the screensaver, and the heading
 HISTORY = 100  # pictures from the rotation remembered for «Nylig vist»
 THUMBS = 600  # small copies kept for the add-on's page
+OWN = ("saver", "music")  # pictures of the moment: not in «Nylig vist», and not prepared ahead
+MUSIC_LOOK = 10  # seconds between looks at Home Assistant's player
+MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 
 
 def _bool(v):
@@ -110,6 +117,10 @@ class Rotation:
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
         self.back_at = 0  # when back_app was last opened; the TV says «off» twice
+        self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
+        self.ha = music.HomeAssistant(cfg)
+        self.music, self.music_at = None, 0  # what played last, and when it was last seen playing
+        self.wake = asyncio.Event()  # the music changed: the timer looks at once
 
     # MARK: - Settings: the schedule, the mode and the fixed picture
 
@@ -195,6 +206,8 @@ class Rotation:
         4. The screensaver, with Stasera's pictures (AUG-1494)
         5. The rotation, in its mode
         """
+        if self.playing():
+            return "music"
         if self.fixed():
             return "fixed"
         due = self.due()
@@ -345,9 +358,22 @@ class Rotation:
             return None
         return image.to_jpeg(img), "Stasera: %s" % (items[n].get("title") or "?"), keys[n]
 
+    def make_music(self):
+        """(jpeg, label, key) for the album that plays, or None."""
+        m = self.music
+        try:
+            cover = image.open_image(self.ha.cover(m["cover"]))
+            img = made.music_picture(cover, m["album"], m["artist"])
+        except Exception as e:
+            log.warning("couldn't make the cover's picture (%s: %s)", type(e).__name__, e)
+            return None
+        return image.to_jpeg(img), "Musikk: %s – %s" % (m["album"], m["artist"]), m["key"]
+
     def prepared(self, what=None):
         """The picture for the next change, made once and kept until it's on the TV (the TV may be off for hours).
         what ('morning' or 'tonight') makes that one now; otherwise one that's due comes before the rotation."""
+        if what == "music":
+            return self.make_music()
         if what == "saver":
             got = self.make_saver()
             if got:
@@ -383,7 +409,7 @@ class Rotation:
         what: 'morning' or 'tonight' for that one now. It ends a fixed picture (the timer doesn't change one)."""
         async with self.lock:
             ok = await self._change(art_mode, what)
-            if ok and self.cfg.get("fixed"):
+            if ok and self.cfg.get("fixed") and what != "music":
                 self._keep({"fixed": None})
             return ok
 
@@ -410,7 +436,7 @@ class Rotation:
             log.warning("nothing to show: %s", "couldn't make %s" % what if what else
                         "no source is on, or none has pictures")
             return False
-        await self._put(*got, force=force, prepared=not got[2].startswith("saver:"))
+        await self._put(*got, force=force, prepared=got[2].split(":")[0] not in OWN)
         return True
 
     async def _put(self, jpeg, label, key, force, prepared=False):
@@ -438,14 +464,19 @@ class Rotation:
             if await tv.slideshow_on():
                 log.warning("the TV's own slideshow is on and will change the picture too")
 
+            kind, _, day = key.partition(":")
+            if kind == "music":
+                self._keep_before()
+                self.state["music_shown"] = key
+            else:
+                self.state.d.pop("before", None)  # something newer than what the music came in front of
             self.state["uploaded"].append({"content_id": content_id, "key": key, "at": int(time.time())})
             self.state["recent"] = (self.state["recent"] + [key])[-RECENT:]
             self.state["changed"] = time.time()
             self.state["showing"] = label
-            kind, _, day = key.partition(":")
             if kind in MADE:
                 self.state["made"][kind] = day
-            elif kind != "saver":
+            elif kind not in OWN:
                 self.state["history"] = (self.state["history"] + [{"key": key, "label": label,
                                                                     "at": int(time.time())}])[-HISTORY:]
             if prepared:
@@ -456,7 +487,7 @@ class Rotation:
             os.replace(self.showing_path + ".tmp", self.showing_path)
             if prepared and os.path.exists(self.next_path):
                 os.remove(self.next_path)
-            if kind not in MADE and kind != "saver":
+            if kind not in MADE and kind not in OWN:
                 try:
                     self._keep_thumb(key, image.thumbnail(image.open_image(jpeg, draft=image.THUMB)))
                 except Exception as e:
@@ -465,6 +496,15 @@ class Rotation:
                 await self.clean(tv)
             except Exception as e:  # the picture is up; what's left is cleaned next time
                 log.warning("couldn't clean up (%s: %s)", type(e).__name__, e)
+
+    def _keep_before(self):
+        """What was on the wall when the music started, to come back to (only the first album's time)."""
+        last = self.state["recent"][-1] if self.state["recent"] else ""
+        if self.state.d.get("before") or not last or last.startswith("music:") or not os.path.exists(
+                self.showing_path):
+            return
+        shutil.copyfile(self.showing_path, self.before_path)
+        self.state["before"] = {"key": last, "label": self.state.d.get("showing")}
 
     async def art_mode(self):
         """Art Mode on, with the picture it has."""
@@ -525,6 +565,67 @@ class Rotation:
         except Exception as e:
             log.warning("Art Mode off, but couldn't open %s (%s: %s)", app, type(e).__name__, e)
 
+    # MARK: - Følg musikken (AUG-1495)
+
+    def playing(self):
+        """The music is on and plays, or stopped less than MUSIC_GRACE ago."""
+        return bool(self.cfg.get("music") and self.music and time.time() - self.music_at < MUSIC_GRACE)
+
+    def _listen(self):
+        if self.cfg.get("music_home_only", True) and not self.ha.home():
+            return None
+        return self.ha.playing(time.time())
+
+    async def follow(self):
+        """Looks at Home Assistant's Spotify player every few seconds while Følg musikken is on, and wakes the timer
+        when the album changes or the music stops."""
+        if not self.ha.ready():
+            log.info("Følg musikken: no Home Assistant (homeassistant_api, or ha_url and ha_token)")
+            return
+        failing, was = False, None
+        while True:
+            if self.cfg.get("music"):
+                try:
+                    now = await asyncio.to_thread(self._listen)
+                    if failing:
+                        log.info("Følg musikken: Home Assistant answers again")
+                    failing = False
+                    if now:
+                        self.music, self.music_at = now, time.time()
+                except Exception as e:
+                    if not failing:
+                        log.info("Følg musikken: Home Assistant didn't answer (%s: %s)", type(e).__name__, e)
+                    failing = True
+            key = self.music["key"] if self.playing() else None
+            if key != was:
+                log.info("Følg musikken: %s", "%s – %s" % (self.music["album"], self.music["artist"]) if key else
+                         "the music stopped")
+                self.wake.set()
+                was = key
+            await asyncio.sleep(MUSIC_LOOK)
+
+    async def _after_music(self, want):
+        """The music stopped: what was on the wall before it comes back, unless Morgenbildet or tonight's show has
+        its turn. Raises when the TV doesn't answer, and it's tried again."""
+        self.state.d.pop("music_shown", None)
+        b = self.state.d.get("before")
+        if not b or want in MADE or not os.path.exists(self.before_path):
+            self.state.d.pop("before", None)
+            self.state.save()
+            return
+        with open(self.before_path, "rb") as f:
+            jpeg = f.read()
+        async with self.lock:
+            await self._put(jpeg, b["label"], b["key"], force=False)
+        log.info("the music stopped: back to %s", b["label"])
+
+    async def _nap(self, seconds):
+        try:
+            await asyncio.wait_for(self.wake.wait(), seconds)
+        except asyncio.TimeoutError:
+            pass
+        self.wake.clear()
+
     def status(self):
         interval = self.interval()
         # None: not listed yet (a source is listed the first time it's drawn); 0: listed, and nothing found
@@ -547,7 +648,8 @@ class Rotation:
                 "mode": "fixed" if fixed else self.cfg.get("mode", "shuffle"), "category": self.cfg.get("category"),
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
-                "saver": self.saver}
+                "saver": self.saver, "music": {k: self.music[k] for k in ("album", "artist", "title")}
+                if self.playing() else None}
 
     # MARK: - The add-on's page: choosing a picture
 
@@ -630,14 +732,21 @@ class Rotation:
         while True:
             wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
             want = self.wanted()
-            if want == "fixed" or (want in ("rotation", "saver") and wait > 0):
-                await asyncio.sleep(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
+            if want == "music" and self.state.d.get("music_shown") == self.music["key"]:
+                await self._nap(60)  # a new song on the same album: the same picture
                 continue
+            if want != "music" and (self.state.d.get("music_shown") or self.state.d.get("before")):
+                job = self._after_music(want)
+            elif want == "fixed" or (want in ("rotation", "saver") and wait > 0):
+                await self._nap(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
+                continue
+            else:
+                job = self.change(what=want if want in OWN else None)
             try:
-                ok = await self.change(what="saver" if want == "saver" else None)
+                ok = (await job) is not False
             except Exception as e:
                 # off, away, or busy with something that stops the art app (AirPlay, some apps): never interrupted
                 log.info("Art Mode not answering (%s: %s); trying again in %d min", type(e).__name__, e, RETRY_MINUTES)
                 ok = False
             if not ok:
-                await asyncio.sleep(RETRY_MINUTES * 60)
+                await self._nap(RETRY_MINUTES * 60)
