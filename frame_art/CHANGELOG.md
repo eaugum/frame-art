@@ -1,5 +1,10 @@
 # Endringer
 
+## 0.6.1
+
+- Ny kildetype `stasera`: bakgrunnsbildene av det vi ser på, filmene og anbefalingene i Stasera, uten TMDB-nøkkel.
+  Film-kategorien i standardvalgene bruker den i stedet for `tmdb`, og `tmdb_key` er ikke lenger med der.
+
 ## 0.6.0
 
 - Kategorier: feltet `category` på kildene, sju i standardvalgene. Legg det til i dine egne kilder (uten det er

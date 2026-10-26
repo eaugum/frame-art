@@ -40,13 +40,14 @@ fant; 0 betyr som regel et feil navn (loggen sier hvilket).
 | `commons` | Wikimedia Commons-kategorier, med underkategorier to nivåer ned (alt der er fritt) | Kategorinavn uten `Category:`, f.eks. `Featured pictures of Norway` |
 | `nasa` | NASAs bildebibliotek, alle former | Søkeord (`nebula`) |
 | `wellcome` | Wellcome Collection, public domain og CC0: gamle illustrasjoner, alle former | Søkeord (`botanical`) |
-| `tmdb` | Stillbilder fra filmer på TMDB, uten tekst. Trenger `tmdb_key` (samme som Frame TV) | `top_rated`, `popular`, en person (`Christopher Nolan`), eller discover-felt: `with_genres=878` |
+| `stasera` | Bakgrunnsbildene (uten tekst når de finnes) av det vi ser på i Stasera. Trenger `stasera_url` og at add-on-et er koblet til Stasera; ingen TMDB-nøkkel | Listene: `watching`, `wantToStart`, `movies`, `recommendations` |
+| `tmdb` | Stillbilder fra filmer på TMDB, uten tekst. Trenger en egen `tmdb_key`; `stasera` gjør det samme uten | `top_rated`, `popular`, en person (`Christopher Nolan`), eller discover-felt: `with_genres=878` |
 
-Uten `shape` beskjærer museene, Commons og TMDB (bildene må være nær 16:9, 1,3–2,1, og minst 1920 px brede);
+Uten `shape` beskjærer museene, Commons, Stasera og TMDB (bildene må være nær 16:9, 1,3–2,1, og minst 1920 px brede);
 mappa, NASA og Wellcome viser alt helt, på en uskarp kopi av seg selv. `any` passer for plakater, tresnitt og
 abstrakt. Art Institute of Chicago er ikke med: bildene ligger bak en Cloudflare-sjekk som et skript ikke kommer forbi. Nasjonalmuseets eget
 API er nede til v2 kommer, og DigitaltMuseum gir høyst 1200 px, derfor Commons. Europeana, Smithsonian og Harvard
-trenger en nøkkel hver og er ikke med ennå. TMDB-bildene er ikke frie, men til bruk hjemme.
+trenger en nøkkel hver og er ikke med ennå. TMDB-bildene (også de fra Stasera) er ikke frie, men til bruk hjemme.
 
 Valgene fra 0.3 (`museums`, `met_queries` osv.) virker fortsatt når `sources` mangler, f.eks. i en gammel
 `options.json`.

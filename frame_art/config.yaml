@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.6.0"
+version: "0.6.1"
 slug: frame_art
 description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kategorier, Morgenbildet og kveldens serie
 url: https://github.com/eaugum/frame-art
@@ -23,7 +23,6 @@ options:
   tv_host: 10.1.2.36
   interval_minutes: 60
   keep: 3
-  tmdb_key: ""
   # Morgenbildet (the date and the weather) and tonight's show from Stasera, once a day each. The add-on's page can
   # change the times and the interval; what it sets is kept and wins over these.
   morning: true
@@ -71,13 +70,12 @@ options:
     - {category: Natur og rommet, name: Rommet (NASA), type: nasa, query: nebula|spiral galaxy|star cluster}
     - {category: Natur og rommet, name: Jorda fra rommet, type: nasa, query: earth from space}
     - {category: Natur og rommet, name: Astrofoto, type: commons, query: Featured pictures of astronomy}
-    # Film (tmdb trenger tmdb_key)
+    # Film og serier: fra Stasera (stasera_url, og koblet på add-on-siden)
     - {category: Film, name: Filmplakater, type: commons, shape: any, query: 1920s film posters|Film posters of the United States}
     - {category: Film, name: Stumfilm, type: commons, shape: any, query: Film stills, enabled: false}
-    - {category: Film, name: Film, type: tmdb, query: top_rated}
-    - {category: Film, name: Regissører, type: tmdb,
-       query: Christopher Nolan|Denis Villeneuve|Wes Anderson|Hayao Miyazaki|Stanley Kubrick|Wong Kar-wai}
-    - {category: Film, name: Science fiction, type: tmdb, query: with_genres=878}
+    - {category: Film, name: Det vi ser på, type: stasera, query: watching|wantToStart}
+    - {category: Film, name: Filmene våre, type: stasera, query: movies}
+    - {category: Film, name: Anbefalt, type: stasera, query: recommendations}
 schema:
   tv_host: str
   interval_minutes: int(5,1440)
@@ -93,7 +91,7 @@ schema:
   sources:
     - name: str
       category: str?
-      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|tmdb)
+      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|tmdb|stasera)
       query: str?
       years: str?
       shape: list(wide|any)?

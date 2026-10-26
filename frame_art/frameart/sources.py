@@ -541,10 +541,58 @@ class TMDB(Source):
         return "https://image.tmdb.org/t/p/w500" + m["backdrop_path"]
 
 
-TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome, TMDB)}
+class Stasera(Source):
+    """Backdrops of what we watch, from Stasera: watching, wantToStart, movies, recommendations. The add-on has to be
+    linked to Stasera; no TMDB key, since the pictures are on TMDB's open image server."""
+    type = "stasera"
+    pool_hours = 6  # the lists change as we watch
+    default = ["watching", "movies"]
+    LISTS = ("watching", "wantToStart", "movies", "recommendations")
+    IMAGES = "https://image.tmdb.org/t/p/"
+
+    def __init__(self, entry, cfg):
+        Source.__init__(self, entry, cfg)
+        self.client = None  # the add-on's Stasera, set by from_config
+        self.titles = {}
+
+    def keys(self):
+        lists = [q for q in self.queries if q in self.LISTS]
+        for q in self.queries:
+            if q not in self.LISTS:
+                log.warning("%s: Stasera has no list called %s (%s)", self.name, q, ", ".join(self.LISTS))
+        if not self.client or not self.client.on:
+            log.warning("%s: no stasera_url in the options", self.name)
+            return []
+        self.titles = {}
+        for t in self.client.titles(lists):
+            path = t.get("textlessBackdropPath") or t.get("backdropPath")
+            if path:
+                self.titles.setdefault("%s:%s" % (t.get("kind"), t.get("tmdbId")), dict(t, path=path))
+        return list(self.titles)
+
+    def title(self, key):
+        if key not in self.titles:
+            self.keys()  # after a restart, or it's new
+        t = self.titles.get(key)
+        if not t:
+            raise RuntimeError("%s isn't in Stasera's lists now" % key)  # not Skip: it may come back
+        return t
+
+    def fetch(self, key):
+        t = self.title(key)
+        img = image.open_image(net.get(self.IMAGES + "original" + t["path"], timeout=180))
+        self.check(*img.size)
+        return img, "%s (%s)" % (t.get("title") or "?", t.get("year") or "")
+
+    def thumb(self, key):
+        return self.IMAGES + "w500" + self.title(key)["path"]
 
 
-def from_config(cfg):
+TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome, TMDB,
+                             Stasera)}
+
+
+def from_config(cfg, stasera=None):
     entries = cfg["sources"] if "sources" in cfg else _old_options(cfg)
     out = []
     for e in entries:
@@ -557,7 +605,10 @@ def from_config(cfg):
         name = re.sub(r"\s+", " ", (e.get("name") or e["type"]).replace(":", " ")).strip()  # ": " ends the name
         if name in [s.name for s in out]:
             name += " %d" % (len(out) + 1)
-        out.append(cls(dict(e, name=name), cfg))
+        src = cls(dict(e, name=name), cfg)
+        if cls is Stasera:
+            src.client = stasera
+        out.append(src)
     return out
 
 

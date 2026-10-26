@@ -91,7 +91,8 @@ class Rotation:
         self.cfg = dict(cfg, **self._saved())
         self.state = State(os.path.join(data_dir, "state.json"))
         self.state.d.setdefault("history", [])
-        self.sources = sources.from_config(cfg)
+        self.stasera = Stasera(cfg.get("stasera_url"), data_dir)
+        self.sources = sources.from_config(cfg, self.stasera)
         self.by_name = {s.name: s for s in self.sources}
         self.categories = list(dict.fromkeys(s.category for s in self.sources))
         self.thumbs = os.path.join(data_dir, "thumbs")
@@ -99,7 +100,6 @@ class Rotation:
         self.next_path = os.path.join(data_dir, "next.jpg")
         self.showing_path = os.path.join(data_dir, "showing.jpg")
         self.lock = asyncio.Lock()  # one conversation with the TV at a time: the timer, Home Assistant, Frame TV
-        self.stasera = Stasera(cfg.get("stasera_url"), data_dir)
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
 
     # MARK: - Settings: the schedule, the mode and the fixed picture
