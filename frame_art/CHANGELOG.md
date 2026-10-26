@@ -7,6 +7,8 @@
 - Add-on-siden: en linje under tittelen sier hva som styrer nå (Rotasjon, Fast bilde, Følg musikken, Morgenbildet,
   Skjermspareren), og knappene er like. Kategorien står foran kilden; versjonen er borte.
 - «Velg bilde» viser bare bilder fra kildene som er krysset av.
+- Bryteren «Skjermsparer» (`screensaver`, `switch.frame_art_screensaver`): av, og Frame TV starter ingen skjermsparer.
+  Frame TV leser den fra `/status`.
 
 ## 0.11.0
 
