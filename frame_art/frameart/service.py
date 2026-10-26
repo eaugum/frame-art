@@ -121,6 +121,7 @@ class Rotation:
         self.ha = music.HomeAssistant(cfg)
         self.music, self.music_at = None, 0  # what played last, and when it was last seen playing
         self.wake = asyncio.Event()  # the music changed: the timer looks at once
+        self.listened = asyncio.Event()  # the player has been looked at once since the start
 
     # MARK: - Settings: the schedule, the mode and the fixed picture
 
@@ -602,6 +603,7 @@ class Rotation:
                          "the music stopped")
                 self.wake.set()
                 was = key
+            self.listened.set()
             await asyncio.sleep(MUSIC_LOOK)
 
     async def _after_music(self, want):
@@ -729,6 +731,11 @@ class Rotation:
     async def run(self):
         log.info("Frame Art %s for %s, every %g min, sources: %s", __version__, self.cfg["tv_host"],
                  self.interval() / 60, ", ".join(s.name for s in self.sources) or "none")
+        if self.cfg.get("music") and self.ha.ready():
+            try:  # music playing through a restart: not what was before it first, then the cover again
+                await asyncio.wait_for(self.listened.wait(), 30)
+            except asyncio.TimeoutError:
+                pass
         while True:
             wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
             want = self.wanted()

@@ -1,5 +1,9 @@
 # Endringer
 
+## 0.10.2
+
+- Følg musikken: en omstart mens musikken spiller viser ikke lenger bildet fra før et øyeblikk.
+
 ## 0.10.1
 
 - Følg musikken: et nytt bilde for hver sang, med sangen, artisten og albumet (når det ikke heter det samme som
