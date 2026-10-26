@@ -12,7 +12,7 @@ then the rotation goes on. What wins is decided in one place, wanted().
 
 Frame TV's screensaver (AUG-1494) says so with POST /saver: Art Mode on, and with screensaver_stasera what we watch and
 want to start in Stasera, with the title, in turn with the interval, until Art Mode goes off. Art Mode going off while
-the TV is on opens Frame TV (back_app), since the remote's keys only give the TV's own Art Mode menu.
+the TV is on opens Frame TV, since the remote's keys only give the TV's own Art Mode menu.
 
 Følg musikken (AUG-1495): while Spotify plays (read from Home Assistant), the album's cover with the song, a picture
 per song, in front of everything else. A few minutes after it stops, what was on the wall before comes back.
@@ -42,7 +42,7 @@ RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Open-Meteo, Stasera or TMDB didn't answer
 MADE = ("morning", "tonight")
 MODES = ("shuffle", "category")  # «category» only from older callers: it becomes that category's sources
-BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is on (AUG-1494); back_app: "" for none
+BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is on (AUG-1494)
 SAVER = {"watching": "SER PÅ", "wantToStart": "VIL BEGYNNE PÅ"}  # Stasera's lists for the screensaver, and the heading
 HISTORY = 100  # pictures from the rotation remembered for «Nylig vist»
 THUMBS = 600  # small copies kept for the add-on's page
@@ -69,6 +69,8 @@ SETTINGS = {
     "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),  # before sources_off
     "sources_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
     # Kept for the screensaver (AUG-1494) and Følg musikken (AUG-1495); the page shows them already
+    # The TV (tv_entity in the options) turned on through Home Assistant before Morgenbildet, when it's off
+    "morning_tv_on": (True, _bool),
     "screensaver": (True, _bool),  # off: Frame TV doesn't start its screensaver (it reads this from /status)
     "screensaver_stasera": (True, _bool),
     "music": (False, _bool),
@@ -121,7 +123,7 @@ class Rotation:
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
         self.saver_minutes = None  # how often the picture changes meanwhile, from Frame TV
-        self.back_at = 0  # when back_app was last opened; the TV says «off» twice
+        self.back_at = 0  # when Frame TV was last opened; the TV says «off» twice
         self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
         self.ha = music.HomeAssistant(cfg)
         self.music, self.music_at = None, 0  # what played last, and when it was last seen playing
@@ -603,9 +605,9 @@ class Rotation:
 
     async def _back(self):
         """Art Mode went off: a key on the remote opens the TV's own Art Mode menu, which has no way back but Home
-        and the app. Open back_app instead, when the TV is on (not going to standby)."""
-        app = self.cfg.get("back_app", BACK_APP)
-        if not app or time.time() - self.back_at < 10:
+        and the app. Open Frame TV instead, when the TV is on (not going to standby)."""
+        app = BACK_APP
+        if time.time() - self.back_at < 10:
             return
         self.back_at = time.time()
         await asyncio.sleep(1)
@@ -681,7 +683,7 @@ class Rotation:
         if self.state["made"].get("tv_on") == today:
             return True
         entity = self.cfg.get("tv_entity")
-        if not entity or not self.ha.ready():
+        if not self.cfg.get("morning_tv_on", True) or not entity or not self.ha.ready():
             return False
         try:
             on = (await asyncio.to_thread(self.ha.state, entity)).get("state")
@@ -728,7 +730,8 @@ class Rotation:
                 "reading": bool(self.reading),
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
-                "saver": self.saver, "music": {k: self.music[k] for k in ("album", "artist", "title")}
+                "saver": self.saver, "tv_entity": bool(self.cfg.get("tv_entity")),
+                "music": {k: self.music[k] for k in ("album", "artist", "title")}
                 if self.playing() else None}
 
     def _one_category(self):

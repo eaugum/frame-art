@@ -70,6 +70,7 @@
   .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
                      border-radius: 50%; background: #ccc; transition: transform .15s; }
   .switch input:checked + i { background: var(--accent); }
+  .switch input:disabled, .switch input:disabled + i { opacity: .4; cursor: default; }
   .switch input:checked + i::after { transform: translateX(18px); background: #111; }
   #saved { color: var(--faint); font-size: 13px; transition: opacity .3s; }
 </style></head>
@@ -111,6 +112,8 @@
       <input id="keep" type="number" min="1" max="20"></div>
     <div class="row"><span>Morgenbildet<small>Dato, vær, uke og navnedag og nytt i Stasera; avtaler og strøm fra valgene i HA</small></span><input id="morning_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
+    <div class="row sub" id="tv-row"><span>Skru på TV-en først<small id="tv-note"></small></span>
+      <label class="switch"><input type="checkbox" data-setting="morning_tv_on"><i></i></label></div>
     <div class="row"><span>Kveldens serie<small>Fra «I kveld» i Stasera</small></span><input id="tonight_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="tonight"><i></i></label></div>
     <div class="row"><span>Skjermsparer<small>Frame TV går i Kunstmodus når den står urørt</small></span>
@@ -165,7 +168,7 @@
     now(s);
 
     sources(s);
-    settings(s.settings || {});
+    settings(s.settings || {}, s);
     connections(s);
   }
 
@@ -230,7 +233,7 @@
       unread && s.reading ? "Leser kildene som ikke er lest før …" : "";
   }
 
-  function settings(st) {
+  function settings(st, s) {
     if (document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox") return;
     $("interval_minutes").value = st.interval_minutes;
     $("keep").value = st.keep;
@@ -239,6 +242,12 @@
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     $("morning_time").disabled = !st.morning;
     $("tonight_time").disabled = !st.tonight;
+    var tv = $("tv-row").querySelector("input");
+    $("tv-row").hidden = !st.morning;
+    tv.disabled = !s.tv_entity;
+    if (!s.tv_entity) tv.checked = false;
+    $("tv-note").textContent = s.tv_entity ? "Gjennom Home Assistant, når den er av" :
+      "Sett tv_entity i add-on-ets konfigurasjon";
   }
 
   function connections(s) {

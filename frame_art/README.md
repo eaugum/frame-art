@@ -39,15 +39,14 @@ Alle kildene i lista er med; hvilke rotasjonen trekker fra, krysses av på add-o
 | `commons` | Wikimedia Commons-kategorier, med underkategorier to nivåer ned (alt der er fritt) | Kategorinavn uten `Category:`, f.eks. `Featured pictures of Norway` |
 | `nasa` | NASAs bildebibliotek | Søkeord (`nebula`) |
 | `wellcome` | Wellcome Collection, public domain og CC0: gamle illustrasjoner | Søkeord (`botanical`) |
-| `stasera` | Bakgrunnsbildene (uten tekst når de finnes) av det vi ser på i Stasera. Trenger `stasera_url` og at add-on-et er koblet til Stasera; ingen TMDB-nøkkel | Listene: `watching`, `wantToStart`, `movies`, `recommendations` |
-| `tmdb` | Stillbilder fra filmer på TMDB, uten tekst. Trenger en egen `tmdb_key`; `stasera` gjør det samme uten | `top_rated`, `popular`, en person (`Christopher Nolan`), eller discover-felt: `with_genres=878` |
+| `stasera` | Bakgrunnsbildene (uten tekst når de finnes) av det vi ser på i Stasera. Trenger `stasera_url` og at add-on-et er koblet til Stasera | Listene: `watching`, `wantToStart`, `movies`, `recommendations` |
 
 Bare bilder nær 16:9 brukes (fra 3:2 til litt bredere enn 16:9, 1,45–2,0), beskåret så de fyller skjermen; fra
-museene, Commons, NASA, Wellcome, Stasera og TMDB må de også være minst 1920 px brede. Resten tas ikke med når kilden
+museene, Commons, NASA, Wellcome og Stasera må de også være minst 1920 px brede. Resten tas ikke med når kilden
 leses, og et bilde i mappa som ikke passer, hoppes over og kommer ikke igjen. `shape` fra før 0.14 overses. Kilder med
 mest stående bilder (plakater, tresnitt) får derfor få bilder. Art Institute of Chicago er ikke med: bildene ligger bak en Cloudflare-sjekk som et skript ikke kommer forbi. Nasjonalmuseets eget
 API er nede til v2 kommer, og DigitaltMuseum gir høyst 1200 px, derfor Commons. Europeana, Smithsonian og Harvard
-trenger en nøkkel hver og er ikke med ennå. TMDB-bildene (også de fra Stasera) er ikke frie, men til bruk hjemme.
+trenger en nøkkel hver og er ikke med ennå. Filmbildene fra Stasera (de ligger hos TMDB) er ikke frie, men til bruk hjemme.
 
 Valgene fra 0.3 (`museums`, `met_queries` osv.) virker fortsatt når `sources` mangler, f.eks. i en gammel
 `options.json`.
@@ -107,8 +106,8 @@ To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der.
 Er TV-en av når tiden kommer, venter bildet til den er på igjen, men Morgenbildet bare til kveldens tid. Får den ikke
 laget bildet (nettet), prøver den igjen om 15 minutter.
 
-**Skru på TV-en først:** med `tv_entity` i valgene (en mediespiller i HA, f.eks. `media_player.stue_the_frame_stue`):
-er den av når Morgenbildet skal komme, skrur HA den på
+**Skru på TV-en først:** med `tv_entity` i valgene (en mediespiller i HA, f.eks. `media_player.stue_the_frame_stue`)
+og bryteren «Skru på TV-en først» på add-on-siden på (den er på som standard): er den av når Morgenbildet skal komme, skrur HA den på
 (`media_player.turn_on`, én gang om dagen), og Morgenbildet kommer i Kunstmodus.
 
 ## Skjermspareren og veien tilbake (AUG-1494)
@@ -122,8 +121,8 @@ stedet for å sendes på nytt.
 
 Skjermspareren varer til Kunstmodus slås av. En tast på fjernkontrollen i Kunstmodus (Tilbake, av/på) gir TV-ens egen
 Kunstmodus-meny, som bare har veien Hjem → appen. Add-on-et lytter derfor på kunst-kanalen: går Kunstmodus av mens TV-en
-er på, åpner den `back_app` (`FrameTVapp.FrameTV`) over TV-ens REST-API på port 8001. Det gjelder hver gang, ikke bare
-etter skjermspareren. `back_app: ""` i valgene slår det av; en annen app-id åpner den i stedet.
+er på, åpner den Frame TV (`FrameTVapp.FrameTV`) over TV-ens REST-API på port 8001. Det gjelder hver gang, ikke bare
+etter skjermspareren.
 
 **Tidsplanen på add-on-siden:** hvor ofte bildet byttes, og av/på og klokkeslett for de to bildene. Det virker med en
 gang, uten omstart, og lagres i `/data/settings.json`, foran valgene i add-on-et.

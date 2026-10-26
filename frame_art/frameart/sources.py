@@ -448,69 +448,6 @@ class Wellcome(Source):
         return iiif[:-len("/info.json")] + "/full/!%d,%d/0/default.jpg" % (image.THUMB, image.THUMB)
 
 
-class TMDB(Source):
-    """Film stills: the backdrops of films on The Movie Database, without text. Needs tmdb_key. The query is a
-    list ("popular", "top_rated"), a person ("Christopher Nolan"), or discover's fields ("with_genres=878")."""
-    type = "tmdb"
-    default = ["top_rated"]
-    API = "https://api.themoviedb.org/3/"
-    LISTS = ("popular", "top_rated", "now_playing", "upcoming")
-
-    def __init__(self, entry, cfg):
-        Source.__init__(self, entry, cfg)
-        self.key = (cfg.get("tmdb_key") or "").strip()
-
-    def get(self, path, params=None):
-        params = dict(params or {})
-        headers = None
-        if len(self.key) > 40:  # a v4 read access token, not a v3 key
-            headers = {"Authorization": "Bearer " + self.key}
-        else:
-            params["api_key"] = self.key
-        return json.loads(net.get(self.API + path, params, headers=headers))
-
-    def keys(self):
-        if not self.key:
-            log.warning("%s: no tmdb_key in the options", self.name)
-            return []
-        ids = []
-        for q in self.queries:
-            if q in self.LISTS:
-                path, params = "movie/" + q, {}
-            else:
-                path, params = "discover/movie", {"sort_by": "vote_count.desc"}
-                if "=" in q:
-                    params.update(_fields(q, ""))
-                else:
-                    people = self.get("search/person", {"query": q}).get("results") or []
-                    if not people:
-                        log.warning("%s: no one called %s on TMDB", self.name, q)
-                        continue
-                    params["with_people"] = people[0]["id"]
-            for page in range(1, 6):
-                r = self.get(path, dict(params, page=page))
-                ids += [str(m["id"]) for m in r.get("results") or []]
-                if page >= (r.get("total_pages") or 0):
-                    break
-        return list(dict.fromkeys(ids))
-
-    def fetch(self, key):
-        m = self.get("movie/" + key, {"append_to_response": "images", "include_image_language": "null"})
-        backdrops = [b for b in (m.get("images") or {}).get("backdrops") or [] if self.usable(b["width"], b["height"])]
-        if not backdrops:
-            raise Skip("no backdrop without text")
-        best = sorted(backdrops, key=lambda b: -(b.get("vote_average") or 0))[:5]
-        img = image.open_image(net.get("https://image.tmdb.org/t/p/original" + random.choice(best)["file_path"],
-                                       timeout=180))
-        return img, "%s (%s)" % (m.get("title"), (m.get("release_date") or "")[:4])
-
-    def thumb(self, key):
-        m = self.get("movie/" + key)
-        if not m.get("backdrop_path"):
-            raise Skip("no backdrop")
-        return "https://image.tmdb.org/t/p/w500" + m["backdrop_path"]
-
-
 class Stasera(Source):
     """Backdrops of what we watch, from Stasera: watching, wantToStart, movies, recommendations. The add-on has to be
     linked to Stasera; no TMDB key, since the pictures are on TMDB's open image server."""
@@ -558,7 +495,7 @@ class Stasera(Source):
         return self.IMAGES + "w500" + self.title(key)["path"]
 
 
-TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome, TMDB,
+TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome,
                              Stasera)}
 
 

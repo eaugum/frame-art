@@ -1,5 +1,12 @@
 # Endringer
 
+## 0.16.0
+
+- `tmdb_key`, `back_app` og kildetypen `tmdb` er fjernet; Stasera gir filmbildene, og Frame TV er alltid appen som
+  åpnes når Kunstmodus går av.
+- Add-on-siden: bryteren «Skru på TV-en først» under Morgenbildet er tilbake (på som standard). TV-en er `tv_entity`
+  i valgene; uten den er bryteren grå.
+
 ## 0.15.0
 
 - Valgene i HA har det som settes opp én gang: `api_key` (tom: add-on-et lager en og skriver den inn), `location`
