@@ -63,6 +63,9 @@
   .row > span { flex: 1; }
   .row small { display: block; color: var(--faint); font-size: 13px; }
   .row.sub { padding-left: 24px; }
+  .choices { flex: none; display: flex; flex-wrap: wrap; justify-content: flex-end; gap: 4px 14px; max-width: 60%; }
+  .choices label { display: flex; align-items: center; gap: 6px; font-size: 14px; color: #ccc; cursor: pointer; }
+  .choices .faint { color: var(--faint); font-size: 13px; }
   input[type=number], input[type=time] { font: inherit; background: #222; color: var(--text); border: 1px solid #333;
                                           border-radius: 6px; padding: 5px 8px; }
   input[type=number] { width: 72px; }
@@ -111,11 +114,15 @@
   <section>
     <header><h2>Innstillinger</h2><span id="saved"></span></header>
     <div class="row"><span>Bytt bilde hvert</span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
-    <div class="row"><span>Morgenbildet<small>Datoen og været</small></span><input id="morning_time" type="time">
+    <div class="row"><span>Morgenbildet<small>Dato, vær, uke og navnedag, og nytt i Stasera i dag</small></span><input id="morning_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
     <div class="row sub" id="tv-row"><span>Skru på TV-en først<small>Gjennom Home Assistant, når den er av</small></span>
       <select id="tv_entity"><option value="">Velg TV-en</option></select>
       <label class="switch"><input type="checkbox" data-setting="morning_tv_on"><i></i></label></div>
+    <div class="row sub" id="calendar-row"><span>Kalendere<small>Dagens avtaler, fra Home Assistant</small></span>
+      <span id="calendars" class="choices"></span></div>
+    <div class="row sub" id="price-row"><span>Strømpris<small>Billigste og dyreste timer resten av dagen</small></span>
+      <select id="price_entity"><option value="">Ingen</option></select></div>
     <div class="row"><span>Kveldens serie<small>Fra «I kveld» i Stasera</small></span><input id="tonight_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="tonight"><i></i></label></div>
     <div class="row"><span>Skjermsparer<small>Frame TV går i Kunstmodus når den står urørt</small></span>
@@ -191,7 +198,7 @@
       words = ["kommer straks"];
     } else if (s.wanted === "saver") {
       what = "Skjermspareren";
-      words = ["Stasera-bildene, ett hvert " + st.interval_minutes + ". minutt"];
+      words = ["Stasera-bildene, et nytt hvert " + s.interval_minutes + ". minutt"];
     } else {
       var on = (s.sources || []).filter(function (n) { return off().indexOf(n) < 0; }).length;
       what = "Rotasjon";
@@ -244,10 +251,12 @@
     $("tonight_time").value = st.tonight_time || "";
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     $("morning_time").disabled = !st.morning;
-    $("tv-row").hidden = !st.morning;
-    if (st.tv_entity && !$("tv_entity").querySelector('[value="' + st.tv_entity + '"]'))
-      $("tv_entity").append(el("option", {value: st.tv_entity, textContent: st.tv_entity}));
-    $("tv_entity").value = st.tv_entity || "";
+    ["tv-row", "calendar-row", "price-row"].forEach(function (id) { $(id).hidden = !st.morning; });
+    choose($("tv_entity"), st.tv_entity);
+    choose($("price_entity"), st.price_entity);
+    document.querySelectorAll("#calendars input").forEach(function (b) {
+      b.checked = (st.morning_calendars || []).indexOf(b.value) >= 0;
+    });
     $("tonight_time").disabled = !st.tonight;
   }
 
@@ -331,13 +340,36 @@
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
   $("morning_time").onchange = function () { if (this.value) save({morning_time: this.value}); };
   $("tv_entity").onchange = function () { save({tv_entity: this.value}); };
-  fetch("players").then(function (r) { return r.json(); }).then(function (players) {
-    var sel = $("tv_entity"), chosen = sel.value;
-    players.forEach(function (p) {
-      if (!sel.querySelector('[value="' + p.entity + '"]')) sel.append(el("option", {value: p.entity, textContent: p.name}));
+  $("price_entity").onchange = function () { save({price_entity: this.value}); };
+  // Home Assistant's entities to choose from, once
+  function option(sel, value) {
+    return sel.querySelector('[value="' + value + '"]') || sel.appendChild(el("option", {value: value, textContent: value}));
+  }
+  function choose(sel, value) {
+    if (value) option(sel, value);
+    sel.value = value || "";
+  }
+  function entities(path, done) {
+    fetch(path).then(function (r) { return r.json(); }).then(done).catch(function () { done([]); });
+  }
+  [["players", "tv_entity"], ["prices", "price_entity"]].forEach(function (p) {
+    entities(p[0], function (list) {
+      var sel = $(p[1]), chosen = sel.value;
+      list.forEach(function (e) { option(sel, e.entity).textContent = e.name; });
+      sel.value = chosen;
     });
-    sel.value = chosen;
-  }).catch(function () {});
+  });
+  entities("calendars", function (list) {
+    var box = $("calendars");
+    if (!list.length) box.append(el("span", {className: "faint", textContent: "Ingen kalendere i Home Assistant"}));
+    list.forEach(function (c) {
+      box.append(el("label", {}, [el("input", {type: "checkbox", value: c.entity, onchange: function () {
+        save({morning_calendars: Array.prototype.filter.call(box.querySelectorAll("input"), function (b) {
+          return b.checked; }).map(function (b) { return b.value; })});
+      }}), c.name]));
+    });
+    settings((last.settings) || {});
+  });
   $("tonight_time").onchange = function () { if (this.value) save({tonight_time: this.value}); };
   document.querySelectorAll("[data-setting]").forEach(function (b) {
     b.onchange = function () { var c = {}; c[this.dataset.setting] = this.checked; save(c); };

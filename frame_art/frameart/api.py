@@ -9,19 +9,21 @@ GET  /category?name=Japan  for choosing a picture: what's been on the wall latel
                category's sources that are ticked
 GET  /thumb?key=…  a small copy of a picture (a key from /category)
 GET  /players  Home Assistant's media players, for choosing the TV (tv_entity)
+GET  /calendars, /prices  its calendars and price sensors, for Morgenbildet (morning_calendars, price_entity)
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture.
 POST /show?key=…  that picture now, in Art Mode, standing until the next Morgenbildet (Fast bilde)
 POST /artmode  Art Mode on, with the picture it has
 POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, morning,
-               morning_time, tonight, tonight_time, screensaver, screensaver_stasera, music, music_home_only, morning_tv_on,
-               tv_entity; mode shuffle ends a fixed picture, and mode category with category ticks only that
-               category's sources. New sources_off ends a fixed picture too. /schedule is the same.
+               morning_time, morning_tv_on, tv_entity, morning_calendars, price_entity, tonight, tonight_time,
+               screensaver, screensaver_stasera, music, music_home_only; mode shuffle ends a fixed picture, and mode
+               category with category ticks only that category's sources. New sources_off ends a fixed picture too.
+               /schedule is the same.
 POST /stasera/link    a code to approve in Stasera (in /status under pairing until it's approved)
 POST /stasera/unlink  forgets the Stasera token
 
 POST /saver    Frame TV's screensaver started: Art Mode on, with what we watch in Stasera when screensaver_stasera is
-               on, until Art Mode goes off (AUG-1494)
+               on, until Art Mode goes off (AUG-1494); ?minutes=5 changes the picture that often meanwhile
 
 Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: the
 add-on makes it in api_key.txt, and its page in Home Assistant shows it. The page itself, through ingress, doesn't
@@ -35,7 +37,7 @@ import secrets
 
 from aiohttp import web
 
-from . import sources
+from . import sources, today
 
 log = logging.getLogger(__name__)
 
@@ -121,14 +123,20 @@ def app(rotation):
         except ValueError as e:
             return web.json_response({"ok": False, "error": str(e)}, status=404, headers=CORS)
 
-    async def players(request):
-        if not rotation.ha.ready():
-            return web.json_response([], headers=CORS)
-        try:
-            return web.json_response(await asyncio.to_thread(rotation.ha.media_players), headers=CORS)
-        except Exception as e:
-            log.info("no media players from Home Assistant (%s: %s)", type(e).__name__, e)
-            return web.json_response([], headers=CORS)
+    def from_ha(what, look):
+        async def handler(request):
+            if not rotation.ha.ready():
+                return web.json_response([], headers=CORS)
+            try:
+                return web.json_response(await asyncio.to_thread(look, rotation.ha), headers=CORS)
+            except Exception as e:
+                log.info("no %s from Home Assistant (%s: %s)", what, type(e).__name__, e)
+                return web.json_response([], headers=CORS)
+        return handler
+
+    players = from_ha("media players", lambda ha: ha.media_players())
+    calendars = from_ha("calendars", today.calendars)
+    prices = from_ha("prices", today.prices)
 
     thumbs = asyncio.Semaphore(4)  # a page asks for 24 at once; the museums don't like a crowd
 
@@ -173,8 +181,12 @@ def app(rotation):
         return await act(request, rotation.art_mode)
 
     async def saver(request):
-        log.info("Frame TV's screensaver started")
-        return await act(request, rotation.start_saver)
+        try:
+            minutes = min(max(int(request.query.get("minutes", "")), 1), 1440)
+        except ValueError:
+            minutes = None  # an older Frame TV: the interval
+        log.info("Frame TV's screensaver started%s", ", a new picture every %d min" % minutes if minutes else "")
+        return await act(request, lambda: rotation.start_saver(minutes))
 
     async def page(request):
         return web.Response(text=PAGE, content_type="text/html")
@@ -189,7 +201,8 @@ def app(rotation):
 
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
-                  web.get("/category", category), web.get("/thumb", thumb), web.get("/players", players), web.post("/show", show),
+                  web.get("/category", category), web.get("/thumb", thumb), web.get("/players", players),
+                  web.get("/calendars", calendars), web.get("/prices", prices), web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/settings", settings),
                   web.post("/schedule", settings), web.post("/saver", saver),
                   web.post("/stasera/link", link), web.post("/stasera/unlink", unlink),

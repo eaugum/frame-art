@@ -30,7 +30,7 @@ import shutil
 import time
 from zoneinfo import ZoneInfo
 
-from . import __version__, image, made, music, net, sources, weather
+from . import __version__, image, made, music, net, sources, today as todaymod, weather
 from .stasera import Stasera, Unlinked
 from . import tv as tvmod
 from .tv import TV
@@ -72,6 +72,11 @@ SETTINGS = {
     "screensaver_stasera": (True, _bool),
     # The TV turned on through Home Assistant before Morgenbildet, when it's off (Art Mode only answers when it's on)
     "morning_tv_on": (False, _bool),
+    # Morgenbildet's right-hand column (today.py): Home Assistant's calendars and the electricity price sensor
+    "morning_calendars": ([], lambda v: [str(c) for c in v if str(c).startswith("calendar.")] if isinstance(v, list)
+                          else None),
+    "price_entity": ("", lambda v: str(v).strip() if not str(v).strip() or str(v).strip().startswith("sensor.")
+                     else None),
     "tv_entity": ("", lambda v: str(v).strip() if not str(v).strip() or str(v).strip().startswith("media_player.")
                   else None),
     "music": (False, _bool),
@@ -123,6 +128,7 @@ class Rotation:
         self.lock = asyncio.Lock()  # one conversation with the TV at a time: the timer, Home Assistant, Frame TV
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
+        self.saver_minutes = None  # how often the picture changes meanwhile, from Frame TV
         self.back_at = 0  # when back_app was last opened; the TV says «off» twice
         self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
         self.ha = music.HomeAssistant(cfg)
@@ -335,7 +341,7 @@ class Rotation:
                 except Exception as e:
                     log.warning("no weather for Morgenbildet (%s)", e)
                     w = None
-                img, label = made.morning_picture(now, w), "Morgenbildet"
+                img, label = made.morning_picture(now, w, self._day(now)), "Morgenbildet"
             else:
                 items = [i for i in self.stasera.tonight() if i.get("textlessBackdropPath") or i.get("backdropPath")]
                 if not items:
@@ -353,6 +359,15 @@ class Rotation:
             self.state.save()
             return None
         return image.to_jpeg(img), label, "%s:%s" % (kind, today)
+
+    def _day(self, now):
+        """What else Morgenbildet says (today.py); what doesn't answer is left out."""
+        ha = self.ha.ready()
+        return {"names": todaymod.names(now),
+                "events": todaymod.events(self.ha, self.cfg.get("morning_calendars") or [], now) if ha else [],
+                "shows": todaymod.shows(self.stasera, now.date()) if self.stasera.state() == "linked" else [],
+                "power": todaymod.power(self.ha, self.cfg["price_entity"], now)
+                if ha and self.cfg.get("price_entity") else []}
 
     def make_saver(self):
         """(jpeg, label, key) for the screensaver: the next of what we watch and want to start, in turn, or None."""
@@ -541,10 +556,10 @@ class Rotation:
     async def watch(self):
         await tvmod.watch(self.cfg["tv_host"], os.path.join(self.data, "token.txt"), self._art_event)
 
-    async def start_saver(self):
+    async def start_saver(self, minutes=None):
         """Frame TV's screensaver started: Art Mode on, and the answer, at once (Frame TV waits a minute); then
-        Stasera's pictures when that's on, until Art Mode goes off."""
-        self.saver = True
+        Stasera's pictures when that's on, until Art Mode goes off, a new one every `minutes` (else the interval)."""
+        self.saver, self.saver_minutes = True, minutes
         try:
             await self.art_mode()
         except Exception:
@@ -789,6 +804,8 @@ class Rotation:
     # MARK: - Running
 
     def interval(self):
+        if self.saver and self.saver_minutes:
+            return self.saver_minutes * 60
         return max(1, float(self.cfg.get("interval_minutes", 60))) * 60
 
     async def run(self):

@@ -48,8 +48,10 @@ def _gradient(top, bottom):
 
 # MARK: - The morning picture
 
-def morning_picture(now, weather):
-    """now: a local datetime. weather: from weather.today(), or None when Open-Meteo didn't answer."""
+def morning_picture(now, weather, extra=None):
+    """now: a local datetime. weather: from weather.today(), or None when Open-Meteo didn't answer. extra: what else
+    the day has (today.py): names, events [(time, text)], shows [text] and power, each left out when empty."""
+    extra = extra or {}
     top, bottom, ink = PALETTES[(weather or {}).get("kind", "cloudy")]
     img = _gradient(top, bottom)
     d = ImageDraw.Draw(img)
@@ -59,6 +61,9 @@ def morning_picture(now, weather):
     big = font(300, 300)
     d.text((x, 560), DAYS[now.weekday()].capitalize(), font=big, fill=ink)
     d.text((x, 900), "%d. %s" % (now.day, MONTHS[now.month - 1]), font=big, fill=ink)
+    names = extra.get("names")
+    d.text((x + 8, 1268), "Uke %d" % now.isocalendar()[1] + (" · Navnedag: " + names if names else ""),
+           font=font(58, 400), fill=ink)
 
     if weather:
         d.line((x + 8, 1380, x + 260, 1380), fill=soft, width=5)
@@ -73,7 +78,33 @@ def morning_picture(now, weather):
         d.text((x, 1660), words, font=font(84, 400), fill=ink)
         d.text((x, 1790), "Sola opp %s · ned %s" % (weather["sunrise"], weather["sunset"]), font=font(64, 400),
                fill=soft)
+    _day_column(d, extra, ink, soft)
     return img
+
+
+def _day_column(d, extra, ink, soft):
+    """The right-hand column: today's events, what's new in Stasera and the electricity price."""
+    x, right, y = 2420, image.W - 300, 600
+    head, body = font(46, 600), font(64, 400)
+    parts = [("I DAG", ["%s  %s" % (t, s) if t else s for t, s in extra.get("events") or []]),
+             ("NYTT I STASERA", extra.get("shows") or []),
+             ("STRØM", extra.get("power") or [])]
+    for heading, lines in parts:
+        if not lines or y > image.H - 420:
+            continue
+        d.text((x, y), heading, font=head, fill=soft)
+        y += 80
+        for line in lines:
+            rows = _wrap(d, line, body, right - x)
+            if len(rows) > 2:
+                rows = [rows[0], rows[1] + " …"]
+            for i, row in enumerate(rows):
+                if y > image.H - 300:
+                    return
+                d.text((x + (40 if i else 0), y), row, font=body, fill=ink)
+                y += 84
+            y += 6
+        y += 70
 
 
 # MARK: - Tonight's poster

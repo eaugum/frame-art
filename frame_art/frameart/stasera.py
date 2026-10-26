@@ -140,6 +140,14 @@ class Stasera:
             out += [dict(t, list="recommendations") for t in j.get("items") or []]
         return out
 
+    def upcoming(self, today, days=1):
+        """What's coming from `today` (the TV's date, YYYY-MM-DD) and `days` on: episodes and films, each with its
+        date. Raises Unlinked."""
+        status, j = self._request("GET", "/tv/upcoming?today=%s&days=%d" % (today, days))
+        if status != 200 or not j:
+            raise RuntimeError("Stasera answered %s" % status)
+        return j.get("items") or []
+
     # MARK: - Tonight
 
     def tonight(self):

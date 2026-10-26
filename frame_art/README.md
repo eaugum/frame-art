@@ -93,7 +93,13 @@ To bilder lager add-on-et selv, én gang om dagen hver, så snart klokka er der.
 
 - **Morgenbildet** (`morning_time`, 07:00): ukedag, dato, dagens høyeste og laveste temperatur, været i ord («regn fra
   kl. 15») og sola opp og ned, i rolig skrift på en flate med farge etter været. Været kommer fra Open-Meteo for
-  `latitude`/`longitude`, uten HA. Svarer ikke Open-Meteo, kommer bildet uten vær.
+  `latitude`/`longitude`, uten HA. Svarer ikke Open-Meteo, kommer bildet uten vær. Under datoen står uka og
+  navnedagen (Almanakkforlagets liste, revidert desember 2025, i `navnedager.json`; `scripts/navnedager.py` lager den
+  på nytt). Til høyre, når de har noe:
+  - **I dag:** avtalene fra kalenderne du krysser av på add-on-siden (`morning_calendars`, fra HA).
+  - **Nytt i Stasera:** nye episoder, sesong- og seriepremierer og filmpremierer i dag (`/tv/upcoming`).
+  - **Strøm:** de billigste og dyreste to timene resten av dagen, fra en Nord Pool-sensor i HA med `raw_today` eller
+    `today` (`price_entity`).
 - **Kveldens serie** (`tonight_time`, 18:00): en plakat av den første i Staseras «I kveld», med bakgrunnsbildet uten
   tekst, logoen (eller tittelen) og sesong og episode. Trenger `stasera_url` og at add-on-et er koblet til Stasera.
   Er det ingenting i kveld, blir det ingen plakat.
@@ -150,10 +156,11 @@ ikke. Svarene venter på TV-en.
 | `POST /artmode` | Kunstmodus på, med bildet den har |
 | `GET /category?name=Japan` | Nylig vist og 24 tilfeldige fra kildene i kategorien som er krysset av, til å velge et bilde |
 | `GET /players` | Mediespillerne i HA, til å velge TV-en (`tv_entity`) |
+| `GET /calendars`, `/prices` | Kalenderne og prissensorene i HA, til Morgenbildet (`morning_calendars`, `price_entity`) |
 | `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |
 | `POST /show?key=…` | Det bildet nå, i Kunstmodus, som fast bilde til neste Morgenbildet |
-| `POST /settings` | Endrer valgene, med JSON: `sources_off` (kildene som ikke er krysset av), `mode` (`shuffle` avslutter et fast bilde; `category` med `category` krysser av bare den kategorien), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`, `morning_tv_on`, `tv_entity`. `/schedule` er det samme |
-| `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på, og Stasera-bildene til Kunstmodus slås av (se over) |
+| `POST /settings` | Endrer valgene, med JSON: `sources_off` (kildene som ikke er krysset av), `mode` (`shuffle` avslutter et fast bilde; `category` med `category` krysser av bare den kategorien), `interval_minutes`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`, `morning_tv_on`, `tv_entity`, `morning_calendars`, `price_entity`. `/schedule` er det samme |
+| `POST /saver` | Frame TV-s skjermsparer startet: Kunstmodus på, og Stasera-bildene til Kunstmodus slås av (se over). `?minutes=5` bytter bildet så ofte i mellomtiden (valget står i Frame TV) |
 | `POST /stasera/link`, `/stasera/unlink` | Kobler til Stasera (koden står i `/status` under `pairing`) og fra |
 
 Kunstmodus slås på med `set_artmode`. Tar ikke det, sendes ett kort trykk på av/på over fjernkontroll-kanalen, men bare

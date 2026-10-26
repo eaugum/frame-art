@@ -1,5 +1,12 @@
 # Endringer
 
+## 0.13.0
+
+- Morgenbildet: uka og navnedagen under datoen, og til høyre dagens avtaler fra kalenderne i HA, nytt i Stasera i dag
+  (episoder og premierer) og de billigste og dyreste timene for strøm. Kalenderne og strømsensoren velges på
+  add-on-siden.
+- Skjermspareren: Frame TV sier hvor ofte bildet skal byttes (`POST /saver?minutes=`), ikke lenger intervallet.
+
 ## 0.12.0
 
 - Morgenbildet kan skru på TV-en først: velg TV-en blant mediespillerne i HA på add-on-siden og slå på «Skru på
