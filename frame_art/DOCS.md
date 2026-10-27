@@ -131,8 +131,8 @@ Open **Frame Art** in the sidebar. A line under the title says what's in charge 
 - set how often the picture changes, how many of Frame Art's pictures stay on the TV, and the times for the morning
   picture and tonight's show,
 - turn the screensaver on or off,
-- leave out the picture on the wall for good: "Don't show this picture again" (a backdrop with a logo after all, or a
-  picture you don't like). Another one comes at once,
+- leave out the picture on the wall for good: "Don't show again" in the picture's corner, then yes to the question
+  (a backdrop with a logo after all, or a picture you don't like). Another one comes at once,
 - link the add-on to Stasera.
 
 **What wins**, top first. When the top one is done, the next takes over.

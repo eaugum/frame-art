@@ -13,6 +13,10 @@
   a { color: var(--accent); cursor: pointer; text-decoration: none; }
   a:hover { text-decoration: underline; }
 
+  .frame { position: relative; }
+  #never { position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 13px; color: #fff;
+           background: rgba(0, 0, 0, .55); }
+  #never:hover { background: rgba(0, 0, 0, .75); }
   #pic { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #222; border-radius: 10px; }
   h1 { font-size: 22px; margin: 16px 0 2px; }
   .info { color: var(--dim); margin: 0; font-size: 14px; }
@@ -82,7 +86,10 @@
   #saved { color: var(--faint); font-size: 13px; transition: opacity .3s; }
 </style></head>
 <body><main>
-  <img id="pic" alt="" onerror="this.style.visibility = 'hidden'" onload="this.style.visibility = ''">
+  <div class="frame">
+    <img id="pic" alt="" onerror="this.style.visibility = 'hidden'" onload="this.style.visibility = ''">
+    <button id="never" data-t="never" hidden></button>
+  </div>
   <h1 id="title">…</h1>
   <p class="info" id="info"></p>
   <p class="now"><b id="now-what"></b><span id="now"></span></p>
@@ -91,7 +98,6 @@
     <button id="next" data-t="new_picture"></button>
     <button id="morning" data-t="show_morning"></button>
     <button id="tonight" data-t="show_tonight"></button>
-    <button id="never" data-t="never"></button>
     <button id="music" data-t="music"></button>
     <button id="power" data-t="turn_tv_on" hidden></button>
   </div>
@@ -146,6 +152,11 @@
   <p class="note" data-t="tv_off_note"></p>
   <div class="actions"><button id="ask-yes" class="yes" data-t="turn_on"></button><button id="ask-no" data-t="cancel"></button></div>
 </div></div>
+<div id="sure" class="dialog" hidden><div>
+  <p id="sure-what"></p>
+  <p class="note" data-t="never_note"></p>
+  <div class="actions"><button id="sure-yes" class="yes" data-t="never_yes"></button><button id="sure-no" data-t="cancel"></button></div>
+</div></div>
 <script>
   var T = /*STRINGS*/{}, LOCALE = T.locale || "en-GB";
   var last = {}, open = null, savedAt = 0;
@@ -186,7 +197,7 @@
     $("info").textContent = [category !== source && category, source, s.changed && tr("changed_at", {time: time(s.changed)})]
       .filter(Boolean).join(" · ");
     $("pic").src = "showing.jpg?" + s.changed;
-    $("never").hidden = !s.showing_key;
+    $("never").hidden = !s.showing_key || !!s.busy || s.wanted === "music";
     $("music").className = (s.settings || {}).music ? "on" : "";
     $("music").title = tr("music_note");
     busy(!!s.busy || s.wanted === "music");
@@ -298,7 +309,7 @@
   }
 
   function busy(b) {
-    ["next", "morning", "tonight", "never"].forEach(function (id) { $(id).disabled = b; });
+    ["next", "morning", "tonight"].forEach(function (id) { $(id).disabled = b; });
   }
   function load() {
     fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {});
@@ -381,7 +392,12 @@
   $("next").onclick = function () { act("next?art_mode=1", tr("fetching_new")); };
   $("morning").onclick = function () { act("next?art_mode=1&what=morning", tr("making_morning")); };
   $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", tr("making_tonight")); };
-  $("never").onclick = function () { send("never", tr("leaving_out")); };
+  $("never").onclick = function () {
+    $("sure-what").textContent = tr("never_ask", {title: $("title").textContent});
+    $("sure").hidden = false;
+  };
+  $("sure-yes").onclick = function () { $("sure").hidden = true; send("never", tr("leaving_out")); };
+  $("sure-no").onclick = function () { $("sure").hidden = true; };
   $("music").onclick = function () { save({music: !(last.settings || {}).music}); };
   $("power").onclick = function () {
     this.disabled = true;

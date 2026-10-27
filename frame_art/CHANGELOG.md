@@ -1,5 +1,10 @@
 # Changes
 
+## 0.23.2
+
+- "Don't show again" is in the top right corner of the picture on the add-on's page, not among the buttons, and asks
+  first. It's hidden while the cover of Follow the music stands.
+
 ## 0.23.1
 
 - "Turn the TV on" now shows when the TV is off. Whether it's off is asked of the TV itself: Home Assistant's
