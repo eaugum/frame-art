@@ -15,13 +15,19 @@ log = logging.getLogger(__name__)
 MY_PHOTOS = "MY-C0002"
 
 
+async def _art(**kw):
+    """SamsungTVAsyncArt asks the TV for its model with a blocking HTTP request when it's made, which waits for the
+    whole timeout when the TV sleeps; in a thread, so the rest (MQTT's keepalive) goes on meanwhile."""
+    return await asyncio.to_thread(SamsungTVAsyncArt, **kw)
+
+
 class TV:
     def __init__(self, host, token_file, name="FrameArt"):
         self.host, self.token_file, self.name = host, token_file, name
 
-    def _new(self):
+    async def _new(self):
         # timeout covers the first connection, while someone answers "Allow" on the TV
-        return SamsungTVAsyncArt(host=self.host, port=8002, token_file=self.token_file, name=self.name, timeout=60)
+        return await _art(host=self.host, port=8002, token_file=self.token_file, name=self.name, timeout=60)
 
     async def pair(self):
         """The art channel never asks "Allow"; it stays silent without a token. The remote control channel asks, and
@@ -51,7 +57,7 @@ class TV:
         if not self.has_token():
             await self.pair()
         for attempt in range(4):
-            self.art = self._new()
+            self.art = await self._new()
             try:
                 await asyncio.wait_for(self.art.start_listening(), 90)
                 return self
@@ -144,7 +150,12 @@ async def watch(host, token_file, on_event, name="FrameArtWatch"):
     for each of the art app's events (art_mode_changed, go_to_standby...). Only listens: it sends nothing but the
     library's own question about Art Mode when it connects."""
     while True:
-        art = SamsungTVAsyncArt(host=host, port=8002, token_file=token_file, name=name, timeout=30)
+        try:
+            art = await _art(host=host, port=8002, token_file=token_file, name=name, timeout=30)
+        except Exception as e:
+            log.debug("art channel not answering (%s: %s)", type(e).__name__, e)
+            await asyncio.sleep(60)
+            continue
         seen = art.process_event
 
         async def heard(event=None, response=None):

@@ -1,5 +1,13 @@
 # Changes
 
+## 0.21.1
+
+- The device in Home Assistant no longer goes unavailable for a minute and a half every six minutes while the TV is
+  off. Connecting to a sleeping TV held up the whole add-on for up to 90 seconds (samsungtvws asks the TV for its model
+  with a blocking request), long enough for the MQTT broker to drop the connection.
+- Opening the app when Art Mode goes off (`back_app`) no longer stops working after the TV has been asleep: the watcher
+  gave up for good the first time the TV didn't answer.
+
 ## 0.21.0
 
 - Tonight's show can turn the TV on too, like the morning picture: "Turn the TV on first" under it on the add-on's
