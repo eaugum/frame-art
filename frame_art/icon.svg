@@ -1,0 +1,7 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="512" height="512">
+  <!-- The add-on icon, a sibling of Frame TV's: the frame with a landscape in the yellow accent. icon.png is exported from this at 256x256. -->
+  <rect width="512" height="512" rx="112" fill="#0A0A0C"/>
+  <rect x="100" y="148" width="312" height="216" rx="18" fill="none" stroke="#F4F2EE" stroke-width="30"/>
+  <circle cx="314" cy="210" r="22" fill="#F2B84B"/>
+  <path d="M138 326 L212 238 L262 296 L292 264 L374 326 Z" fill="#F2B84B" stroke="#F2B84B" stroke-width="14" stroke-linejoin="round"/>
+</svg>

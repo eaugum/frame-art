@@ -192,10 +192,10 @@ def _rest(host, method, path, timeout=10):
         return json.loads(r.read() or b"null")
 
 
-def powered_on(host):
+def powered_on(host, timeout=10):
     """True when the TV says it's on (not in standby); False when it doesn't answer."""
     try:
-        return (_rest(host, "GET", "").get("device") or {}).get("PowerState") == "on"
+        return (_rest(host, "GET", "", timeout).get("device") or {}).get("PowerState") == "on"
     except Exception:
         return False
 

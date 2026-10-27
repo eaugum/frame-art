@@ -189,7 +189,7 @@
     $("never").hidden = !s.showing_key;
     $("music").className = (s.settings || {}).music ? "on" : "";
     $("music").title = tr("music_note");
-    busy(!!s.busy);
+    busy(!!s.busy || s.wanted === "music");
     now(s);
 
     sources(s);
@@ -311,6 +311,7 @@
   }
   // The TV off (tv_entity): ask before turning it on; then the same with &wake=1
   function act(path, doing) {
+    if (last.wanted === "music") return;  // the cover stands while it plays: turn Follow the music off first
     busy(true);
     fetch("tv").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (tv) {
       if (!tv.off) { send(path, doing); return; }

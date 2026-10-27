@@ -138,7 +138,7 @@ PAGE = {
     "screensaver_stasera_note": "With the title; otherwise the usual rotation",
     "music": "Follow the music",
     "music_note": "The album cover while music is playing",
-    "music_words": " · a picture you choose stays until the next song",
+    "music_words": " · turn Follow the music off to choose another picture",
     "turn_tv_on": "Turn the TV on",
     "waking": "Turning the TV on …",
     "home_only": "Only when someone is home",

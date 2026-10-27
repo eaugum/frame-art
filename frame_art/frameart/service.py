@@ -51,7 +51,6 @@ MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 TV_ON_WAIT = 30  # seconds from Home Assistant turning the TV on until Art Mode answers
 WAKE_WAIT = 90  # seconds the page's "Turn the TV on" waits for the TV to say it's on
-OFF = ("off", "standby", "unavailable")  # tv_entity's states when it's off
 
 
 def _bool(v):
@@ -728,15 +727,11 @@ class Rotation:
         return self.cfg.get("home_entity", "zone.home")  # saved options from before 0.21.0 lack it
 
     async def tv_off(self):
-        """Whether tv_entity says the TV is off; None without one, or when Home Assistant doesn't answer."""
-        entity = self.cfg.get("tv_entity")
-        if not entity or not self.ha.ready():
+        """Whether the TV is off, asked of the TV itself: Home Assistant's tv_entity can say "on" for a TV that's
+        asleep and doesn't answer. None without tv_entity, which is what turns it on."""
+        if not self.cfg.get("tv_entity") or not self.ha.ready():
             return None
-        try:
-            return (await asyncio.to_thread(self.ha.state, entity)).get("state") in OFF
-        except Exception as e:
-            log.info("no state for %s (%s: %s)", entity, type(e).__name__, e)
-            return None
+        return not await asyncio.to_thread(tvmod.powered_on, self.cfg["tv_host"], 4)
 
     async def turn_on(self):
         """The TV on through Home Assistant, and time for Art Mode to answer. False when it couldn't."""

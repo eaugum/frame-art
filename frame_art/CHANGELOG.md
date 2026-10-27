@@ -1,5 +1,13 @@
 # Changes
 
+## 0.23.1
+
+- "Turn the TV on" now shows when the TV is off. Whether it's off is asked of the TV itself: Home Assistant's
+  `tv_entity` could say "on" for a TV that was asleep and didn't answer. The same goes for turning the TV on before the
+  morning picture and tonight's show.
+- While Follow the music shows the cover, "New picture" and the other picture buttons are greyed out, and so is
+  choosing a picture; the line at the top says to turn Follow the music off first.
+
 ## 0.23.0
 
 - "Turn the TV on" on the add-on's page, while `tv_entity` says the TV is off: on through Home Assistant, then
