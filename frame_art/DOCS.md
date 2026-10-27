@@ -73,6 +73,7 @@ says which.
 | `nasa` | NASA's image library | Search words (`nebula`) |
 | `wellcome` | Wellcome Collection, public domain and CC0: old illustrations | Search words (`botanical`) |
 | `stasera` | Backdrops of what you watch in Stasera, without text where there is a version without. Needs `stasera_url` and the add-on linked to Stasera | The lists: `watching`, `wantToStart`, `movies`, `recommendations` |
+| `tmdb` | Backdrops without text from TMDB, through Stasera: up to 5 per film or show, 4K where there is, short films left out. Needs `stasera_url` and the add-on linked to Stasera | TMDB ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
 
 **What fits:** only pictures close to 16:9 are used (from 3:2 to a little wider than 16:9), cropped to fill the
 screen. Pictures from the online sources must also be at least 1920 pixels wide. The rest are left out when the source
@@ -86,8 +87,31 @@ doesn't.
 before 200 others have been shown (or the whole source, if it's smaller). A source is read the first time it's drawn;
 sources that have never been read are read in the background when the add-on starts.
 
-**Categories:** the defaults have seven: My pictures, Paintings, Abstract, Japan, Posters, Nature and space, and Film.
-On the add-on's page each source is under its category, and the tick by a category turns all of its sources on or off.
+**Categories:** the defaults have thirteen: My pictures, Paintings, Abstract, Japan, Posters, Nature and space, Film,
+Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel. On the add-on's page each source is under its
+category, and the tick by a category turns all of its sources on or off.
+
+**Film and animation:** Pixar, Disney (Walt Disney Animation Studios and the classics), Star Wars (the saga, Rogue One,
+Solo and the shows), Studio Ghibli, DreamWorks Animation and Marvel Studios are `tmdb` sources: backdrops without text
+from TMDB, fetched through Stasera, so they need the add-on linked to Stasera. The first time a studio is asked for,
+Stasera fetches it in the background, and the pictures come a minute or two later. Options saved before 0.22.0 don't have them; add these under `sources`:
+
+```yaml
+- {name: Pixar, type: tmdb, query: company=3}
+- {name: Disney, type: tmdb, query: company=6125|company=3166&genre=16}
+- {name: Star Wars, type: tmdb,
+   query: collection=10|movie=330459|movie=348350|tv=4194|tv=82856|tv=83867|tv=115036|tv=92830|tv=114461}
+- {name: Studio Ghibli, type: tmdb, query: company=10342}
+- {name: DreamWorks, type: tmdb, query: company=521}
+- {name: Marvel, type: tmdb, query: company=420}
+```
+
+Official wallpapers and concept art
+aren't on TMDB; download them yourself and put them in a folder source in the same category:
+
+```yaml
+- {category: Pixar, name: Pixar wallpapers, type: folder, query: /media/frame-art/pixar}
+```
 
 The film pictures from Stasera come from TMDB and aren't free, but are for use at home. Everything else is public
 domain or free to use.
@@ -104,6 +128,8 @@ Open **Frame Art** in the sidebar. A line under the title says what's in charge 
 - set how often the picture changes, how many of Frame Art's pictures stay on the TV, and the times for the morning
   picture and tonight's show,
 - turn the screensaver and Follow the music on or off,
+- leave out the picture on the wall for good: "Don't show this picture again" (a backdrop with a logo after all, or a
+  picture you don't like). Another one comes at once,
 - link the add-on to Stasera.
 
 **What wins**, top first. When the top one is done, the next takes over.
@@ -218,6 +244,7 @@ The answers wait for the TV.
 | `GET /tv` | Whether the TV is off (`{"off": true}`), from `tv_entity`; `null` without it |
 | `POST /next` | A new picture now. `?art_mode=1` turns on Art Mode too, `?what=morning` or `?what=tonight` shows that picture, and `?wake=1` turns the TV on first when it's off. Ends a fixed picture |
 | `POST /artmode` | Art Mode on, with the picture it has |
+| `POST /never` | The picture on the wall is never shown again, and another comes; only for a picture from a source (`showing_key` in `/status`) |
 | `GET /category?name=Japan` | Recently shown and 24 at random from the category's ticked sources |
 | `GET /thumb?key=…` | A small copy of a picture from `/category` |
 | `POST /show?key=…` | That picture now, in Art Mode, fixed until the next morning picture |

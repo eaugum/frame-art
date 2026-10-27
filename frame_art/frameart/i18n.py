@@ -114,6 +114,8 @@ PAGE = {
     "new_picture": "New picture",
     "show_morning": "Show the morning picture",
     "show_tonight": "Show tonight's show",
+    "never": "Don't show this picture again",
+    "leaving_out": "Leaving the picture out and fetching another …",
     "pictures": "Pictures",
     "recently_shown": "Recently shown",
     "random": "Random",

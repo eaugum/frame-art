@@ -477,6 +477,29 @@ class Rotation:
             log.info("fixed until %s", datetime.datetime.fromtimestamp(self.cfg["fixed"]["until"], self.zone))
         return True
 
+    def showing_key(self):
+        """The key of what's on the wall, when it's from a source (not one of the pictures we make), else None."""
+        last = self.state["recent"][-1] if self.state["recent"] else ""
+        kind = last.split(":", 1)[0]
+        return last if kind not in MADE + OWN and self.source_of(last) else None
+
+    async def never(self):
+        """What's on the wall is never drawn again (a backdrop with a logo TMDB didn't mark, a picture you don't
+        like), and another one comes."""
+        key = self.showing_key()
+        if not key:
+            raise ValueError("only a picture from the sources can be left out")
+        if key not in self.state["bad"]:
+            self.state["bad"].append(key)
+        self.state["history"] = [h for h in self.state["history"] if h["key"] != key]
+        if os.path.exists(self._thumb_path(key)):
+            os.remove(self._thumb_path(key))
+        if (self.cfg.get("fixed") or {}).get("key") == key:
+            self._keep({"fixed": None})
+        self.state.save()
+        log.info("never again: %s", key)
+        return await self.change()
+
     async def _change(self, force, what=None):
         got = await asyncio.to_thread(self.prepared, what)
         if not got:
@@ -756,7 +779,7 @@ class Rotation:
                 "reading": bool(self.reading),
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
-                "saver": self.saver, "tv_entity": bool(self.cfg.get("tv_entity")),
+                "saver": self.saver, "showing_key": self.showing_key(), "tv_entity": bool(self.cfg.get("tv_entity")),
                 "home_entity": self.home_entity(),
                 "music": {k: self.music[k] for k in ("album", "artist", "title")}
                 if self.playing() else None}
@@ -828,12 +851,12 @@ class Rotation:
         if category not in self.categories:
             raise ValueError("no category called %s" % category)
         names = {s.name for s in self.in_play() if s.category == category}  # what's ticked
-        recent, seen = [], set()
+        bad = set(self.state["bad"])
+        recent, seen = [], set(bad)
         for h in reversed(self.state["history"]):
             if h["key"] not in seen and h["key"].split(":", 1)[0] in names:
                 seen.add(h["key"])
                 recent.append({"key": h["key"], "label": h["label"].split(": ", 1)[-1]})
-        bad = set(self.state["bad"])
         keys = [name + ":" + k for name in names for k in (self.state["pools"].get(name) or {}).get("keys") or []]
         keys = [k for k in keys if k not in bad]
         unlisted = sorted(name for name in names if name not in self.state["pools"])

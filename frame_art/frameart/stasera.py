@@ -140,6 +140,15 @@ class Stasera:
             out += [dict(t, list="recommendations") for t in j.get("items") or []]
         return out
 
+    def art(self, query):
+        """Backdrops without text for studios, film series and shows (/tv/art), query being its parameters
+        ("company=3166&genre=16"): {items: [{kind, tmdbId, title, year, backdrops: [{path, width, height}]}], pending}.
+        A source Stasera hasn't fetched yet is in pending, not in items. Raises Unlinked."""
+        status, j = self._request("GET", "/tv/art?" + query)
+        if status != 200 or not isinstance(j, dict):
+            raise RuntimeError("Stasera answered %s to /tv/art?%s" % (status, query))
+        return j
+
     def upcoming(self, today, days=1):
         """What's coming from `today` (the TV's date, YYYY-MM-DD) and `days` on: episodes and films, each with its
         date. Raises Unlinked."""

@@ -16,6 +16,7 @@ import time
 import urllib.parse
 
 from . import image, net
+from .stasera import Unlinked
 
 log = logging.getLogger(__name__)
 
@@ -498,8 +499,80 @@ class Stasera(Source):
         return self.IMAGES + "w500" + self.title(key)["path"]
 
 
+class Tmdb(Source):
+    """Backdrops without text from TMDB, through Stasera's /tv/art: a studio's films, a film series, a show. The query
+    is Stasera's parameters, several with |: company=3 (Pixar), collection=10 (Star Wars), tv=82856, movie=330459,
+    keyword=…, and genre to narrow a studio down (company=3166&genre=16). Up to 5 backdrops a title, each its own key.
+    Like the stasera type, the add-on has to be linked to Stasera, and there's no TMDB key."""
+    type = "tmdb"
+    PARAM = re.compile(r"^(company|collection|tv|movie|keyword|genre)=\d+$")
+    MAX_SOURCES = 20  # Stasera's limit for one call
+    WAIT = 90  # seconds to wait for Stasera to fetch a source it hasn't had before
+    IMAGES = Stasera.IMAGES
+
+    def __init__(self, entry, cfg):
+        Source.__init__(self, entry, cfg)
+        self.client = None  # the add-on's Stasera, set by from_config
+        self.items = {}
+
+    def calls(self):
+        """The queries as few /tv/art calls: genre counts for the whole call, so each genre gets its own."""
+        groups = {}
+        for q in self.queries:
+            parts = q.replace(" ", "").split("&")
+            ids = [p for p in parts if not p.startswith("genre=")]
+            if not ids or not all(self.PARAM.match(p) for p in parts):
+                log.warning("%s: %s isn't like company=3, collection=10 or tv=82856", self.name, q)
+                continue
+            groups.setdefault("&".join(sorted(set(parts) - set(ids))), []).extend(ids)
+        out = []
+        for genre, ids in groups.items():
+            ids = list(dict.fromkeys(ids))
+            for i in range(0, len(ids), self.MAX_SOURCES):
+                out.append("&".join(ids[i:i + self.MAX_SOURCES] + ([genre] if genre else [])))
+        return out
+
+    def keys(self):
+        if not self.client or not self.client.on:
+            log.warning("%s: no stasera_url in the options", self.name)
+            return []
+        items = {}
+        try:
+            for call in self.calls():
+                deadline = time.time() + self.WAIT
+                j = self.client.art(call)
+                while j.get("pending") and time.time() < deadline:
+                    time.sleep(10)
+                    j = self.client.art(call)
+                if j.get("pending"):  # not Skip, and no short list kept for a day: asked again when it's drawn
+                    raise RuntimeError("Stasera is still fetching %s" % ", ".join(j["pending"]))
+                for it in j.get("items") or []:
+                    for b in it.get("backdrops") or []:
+                        if self.usable(b.get("width") or 0, b.get("height") or 0):
+                            items.setdefault("%s:%s:%s" % (it.get("kind"), it.get("tmdbId"), b["path"]), it)
+        except Unlinked:
+            log.warning("%s: the add-on isn't linked to Stasera; link it on the add-on's page", self.name)
+            return []
+        self.items = items
+        return list(items)
+
+    def fetch(self, key):
+        if key not in self.items:
+            self.keys()  # after a restart
+        it = self.items.get(key)
+        if not it:
+            raise RuntimeError("%s isn't in Stasera's answer now" % key)  # not Skip: it may come back
+        img = image.open_image(net.get(self.IMAGES + "original" + key.split(":", 2)[2], timeout=180))
+        self.check(*img.size)
+        title = it.get("title") or "?"
+        return img, "%s (%s)" % (title, it["year"]) if it.get("year") else title
+
+    def thumb(self, key):
+        return self.IMAGES + "w780" + key.split(":", 2)[2]
+
+
 TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome,
-                             Stasera)}
+                             Stasera, Tmdb)}
 
 
 def from_config(cfg, stasera=None):
@@ -514,7 +587,7 @@ def from_config(cfg, stasera=None):
         if name in [s.name for s in out]:
             name += " %d" % (len(out) + 1)
         src = cls(dict(e, name=name), cfg)
-        if cls is Stasera:
+        if cls in (Stasera, Tmdb):
             src.client = stasera
         out.append(src)
     return out

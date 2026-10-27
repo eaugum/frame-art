@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see DOCS.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.21.1"
+version: "0.22.0"
 slug: frame_art
 description: A living gallery in The Frame's Art Mode, from museums, NASA and your own photos, with a morning picture and Follow the music
 url: https://github.com/eaugum/frame-art
@@ -88,6 +88,14 @@ options:
     - {category: Film, name: What we're watching, type: stasera, query: watching|wantToStart}
     - {category: Film, name: Our movies, type: stasera, query: movies}
     - {category: Film, name: Recommended, type: stasera, query: recommendations}
+    # Film and animation: backdrops without text from TMDB, through Stasera
+    - {name: Pixar, type: tmdb, query: company=3}
+    - {name: Disney, type: tmdb, query: company=6125|company=3166&genre=16}
+    - {name: Star Wars, type: tmdb,
+       query: collection=10|movie=330459|movie=348350|tv=4194|tv=82856|tv=83867|tv=115036|tv=92830|tv=114461}
+    - {name: Studio Ghibli, type: tmdb, query: company=10342}
+    - {name: DreamWorks, type: tmdb, query: company=521}
+    - {name: Marvel, type: tmdb, query: company=420}
 schema:
   tv_host: str
   language: list(auto|en|nb)?
@@ -103,5 +111,5 @@ schema:
   sources:
     - name: str
       category: str?
-      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|stasera)
+      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|stasera|tmdb)
       query: str?

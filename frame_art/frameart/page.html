@@ -90,6 +90,7 @@
     <button id="next" data-t="new_picture"></button>
     <button id="morning" data-t="show_morning"></button>
     <button id="tonight" data-t="show_tonight"></button>
+    <button id="never" data-t="never"></button>
   </div>
   <p class="note" id="msg"></p>
 
@@ -184,6 +185,7 @@
     $("info").textContent = [category !== source && category, source, s.changed && tr("changed_at", {time: time(s.changed)})]
       .filter(Boolean).join(" · ");
     $("pic").src = "showing.jpg?" + s.changed;
+    $("never").hidden = !s.showing_key;
     busy(!!s.busy);
     now(s);
 
@@ -293,7 +295,7 @@
   }
 
   function busy(b) {
-    ["next", "morning", "tonight"].forEach(function (id) { $(id).disabled = b; });
+    ["next", "morning", "tonight", "never"].forEach(function (id) { $(id).disabled = b; });
   }
   function load() { fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {}); }
   // The TV off (tv_entity): ask before turning it on; then the same with &wake=1
@@ -367,6 +369,7 @@
   $("next").onclick = function () { act("next?art_mode=1", tr("fetching_new")); };
   $("morning").onclick = function () { act("next?art_mode=1&what=morning", tr("making_morning")); };
   $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", tr("making_tonight")); };
+  $("never").onclick = function () { send("never", tr("leaving_out")); };
   $("more").onclick = function () { if (open) gallery(open); };
   $("close").onclick = function () { open = null; gal.hidden = true; };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };

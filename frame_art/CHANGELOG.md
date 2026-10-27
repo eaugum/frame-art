@@ -1,5 +1,14 @@
 # Changes
 
+## 0.22.0
+
+- Film and animation: six new categories, Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel, with
+  backdrops without text from TMDB. They come through Stasera with the new source type `tmdb` (a studio, a film
+  series or a show by its TMDB id), so they need the add-on linked to Stasera, and no TMDB key. Options you've saved
+  keep their sources: to get the new ones, add the six lines from DOCS.md (Sources) under `sources`.
+- "Don't show this picture again" on the add-on's page: the picture on the wall is never drawn again, and another one
+  comes. It works for every source, for a backdrop with a logo after all or a picture you don't like. Also `POST /never`.
+
 ## 0.21.1
 
 - The device in Home Assistant no longer goes unavailable for a minute and a half every six minutes while the TV is
