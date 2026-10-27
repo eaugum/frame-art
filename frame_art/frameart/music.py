@@ -54,13 +54,15 @@ class HomeAssistant:
             self.players_at = now
         return self.players
 
-    def home(self):
-        """Someone at home: zone.home counts the people in it; without that, a person.* that's home."""
-        try:
-            return int(self.state("zone.home")["state"]) > 0
-        except (ValueError, KeyError):
-            states = json.loads(self.get("/api/states", timeout=30))
-            return any(s["entity_id"].startswith("person.") and s["state"] == "home" for s in states)
+    def home(self, entity):
+        """Someone at home, from home_entity: a zone counts the people in it, a person or device_tracker is "home", a
+        group, binary_sensor or input_boolean "on" (or "home"). Without an entity, always."""
+        if not entity:
+            return True
+        state = self.state(entity)["state"]
+        if entity.startswith("zone."):
+            return state.isdigit() and int(state) > 0
+        return state in ("home", "on")
 
     def playing(self, now):
         """{key, album, artist, title, cover, entity} for what plays, or None."""

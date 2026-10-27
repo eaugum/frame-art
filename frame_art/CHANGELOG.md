@@ -1,5 +1,15 @@
 # Changes
 
+## 0.21.0
+
+- Tonight's show can turn the TV on too, like the morning picture: "Turn the TV on first" under it on the add-on's
+  page (on by default; it needs `tv_entity`).
+- "Only when someone is home" is for turning the TV on as well as Follow the music, and is a setting of its own on the
+  page. Who's home comes from the new option `home_entity` (`zone.home` by default; a person, device_tracker, group,
+  binary_sensor or input_boolean works too).
+- A morning picture asked for before `morning_time` (or tonight's show before `tonight_time`) no longer counts as the
+  day's, so the one at its time still comes. Before, "Morning picture now" after midnight used up the next morning.
+
 ## 0.20.1
 
 - The add-on's page, the device in Home Assistant and the options are always in English; `language` is only for the

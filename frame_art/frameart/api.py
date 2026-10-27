@@ -15,8 +15,8 @@ POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what
 POST /show?key=…  that picture now, in Art Mode, standing until the next morning picture (a fixed picture)
 POST /artmode  Art Mode on, with the picture it has
 POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, keep,
-               morning, morning_time, tonight, tonight_time, screensaver, screensaver_stasera, music,
-               music_home_only; mode shuffle ends a fixed picture, and mode category with category ticks only that
+               morning, morning_time, morning_tv_on, tonight, tonight_time, tonight_tv_on, screensaver,
+               screensaver_stasera, music, music_home_only (the music and turning the TV on); mode shuffle ends a fixed picture, and mode category with category ticks only that
                category's sources. New sources_off ends a fixed picture too. /schedule is the same.
 POST /stasera/link    a code to approve in Stasera (in /status under pairing until it's approved)
 POST /stasera/unlink  forgets the Stasera token

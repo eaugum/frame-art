@@ -33,7 +33,7 @@ SWITCHES = {  # settings
     "screensaver": "Screensaver",
     "screensaver_stasera": "Stasera in the screensaver",
     "music": "Follow the music",
-    "music_home_only": "Only when someone is home",
+    "music_home_only": "Only when someone is home",  # the music and turning the TV on
 }
 BUTTONS = {  # id -> (name, icon)
     "next": ("Next picture", "mdi:image-refresh"),

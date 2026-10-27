@@ -17,7 +17,13 @@ configuration:
   tv_entity:
     name: The TV in Home Assistant
     description: >-
-      A media_player that is turned on before the morning picture when the TV is off. Empty: never.
+      A media_player that is turned on before the morning picture and tonight's show when the TV is off. Empty:
+      never.
+  home_entity:
+    name: Who's home
+    description: >-
+      zone.home (someone in it), or a person, device_tracker, group, binary_sensor or input_boolean that is home or
+      on. With "Only when someone is home" on, Follow the music and turning the TV on wait for it. Empty: always home.
   calendars:
     name: Calendars
     description: Calendars whose events today are in the morning picture.

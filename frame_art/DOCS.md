@@ -30,7 +30,8 @@ interval, the times and the switches) is on the add-on's page and is saved in `/
 | `language` | The language of the morning picture and the posters: `auto` (default), `en` or `nb`. See [Language](#language) |
 | `api_key` | The key for the API. Left empty, the add-on makes one and writes it in |
 | `weather_entity` | The weather for the morning picture, e.g. `weather.forecast_home` (Met.no). Empty gives no weather |
-| `tv_entity` | The TV as a `media_player` in Home Assistant, turned on before the morning picture when it's off. Empty: never |
+| `tv_entity` | The TV as a `media_player` in Home Assistant, turned on before the morning picture and tonight's show when it's off. Empty: never |
+| `home_entity` | Who's home, for "Only when someone is home": `zone.home` (default; someone in it), or a `person`, `device_tracker`, `group`, `binary_sensor` or `input_boolean` that is `home` or `on`. Empty: always home |
 | `calendars` | `calendar.*` entities whose events today are shown on the morning picture |
 | `price_entity` | A Nord Pool or Tibber price sensor for the morning picture |
 | `stasera_url` | [Stasera](https://www.stasera.app), for tonight's show, the screensaver posters and the film sources. Optional |
@@ -137,13 +138,19 @@ doesn't answer, the picture comes without weather.
 
 **Turn the TV on first:** with `tv_entity` set and the switch "Turn the TV on first" on (it is by default), Home
 Assistant turns the TV on when it's off at the morning picture's time, once a day, and the picture comes up in Art
-Mode. Without it, the morning picture waits until the TV is on, but only until tonight's show.
+Mode. With "Only when someone is home" on (it is by default), only when `home_entity` says someone is. Otherwise the
+morning picture waits until the TV is on, but only until tonight's show.
+
+A morning picture you ask for yourself before `morning_time` ("Morning picture now") doesn't count as the day's: the
+morning picture still comes at its time.
 
 ## Tonight's show (Stasera)
 
 With [Stasera](https://www.stasera.app) linked, Frame Art makes a poster at `tonight_time` (18:00 by default) of the
 first show in Stasera's "Tonight": the backdrop, the logo or the title, and the season and episode. If there's nothing
 tonight, there's no poster.
+
+Tonight's show has its own "Turn the TV on first", which works like the morning picture's.
 
 To link: press "Link" on the add-on's page, and approve the code in Stasera. "Unlink" forgets it.
 
@@ -161,7 +168,8 @@ Spotify or SpotifyPlus integration, the first `media_player.spotify*` that plays
 picture changes for each song.
 
 It goes in front of everything else, but doesn't turn on Art Mode by itself. Three minutes after the music stops, the
-picture from before comes back. "Only when someone is home" follows the music only when `zone.home` has someone in it.
+picture from before comes back. "Only when someone is home" follows the music only when `home_entity` (`zone.home` by default) says someone is home;
+the same switch is for turning the TV on before the morning picture and tonight's show.
 
 ## In Home Assistant (MQTT)
 
@@ -175,7 +183,8 @@ to set up. Without Mosquitto it runs as before.
 | `select.frame_art_category` | The categories; choosing one ticks only its sources |
 | `number.frame_art_interval` | Minutes between the changes |
 | `switch.frame_art_morning`, `_tonight` | The morning picture and tonight's show |
-| `switch.frame_art_screensaver`, `_screensaver_stasera`, `_music`, `_music_home_only` | The screensaver and Follow the music |
+| `switch.frame_art_screensaver`, `_screensaver_stasera`, `_music` | The screensaver and Follow the music |
+| `switch.frame_art_music_home_only` | Only when someone is home: Follow the music, and turning the TV on |
 | `sensor.frame_art_showing` | The picture's title, with the source, the category, when it changed and the next change as attributes |
 | `sensor.frame_art_wanted` | What's in charge: `music`, `rotation`, `fixed`, `morning`, `tonight` or `saver` |
 | `image.frame_art_picture` | The picture on the wall, 1280 pixels wide |
@@ -212,7 +221,7 @@ The answers wait for the TV.
 | `GET /category?name=Japan` | Recently shown and 24 at random from the category's ticked sources |
 | `GET /thumb?key=…` | A small copy of a picture from `/category` |
 | `POST /show?key=…` | That picture now, in Art Mode, fixed until the next morning picture |
-| `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_time`, `tonight`, `tonight_time`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only` |
+| `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_time`, `morning_tv_on`, `tonight`, `tonight_time`, `tonight_tv_on`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only` |
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
 

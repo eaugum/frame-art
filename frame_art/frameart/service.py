@@ -70,11 +70,15 @@ SETTINGS = {
     "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),  # before sources_off
     "sources_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
     # Kept for the screensaver (AUG-1494) and Follow the music (AUG-1495); the page shows them already
-    # The TV (tv_entity in the options) turned on through Home Assistant before Morgenbildet, when it's off
+    # The TV (tv_entity in the options) turned on through Home Assistant before Morgenbildet and tonight's show,
+    # when it's off
     "morning_tv_on": (True, _bool),
+    "tonight_tv_on": (True, _bool),
     "screensaver": (True, _bool),  # off: Frame TV doesn't start its screensaver (it reads this from /status)
     "screensaver_stasera": (True, _bool),
     "music": (False, _bool),
+    # Only when someone is home (home_entity in the options): Follow the music and turning the TV on. The name is
+    # from when it was only the music; it's kept for switch.frame_art_music_home_only
     "music_home_only": (True, _bool),
 }
 SCHEDULE = ("interval_minutes", "morning", "morning_time", "tonight", "tonight_time")
@@ -125,6 +129,7 @@ class Rotation:
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
         self.saver_minutes = None  # how often the picture changes meanwhile, from Frame TV
         self.back_at = 0  # when Frame TV was last opened; the TV says "off" twice
+        self.away_logged = None  # the day "nobody home" was last in the log
         self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
         self.ha = music.HomeAssistant(cfg)
         i18n.setup(cfg)
@@ -517,7 +522,8 @@ class Rotation:
             self.state["changed"] = time.time()
             self.state["showing"] = label
             if kind in MADE:
-                self.state["made"][kind] = day
+                if self.now().time() >= self._clock(kind + "_time"):
+                    self.state["made"][kind] = day  # one asked for before its time doesn't use up today's
             elif kind not in OWN:
                 self.state["history"] = (self.state["history"] + [{"key": key, "label": label,
                                                                     "at": int(time.time())}])[-HISTORY:]
@@ -615,7 +621,7 @@ class Rotation:
         return bool(self.cfg.get("music") and self.music and time.time() - self.music_at < MUSIC_GRACE)
 
     def _listen(self):
-        if self.cfg.get("music_home_only", True) and not self.ha.home():
+        if self.cfg.get("music_home_only", True) and not self.ha.home(self.home_entity()):
             return None
         return self.ha.playing(time.time())
 
@@ -663,17 +669,38 @@ class Rotation:
             await self._put(jpeg, b["label"], b["key"], force=False)
         log.info("the music stopped: back to %s", b["label"])
 
-    async def _tv_on(self):
-        """Before Morgenbildet: the TV on through Home Assistant when it's off, once a day. True when we turned it on
-        today, so Morgenbildet goes to Art Mode (and on a try after that too)."""
+    async def _tv_on(self, kind):
+        """Before Morgenbildet or tonight's show: the TV on through Home Assistant when it's off and someone is home,
+        once a day each. True when we turned it on today, so the picture goes to Art Mode (and on a try after that)."""
         today = self.now().date().isoformat()
-        if self.state["made"].get("tv_on") == today:
+        done = "tv_on" if kind == "morning" else "tv_on_" + kind  # "tv_on" from before tonight's
+        if self.state["made"].get(done) == today:
             return True
-        if not self.cfg.get("morning_tv_on", True) or not await self.tv_off() or not await self.turn_on():
+        if not self.cfg.get(kind + "_tv_on", True) or not await self.tv_off() or not await self._home():
             return False
-        self.state["made"]["tv_on"] = today
+        if not await self.turn_on():
+            return False
+        self.state["made"][done] = today
         self.state.save()
         return True
+
+    async def _home(self):
+        """Someone at home, or the switch is off; when Home Assistant doesn't answer, yes rather than no picture."""
+        if not self.cfg.get("music_home_only", True):
+            return True
+        entity = self.home_entity()
+        try:
+            home = await asyncio.to_thread(self.ha.home, entity)
+        except Exception as e:
+            log.info("no state for %s (%s: %s); turning the TV on anyway", entity, type(e).__name__, e)
+            return True
+        if not home and self.away_logged != self.now().date():
+            log.info("nobody home (%s): the TV stays off, and the picture waits until it's on", entity)
+            self.away_logged = self.now().date()
+        return home
+
+    def home_entity(self):
+        return self.cfg.get("home_entity", "zone.home")  # saved options from before 0.21.0 lack it
 
     async def tv_off(self):
         """Whether tv_entity says the TV is off; None without one, or when Home Assistant doesn't answer."""
@@ -730,6 +757,7 @@ class Rotation:
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
                 "saver": self.saver, "tv_entity": bool(self.cfg.get("tv_entity")),
+                "home_entity": self.home_entity(),
                 "music": {k: self.music[k] for k in ("album", "artist", "title")}
                 if self.playing() else None}
 
@@ -860,7 +888,7 @@ class Rotation:
                 await self._nap(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
                 continue
             else:
-                woke = want == "morning" and await self._tv_on()
+                woke = want in MADE and await self._tv_on(want)
                 job = self.change(art_mode=woke, what=want if want in OWN else None)
             try:
                 ok = (await job) is not False

@@ -118,17 +118,19 @@
       <input id="keep" type="number" min="1" max="20"></div>
     <div class="row"><span><span data-t="morning"></span><small data-t="morning_note"></small></span><input id="morning_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
-    <div class="row sub" id="tv-row"><span><span data-t="tv_on"></span><small id="tv-note"></small></span>
+    <div class="row sub" id="morning-tv"><span><span data-t="tv_on"></span><small></small></span>
       <label class="switch"><input type="checkbox" data-setting="morning_tv_on"><i></i></label></div>
     <div class="row"><span><span data-t="tonight"></span><small data-t="tonight_note"></small></span><input id="tonight_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="tonight"><i></i></label></div>
+    <div class="row sub" id="tonight-tv"><span><span data-t="tv_on"></span><small></small></span>
+      <label class="switch"><input type="checkbox" data-setting="tonight_tv_on"><i></i></label></div>
     <div class="row"><span><span data-t="screensaver"></span><small data-t="screensaver_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver"><i></i></label></div>
     <div class="row sub"><span><span data-t="screensaver_stasera"></span><small data-t="screensaver_stasera_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver_stasera"><i></i></label></div>
     <div class="row"><span><span data-t="music"></span><small data-t="music_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="music"><i></i></label></div>
-    <div class="row sub"><span data-t="music_home_only"></span>
+    <div class="row"><span><span data-t="home_only"></span><small id="home-note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="music_home_only"><i></i></label></div>
   </section>
 
@@ -259,11 +261,18 @@
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     $("morning_time").disabled = !st.morning;
     $("tonight_time").disabled = !st.tonight;
-    var tv = $("tv-row").querySelector("input");
-    $("tv-row").hidden = !st.morning;
-    tv.disabled = !s.tv_entity;
-    if (!s.tv_entity) tv.checked = false;
-    $("tv-note").textContent = tr(s.tv_entity ? "tv_on_note" : "tv_on_missing");
+    ["morning", "tonight"].forEach(function (kind) {
+      var row = $(kind + "-tv"), tv = row.querySelector("input");
+      row.hidden = !st[kind];
+      tv.disabled = !s.tv_entity;
+      if (!s.tv_entity) tv.checked = false;
+      row.querySelector("small").textContent = tr(s.tv_entity ? "tv_on_note" : "tv_on_missing");
+    });
+    var home = $("home-note").parentNode.parentNode.querySelector("input");
+    home.disabled = !s.home_entity;
+    if (!s.home_entity) home.checked = false;
+    $("home-note").textContent = s.home_entity ? tr("home_only_note", {entity: s.home_entity}) :
+      tr("home_only_missing");
   }
 
   function connections(s) {
