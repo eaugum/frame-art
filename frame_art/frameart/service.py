@@ -50,6 +50,7 @@ OWN = ("saver", "music")  # pictures of the moment: not in «Nylig vist», and n
 MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 TV_ON_WAIT = 30  # seconds from Home Assistant turning the TV on until Art Mode answers
+OFF = ("off", "standby", "unavailable")  # tv_entity's states when it's off
 
 
 def _bool(v):
@@ -666,20 +667,32 @@ class Rotation:
         today = self.now().date().isoformat()
         if self.state["made"].get("tv_on") == today:
             return True
-        entity = self.cfg.get("tv_entity")
-        if not self.cfg.get("morning_tv_on", True) or not entity or not self.ha.ready():
+        if not self.cfg.get("morning_tv_on", True) or not await self.tv_off() or not await self.turn_on():
             return False
+        self.state["made"]["tv_on"] = today
+        self.state.save()
+        return True
+
+    async def tv_off(self):
+        """Whether tv_entity says the TV is off; None without one, or when Home Assistant doesn't answer."""
+        entity = self.cfg.get("tv_entity")
+        if not entity or not self.ha.ready():
+            return None
         try:
-            on = (await asyncio.to_thread(self.ha.state, entity)).get("state")
-            if on not in ("off", "standby", "unavailable"):
-                return False
+            return (await asyncio.to_thread(self.ha.state, entity)).get("state") in OFF
+        except Exception as e:
+            log.info("no state for %s (%s: %s)", entity, type(e).__name__, e)
+            return None
+
+    async def turn_on(self):
+        """The TV on through Home Assistant, and time for Art Mode to answer. False when it couldn't."""
+        entity = self.cfg.get("tv_entity")
+        try:
             await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
         except Exception as e:
             log.info("couldn't turn the TV on through Home Assistant (%s: %s)", type(e).__name__, e)
             return False
-        log.info("turned the TV on through Home Assistant (%s) for Morgenbildet", entity)
-        self.state["made"]["tv_on"] = today
-        self.state.save()
+        log.info("turned the TV on through Home Assistant (%s)", entity)
         await asyncio.sleep(TV_ON_WAIT)
         return True
 

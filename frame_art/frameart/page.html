@@ -47,6 +47,11 @@
   .source .n { flex: none; color: var(--faint); font-size: 13px; }
   input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 
+  .dialog { position: fixed; inset: 0; background: rgba(0, 0, 0, .6); display: flex; align-items: center;
+            justify-content: center; z-index: 10; }
+  .dialog > div { background: var(--card); border-radius: 12px; padding: 20px 22px; max-width: 360px; }
+  .dialog p { margin: 0 0 4px; }
+  button.yes { background: var(--accent); color: #111; font-weight: 600; }
   .gallery { margin: 10px 0 4px; padding: 12px; background: #141414; border-radius: 8px; }
   .gallery h3 { font-size: 13px; color: var(--dim); font-weight: 600; margin: 8px 0; }
   .grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(140px, 1fr)); gap: 6px; }
@@ -131,6 +136,11 @@
     <div class="row"><span id="stasera"></span><button id="link" class="small">Koble til</button></div>
   </section>
 </main>
+<div id="ask" class="dialog" hidden><div>
+  <p>TV-en er av. Vil du slå den på?</p>
+  <p class="note">Det tar et halvt minutt før bildet kommer.</p>
+  <div class="actions"><button id="ask-yes" class="yes">Slå på</button><button id="ask-no">Avbryt</button></div>
+</div></div>
 <script>
   var last = {}, open = null, savedAt = 0;
   function $(id) { return document.getElementById(id); }
@@ -266,8 +276,22 @@
     ["next", "morning", "tonight"].forEach(function (id) { $(id).disabled = b; });
   }
   function load() { fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {}); }
+  // The TV off (tv_entity): ask before turning it on; then the same with &wake=1
   function act(path, doing) {
     busy(true);
+    fetch("tv").then(function (r) { return r.json(); }).catch(function () { return {}; }).then(function (tv) {
+      if (!tv.off) { send(path, doing); return; }
+      busy(false);
+      $("ask").hidden = false;
+      $("ask-yes").onclick = function () {
+        $("ask").hidden = true;
+        busy(true);
+        send(path + "&wake=1", "Slår på TV-en … " + doing);
+      };
+      $("ask-no").onclick = function () { $("ask").hidden = true; };
+    });
+  }
+  function send(path, doing) {
     $("msg").textContent = doing;
     window.scrollTo({top: 0, behavior: "smooth"});
     fetch(path, {method: "POST"}).then(function (r) { return r.json(); }).then(function (s) {

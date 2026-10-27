@@ -1,5 +1,11 @@
 # Endringer
 
+## 0.19.0
+
+- Add-on-siden: er TV-en av (`tv_entity`) når du trykker en knapp eller velger et bilde, spør siden om den skal slå
+  den på. Da skrur HA den på, og bildet kommer i Kunstmodus et halvt minutt etter. `GET /tv` sier om TV-en er av, og
+  `?wake=1` på `/next` og `/show` slår den på først.
+
 ## 0.18.0
 
 - Morgenbildet bruker hele skjermen, med større skrift. Under været står temperaturen kl. 8, 12, 16 og 20, vinden fra

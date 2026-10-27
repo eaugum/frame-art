@@ -155,7 +155,8 @@ den ikke. Svarene venter på TV-en.
 | Kall | Hva |
 |---|---|
 | `GET /status` | Hva som vises, når det ble byttet og når det byttes neste gang, modusen (`mode`: `shuffle` eller `fixed`), kategoriene, antall bilder per kilde (`pools`, `null` før den er lest) og valgene |
-| `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også, `?what=morning` viser Morgenbildet og `?what=tonight` kveldens serie. Avslutter et fast bilde |
+| `GET /tv` | Om TV-en er av (`{"off": true}`), fra `tv_entity`; `null` uten den |
+| `POST /next` | Et nytt bilde nå; `?art_mode=1` setter TV-en i Kunstmodus også, `?what=morning` viser Morgenbildet og `?what=tonight` kveldens serie. `?wake=1` (også på `/show`) slår på TV-en først når den er av. Avslutter et fast bilde |
 | `POST /artmode` | Kunstmodus på, med bildet den har |
 | `GET /category?name=Japan` | Nylig vist og 24 tilfeldige fra kildene i kategorien som er krysset av, til å velge et bilde |
 | `GET /thumb?key=…` | Et lite bilde av en nøkkel fra `/category` |

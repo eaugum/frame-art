@@ -8,8 +8,10 @@ GET  /showing.jpg  the picture
 GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random, from the
                category's sources that are ticked
 GET  /thumb?key=…  a small copy of a picture (a key from /category)
+GET  /tv       whether the TV is off ({"off": true}), from tv_entity; null without one
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
-               Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture.
+               Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture. ?wake=1 (and on
+               /show) turns the TV on first through Home Assistant when it's off.
 POST /show?key=…  that picture now, in Art Mode, standing until the next Morgenbildet (Fast bilde)
 POST /artmode  Art Mode on, with the picture it has
 POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, keep,
@@ -123,7 +125,19 @@ def app(rotation):
         if what not in (None, "morning", "tonight"):
             return web.json_response({"ok": False, "error": "what is morning or tonight"}, status=400, headers=CORS)
         log.info("asked for %s%s", what or "a new picture", " in Art Mode" if art_mode else "")
-        return await act(request, lambda: rotation.change(art_mode=art_mode, what=what))
+
+        async def go():
+            await wake(request)
+            return await rotation.change(art_mode=art_mode, what=what)
+        return await act(request, go)
+
+    async def wake(request):
+        """?wake=1: the TV on first, when it's off (the page asked)."""
+        if request.query.get("wake") == "1" and await rotation.tv_off():
+            await rotation.turn_on()
+
+    async def tv(request):
+        return web.json_response({"off": await rotation.tv_off()}, headers=CORS)
 
     async def settings(request):
         try:
@@ -159,6 +173,7 @@ def app(rotation):
         key = request.query.get("key", "")
         log.info("asked to show %s", key)
         try:
+            await wake(request)
             ok = await rotation.choose(key)
             return web.json_response(dict(rotation.status(), ok=ok), headers=CORS)
         except ValueError as e:
@@ -204,7 +219,7 @@ def app(rotation):
 
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
-                  web.get("/category", category), web.get("/thumb", thumb), web.post("/show", show),
+                  web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv), web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/settings", settings),
                   web.post("/schedule", settings), web.post("/saver", saver),
                   web.post("/stasera/link", link), web.post("/stasera/unlink", unlink),
