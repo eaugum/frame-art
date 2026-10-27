@@ -28,6 +28,7 @@
   button:hover { background: #333; }
   button.small { padding: 6px 12px; font-size: 14px; }
   button:disabled { opacity: .5; cursor: default; }
+  button.on { background: var(--accent); color: #111; font-weight: 600; }
 
   section { background: var(--card); border-radius: 12px; padding: 16px 18px; margin-top: 20px; }
   section > header { display: flex; align-items: baseline; justify-content: space-between; gap: 12px;
@@ -91,6 +92,8 @@
     <button id="morning" data-t="show_morning"></button>
     <button id="tonight" data-t="show_tonight"></button>
     <button id="never" data-t="never"></button>
+    <button id="music" data-t="music"></button>
+    <button id="power" data-t="turn_tv_on" hidden></button>
   </div>
   <p class="note" id="msg"></p>
 
@@ -129,8 +132,6 @@
       <label class="switch"><input type="checkbox" data-setting="screensaver"><i></i></label></div>
     <div class="row sub"><span><span data-t="screensaver_stasera"></span><small data-t="screensaver_stasera_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver_stasera"><i></i></label></div>
-    <div class="row"><span><span data-t="music"></span><small data-t="music_note"></small></span>
-      <label class="switch"><input type="checkbox" data-setting="music"><i></i></label></div>
     <div class="row"><span><span data-t="home_only"></span><small id="home-note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="music_home_only"><i></i></label></div>
   </section>
@@ -186,6 +187,8 @@
       .filter(Boolean).join(" · ");
     $("pic").src = "showing.jpg?" + s.changed;
     $("never").hidden = !s.showing_key;
+    $("music").className = (s.settings || {}).music ? "on" : "";
+    $("music").title = tr("music_note");
     busy(!!s.busy);
     now(s);
 
@@ -199,7 +202,7 @@
     var st = s.settings || {}, what, words = [];
     if (s.wanted === "music") {
       what = tr("music");
-      words = [s.music.title + " – " + s.music.artist];
+      words = [s.music.title + " – " + s.music.artist + tr("music_words")];
     } else if (s.wanted === "fixed") {
       what = tr("fixed");
       words = [tr("fixed_until", {when: day(s.fixed.until)}),
@@ -297,7 +300,15 @@
   function busy(b) {
     ["next", "morning", "tonight", "never"].forEach(function (id) { $(id).disabled = b; });
   }
-  function load() { fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {}); }
+  function load() {
+    fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {});
+    power();
+  }
+  // "Turn the TV on" only while tv_entity says it's off
+  function power() {
+    fetch("tv").then(function (r) { return r.json(); }).then(function (tv) { $("power").hidden = !tv.off; })
+      .catch(function () {});
+  }
   // The TV off (tv_entity): ask before turning it on; then the same with &wake=1
   function act(path, doing) {
     busy(true);
@@ -313,13 +324,13 @@
       $("ask-no").onclick = function () { $("ask").hidden = true; };
     });
   }
-  function send(path, doing) {
+  function send(path, doing, then) {
     $("msg").textContent = doing;
     window.scrollTo({top: 0, behavior: "smooth"});
     fetch(path, {method: "POST"}).then(function (r) { return r.json(); }).then(function (s) {
       show(s);
       $("msg").textContent = s.ok ? tr("done") : tr("failed", {error: s.error || tr("unknown_error")});
-    }).catch(function () { $("msg").textContent = tr("no_answer"); load(); });
+    }).catch(function () { $("msg").textContent = tr("no_answer"); load(); }).then(then);
   }
   function save(changes) {
     fetch("settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(changes)})
@@ -370,6 +381,11 @@
   $("morning").onclick = function () { act("next?art_mode=1&what=morning", tr("making_morning")); };
   $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", tr("making_tonight")); };
   $("never").onclick = function () { send("never", tr("leaving_out")); };
+  $("music").onclick = function () { save({music: !(last.settings || {}).music}); };
+  $("power").onclick = function () {
+    this.disabled = true;
+    send("tv/on", tr("waking"), function () { $("power").disabled = false; power(); });
+  };
   $("more").onclick = function () { if (open) gallery(open); };
   $("close").onclick = function () { open = null; gal.hidden = true; };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };

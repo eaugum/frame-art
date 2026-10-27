@@ -9,6 +9,7 @@ GET  /category?name=Japan  for choosing a picture: what's been on the wall latel
                category's sources that are ticked
 GET  /thumb?key=…  a small copy of a picture (a key from /category)
 GET  /tv       whether the TV is off ({"off": true}), from tv_entity; null without one
+POST /tv/on    the TV on through Home Assistant (tv_entity), then back_app opened, without waiting for the TV's turn
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture. ?wake=1 (and on
                /show) turns the TV on first through Home Assistant when it's off.
@@ -137,6 +138,10 @@ def app(rotation):
         if request.query.get("wake") == "1" and await rotation.tv_off():
             await rotation.turn_on()
 
+    async def tv_on(request):
+        log.info("asked to turn the TV on")
+        return await act(request, rotation.wake_up)
+
     async def tv(request):
         return web.json_response({"off": await rotation.tv_off()}, headers=CORS)
 
@@ -225,7 +230,8 @@ def app(rotation):
 
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
-                  web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv), web.post("/show", show),
+                  web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv), web.post("/tv/on", tv_on),
+                  web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/never", never),
                   web.post("/settings", settings), web.post("/schedule", settings), web.post("/saver", saver),
                   web.post("/stasera/link", link), web.post("/stasera/unlink", unlink),

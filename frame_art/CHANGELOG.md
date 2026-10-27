@@ -1,5 +1,14 @@
 # Changes
 
+## 0.23.0
+
+- "Turn the TV on" on the add-on's page, while `tv_entity` says the TV is off: on through Home Assistant, then
+  `back_app` (Frame TV) opened. Also `POST /tv/on`. It works while the add-on is waiting for the sleeping TV.
+- Follow the music is a button by "New picture" and the others, lit when it's on, instead of a switch under Settings.
+  While the music plays, the line at the top says a picture you choose stays until the next song.
+- With the TV off, a new song no longer makes the add-on try the TV again at once; it waits the usual five minutes.
+  Each song held up the buttons on the page for a minute or two, so they were greyed out most of the time.
+
 ## 0.22.0
 
 - Film and animation: six new categories, Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel, with

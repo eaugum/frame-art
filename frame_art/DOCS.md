@@ -121,13 +121,16 @@ domain or free to use.
 Open **Frame Art** in the sidebar. A line under the title says what's in charge now. From the page you can:
 
 - show a new picture, the morning picture or tonight's show at once,
+- turn Follow the music on or off with its button by the others (it's lit when it's on),
+- turn the TV on: "Turn the TV on" is there while `tv_entity` says it's off. It turns the TV on through Home Assistant
+  and opens `back_app` (Frame TV: `FrameTVapp.FrameTV`); without `back_app`, the TV stays where it comes up,
 - tick sources and categories,
 - **choose a picture**: "Choose picture" by a category shows what's been shown lately and 24 at random. The picture
   you press is shown at once and stays until the next morning picture. "New picture" or "Resume the rotation now" ends it
   sooner,
 - set how often the picture changes, how many of Frame Art's pictures stay on the TV, and the times for the morning
   picture and tonight's show,
-- turn the screensaver and Follow the music on or off,
+- turn the screensaver on or off,
 - leave out the picture on the wall for good: "Don't show this picture again" (a backdrop with a logo after all, or a
   picture you don't like). Another one comes at once,
 - link the add-on to Stasera.
@@ -242,6 +245,7 @@ The answers wait for the TV.
 |---|---|
 | `GET /status` | What's showing, when it changed and changes next, the mode, the categories, the number of pictures per source and the settings |
 | `GET /tv` | Whether the TV is off (`{"off": true}`), from `tv_entity`; `null` without it |
+| `POST /tv/on` | The TV on through Home Assistant (`tv_entity`), then `back_app` opened. Doesn't wait for the TV's turn, so it answers while the add-on waits for a sleeping TV |
 | `POST /next` | A new picture now. `?art_mode=1` turns on Art Mode too, `?what=morning` or `?what=tonight` shows that picture, and `?wake=1` turns the TV on first when it's off. Ends a fixed picture |
 | `POST /artmode` | Art Mode on, with the picture it has |
 | `POST /never` | The picture on the wall is never shown again, and another comes; only for a picture from a source (`showing_key` in `/status`) |

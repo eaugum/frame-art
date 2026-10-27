@@ -50,6 +50,7 @@ OWN = ("saver", "music")  # pictures of the moment: not in "Recently shown", and
 MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 TV_ON_WAIT = 30  # seconds from Home Assistant turning the TV on until Art Mode answers
+WAKE_WAIT = 90  # seconds the page's "Turn the TV on" waits for the TV to say it's on
 OFF = ("off", "standby", "unavailable")  # tv_entity's states when it's off
 
 
@@ -135,6 +136,7 @@ class Rotation:
         i18n.setup(cfg)
         self.music, self.music_at = None, 0  # what played last, and when it was last seen playing
         self.wake = asyncio.Event()  # the music changed: the timer looks at once
+        self.retry_at = 0  # the TV didn't answer: a new song doesn't try again before this
         self.listened = asyncio.Event()  # the player has been looked at once since the start
         self._from_categories()
 
@@ -748,6 +750,36 @@ class Rotation:
         await asyncio.sleep(TV_ON_WAIT)
         return True
 
+    async def wake_up(self):
+        """The page's "Turn the TV on": on through Home Assistant, then back_app (Frame TV) on the screen. Doesn't wait
+        for the lock, which a sleeping TV holds."""
+        entity, host = self.cfg.get("tv_entity"), self.cfg["tv_host"]
+        if not entity:
+            raise ValueError("tv_entity is empty in the add-on's configuration")
+        if not await asyncio.to_thread(tvmod.powered_on, host):
+            await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
+            log.info("turned the TV on through Home Assistant (%s), from the page", entity)
+            until = time.time() + WAKE_WAIT
+            while not await asyncio.to_thread(tvmod.powered_on, host):
+                if time.time() > until:
+                    raise RuntimeError("the TV didn't come on")
+                await asyncio.sleep(2)
+        self.retry_at = 0
+        self.wake.set()  # the timer tries again now that it answers
+        app = (self.cfg.get("back_app") or "").strip()
+        if not app:
+            return True
+        self.back_at = time.time()  # coming up in Art Mode and leaving it opens the app once, not twice
+        for attempt in range(3):  # just woken, the TV can say no to the first
+            try:
+                if await asyncio.to_thread(tvmod.launch, host, app):
+                    log.info("opened %s", app)
+                    return True
+            except Exception as e:
+                log.info("couldn't open %s yet (%s: %s)", app, type(e).__name__, e)
+            await asyncio.sleep(3)
+        raise RuntimeError("the TV is on, but didn't open %s" % app)
+
     async def _nap(self, seconds):
         try:
             await asyncio.wait_for(self.wake.wait(), seconds)
@@ -902,6 +934,9 @@ class Rotation:
         while True:
             wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
             want = self.wanted()
+            if want == "music" and time.time() < self.retry_at:
+                await self._nap(self.retry_at - time.time())  # a new song doesn't try a sleeping TV again sooner
+                continue
             if want == "music" and self.state.d.get("music_shown") == self.music["key"]:
                 await self._nap(60)  # the same song still
                 continue
@@ -920,4 +955,5 @@ class Rotation:
                 log.info("Art Mode not answering (%s: %s); trying again in %d min", type(e).__name__, e, RETRY_MINUTES)
                 ok = False
             if not ok:
+                self.retry_at = time.time() + RETRY_MINUTES * 60
                 await self._nap(RETRY_MINUTES * 60)
