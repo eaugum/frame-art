@@ -1,6 +1,6 @@
 """Where the pictures come from. Each source lists keys (cheap to keep) and fetches one key as a picture.
 
-The sources are a list in the options, each with a type and a query (see TYPES and README.md), so a new one is a few
+The sources are a list in the options, each with a type and a query (see TYPES and DOCS.md), so a new one is a few
 lines in Home Assistant. keys() may be slow (it searches); the service keeps the list for a day. fetch() returns
 (PIL image, label), or raises Skip when that key can never be used (not free, no image, the wrong shape), so it's not
 tried again. thumb() is a small copy for the add-on's page, as a URL to fetch or the picture itself.

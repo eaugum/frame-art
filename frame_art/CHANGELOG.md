@@ -1,5 +1,15 @@
 # Changes
 
+## 0.20.1
+
+- The add-on's page, the device in Home Assistant and the options are always in English; `language` is only for the
+  morning picture and the posters on the wall. `auto` follows Home Assistant's system language, not the language in
+  your profile.
+- `tv_host` is empty by default; without it the add-on says so in the log and stops. Saved options keep theirs.
+- `back_app` is back as an option, empty by default: the app opened when Art Mode goes off while the TV is on. To
+  keep opening Frame TV, set it to `FrameTVapp.FrameTV`.
+- New documentation for everyone: a shorter README, and DOCS.md on the add-on's Documentation tab in HA.
+
 ## 0.20.0
 
 - English or Norwegian: the morning picture, the posters, the device in Home Assistant and the add-on's page follow

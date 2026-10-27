@@ -207,7 +207,7 @@ def app(rotation):
         return await act(request, lambda: rotation.start_saver(minutes))
 
     async def page(request):
-        text = PAGE.replace("{{LANG}}", i18n.lang()).replace("/*STRINGS*/{}", json.dumps(i18n.page(), ensure_ascii=False))
+        text = PAGE.replace("/*STRINGS*/{}", json.dumps(i18n.PAGE, ensure_ascii=False))
         return web.Response(text=text, content_type="text/html")
 
     async def picture(request):

@@ -21,7 +21,7 @@ def main():
     p.add_argument("--once", action="store_true", help="change the picture once and stop")
     p.add_argument("--preview", metavar="DIR", help="save a few pictures here instead of sending them to the TV")
     p.add_argument("-n", type=int, default=5, help="how many pictures --preview makes")
-    p.add_argument("--what", choices=("morning", "tonight"), help="Morgenbildet or tonight's poster, not the rotation")
+    p.add_argument("--what", choices=("morning", "tonight"), help="The morning picture or tonight's poster, not the rotation")
     a = p.parse_args()
 
     logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(message)s", datefmt="%Y-%m-%d %H:%M:%S")

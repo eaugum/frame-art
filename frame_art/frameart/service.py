@@ -43,7 +43,6 @@ RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Stasera didn't answer
 MADE = ("morning", "tonight")
 MODES = ("shuffle", "category")  # "category" only from older callers: it becomes that category's sources
-BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is on (AUG-1494)
 SAVER = {"watching": "watching", "wantToStart": "want_to_start"}  # Stasera's lists for the screensaver -> the heading
 HISTORY = 100  # pictures from the rotation remembered for "Recently shown"
 THUMBS = 600  # small copies kept for the add-on's page
@@ -336,7 +335,7 @@ class Rotation:
         try:
             if kind == "morning":
                 w = self.weather(now)
-                img, label = made.morning_picture(now, w, self._day(now)), t("label_morning")
+                img, label = made.morning_picture(now, w, self._day(now)), "Morning picture"
             else:
                 items = [i for i in self.stasera.tonight() if i.get("textlessBackdropPath") or i.get("backdropPath")]
                 if not items:
@@ -344,7 +343,7 @@ class Rotation:
                     self.state["made"][kind] = today  # not again today
                     self.state.save()
                     return None
-                img, label = made.poster(items[0]), t("label_tonight", title=items[0].get("title") or "?")
+                img, label = made.poster(items[0]), "Tonight: %s" % (items[0].get("title") or "?")
         except Unlinked:
             log.info("Stasera isn't linked: link it on the add-on's page")
             return None
@@ -410,7 +409,7 @@ class Rotation:
         except Exception as e:
             log.warning("couldn't make the cover's picture (%s: %s)", type(e).__name__, e)
             return None
-        return image.to_jpeg(img), t("label_music", title=m["title"], artist=m["artist"]), m["key"]
+        return image.to_jpeg(img), "Music: %s – %s" % (m["title"], m["artist"]), m["key"]
 
     def prepared(self, what=None):
         """The picture for the next change, made once and kept until it's on the TV (the TV may be off for hours).
@@ -592,9 +591,10 @@ class Rotation:
 
     async def _back(self):
         """Art Mode went off: a key on the remote opens the TV's own Art Mode menu, which has no way back but Home
-        and the app. Open Frame TV instead, when the TV is on (not going to standby)."""
-        app = BACK_APP
-        if time.time() - self.back_at < 10:
+        and the app. Open back_app from the options instead (Frame TV: FrameTVapp.FrameTV), when the TV is on (not going
+        to standby). Without it, nothing."""
+        app = (self.cfg.get("back_app") or "").strip()
+        if not app or time.time() - self.back_at < 10:
             return
         self.back_at = time.time()
         await asyncio.sleep(1)
@@ -835,6 +835,9 @@ class Rotation:
         return max(1, float(self.cfg.get("interval_minutes", 60))) * 60
 
     async def run(self):
+        if not self.cfg.get("tv_host"):
+            log.error("tv_host is empty: set the TV's IP address in the add-on's configuration, then start it again")
+            return
         log.info("Frame Art %s for %s, every %g min, sources: %s", __version__, self.cfg["tv_host"],
                  self.interval() / 60, ", ".join(s.name for s in self.sources) or "none")
         if self.unlisted():

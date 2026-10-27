@@ -1,9 +1,9 @@
-# Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
+# Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see DOCS.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.20.0"
+version: "0.20.1"
 slug: frame_art
-description: Random rotation in The Frame's Art Mode, from a folder, museums, Commons, NASA and film, with the sources you tick, a morning picture and tonight's show
+description: A living gallery in The Frame's Art Mode, from museums, NASA and your own photos, with a morning picture and Follow the music
 url: https://github.com/eaugum/frame-art
 arch: [aarch64, amd64]
 init: false
@@ -15,7 +15,7 @@ panel_icon: mdi:image-frame
 ports:
   8099/tcp: 8099
 ports_description:
-  8099/tcp: API for Home Assistant and Frame TV (change the picture, Art Mode)
+  8099/tcp: API for scripts and apps (change the picture, Art Mode)
 services:
   - mqtt:want  # Home Assistant sees it as a device through Mosquitto; it runs without too
 homeassistant_api: true  # Follow the music reads the Spotify player, and language: auto the language, from Home Assistant
@@ -26,11 +26,11 @@ map:
 # What's set up once: the TV, the key, Home Assistant's entities and the sources. What changes from day to
 # day (the sources that are ticked, the interval, the times, the switches) is on the add-on's page.
 options:
-  tv_host: 10.1.2.36
-  # The language on the wall, in Home Assistant and on the add-on's page: auto follows Home Assistant (English when
-  # it's neither English nor Norwegian)
+  tv_host: ""
+  # The language of the morning picture and the posters: auto follows Home Assistant's system language (English
+  # when it's neither English nor Norwegian)
   language: auto
-  # The key Frame TV and others send (art_key in Frame TV); left empty, the add-on makes one and writes it here
+  # The key for the API; left empty, the add-on makes one and writes it here
   api_key: ""
   # The morning picture's weather (met.no in Home Assistant); empty: no weather
   weather_entity: weather.forecast_home
@@ -40,9 +40,11 @@ options:
   calendars: []
   price_entity: ""
   stasera_url: "https://www.stasera.app"
+  # An app opened when Art Mode goes off while the TV is on (e.g. a home screen app); empty: none
+  back_app: ""
   # A source: category (several sources can share one; without it, the name), name, type and query (several with
   # |). Every source here is used; tick them on the add-on's page. Only pictures close to 16:9, cropped to fill the
-  # screen. Types and queries: README.md.
+  # screen. Types and queries: DOCS.md.
   sources:
     # Your own
     - {category: My pictures, name: My pictures, type: folder, query: /media/frame-art}
@@ -93,6 +95,7 @@ schema:
     - match(^calendar\..+$)
   price_entity: match(^(sensor\..+)?$)?
   stasera_url: url?
+  back_app: str?
   sources:
     - name: str
       category: str?

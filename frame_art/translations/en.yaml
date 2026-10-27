@@ -5,12 +5,12 @@ configuration:
   language:
     name: Language
     description: >-
-      The language on the wall, in Home Assistant and on the add-on's page. auto follows Home Assistant's language
-      (English when it's neither English nor Norwegian).
+      The language of the morning picture and the posters: en, nb, or auto, which follows Home Assistant's system
+      language (English when it's neither English nor Norwegian). The add-on's page is always in English.
   api_key:
     name: API key
     description: >-
-      The key Frame TV and others send (art_key in Frame TV). Left empty, the add-on makes one and writes it here.
+      The key for the API. Left empty, the add-on makes one and writes it here.
   weather_entity:
     name: Weather
     description: The weather entity for the morning picture (met.no). Empty gives no weather.
@@ -29,10 +29,14 @@ configuration:
     name: Stasera
     description: >-
       Stasera's address, for tonight's show, the screensaver and the film sources. Linked on the add-on's page.
+  back_app:
+    name: App after Art Mode
+    description: >-
+      The id of a TV app to open when Art Mode is turned off while the TV is on, e.g. a home screen app. Empty: none.
   sources:
     name: Sources
     description: >-
       Each with a category, a name, a type and a query (several with |). Every source here is used; tick them on the
-      add-on's page. See the README for the types.
+      add-on's page. See the Documentation tab for the types.
 network:
-  8099/tcp: API for Home Assistant and Frame TV (change the picture, Art Mode)
+  8099/tcp: API for scripts and apps (change the picture, Art Mode)

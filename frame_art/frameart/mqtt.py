@@ -16,8 +16,7 @@ import urllib.request
 import aiomqtt
 from PIL import Image
 
-from . import __version__, i18n
-from .i18n import t
+from . import __version__
 
 log = logging.getLogger(__name__)
 
@@ -27,19 +26,21 @@ AVAILABILITY = BASE + "/status"
 LOOK_SECONDS = 5
 PICTURE_WIDTH = 1280  # the image entity: big enough for a card, small enough for MQTT
 
-# The names are in the add-on's language (i18n.py), sent again when it changes; the ids stay the same in any language.
-MODES = ("shuffle", "fixed")  # -> the select's options, t("mqtt_" + mode)
-SWITCHES = ("morning", "tonight", "screensaver", "screensaver_stasera", "music", "music_home_only")  # settings
-BUTTONS = {  # id -> icon
-    "next": "mdi:image-refresh",
-    "morning_now": "mdi:weather-sunset-up",
-    "tonight_now": "mdi:television-classic",
-    "artmode": "mdi:image-frame",
+MODES = {"shuffle": "Shuffle", "fixed": "Fixed picture"}  # -> the select's options
+SWITCHES = {  # settings
+    "morning": "Morning picture",
+    "tonight": "Tonight's show",
+    "screensaver": "Screensaver",
+    "screensaver_stasera": "Stasera in the screensaver",
+    "music": "Follow the music",
+    "music_home_only": "Only when someone is home",
 }
-
-
-def mode_names():
-    return {m: t("mqtt_" + m) for m in MODES}
+BUTTONS = {  # id -> (name, icon)
+    "next": ("Next picture", "mdi:image-refresh"),
+    "morning_now": ("Morning picture now", "mdi:weather-sunset-up"),
+    "tonight_now": ("Tonight's show now", "mdi:television-classic"),
+    "artmode": ("Art Mode now", "mdi:image-frame"),
+}
 
 
 def broker(cfg):
@@ -69,13 +70,12 @@ class Device:
         self.sent = {}  # topic -> the payload last published
         self.picture_at = None
         self.tasks = set()
-        self.lang = None  # the language the names were sent in
 
     # MARK: - Discovery
 
     def configs(self):
         device = {"identifiers": [BASE], "name": "Frame Art", "manufacturer": "eaugum/frame-art",
-                  "model": t("mqtt_model"), "sw_version": __version__}
+                  "model": "Art Mode for The Frame", "sw_version": __version__}
         common = {"device": device, "availability_topic": AVAILABILITY}
 
         def entity(component, key, name, **extra):
@@ -84,23 +84,23 @@ class Device:
                                default_entity_id="%s.%s_%s" % (component, BASE, key), **extra)
 
         out = []
-        for key, icon in BUTTONS.items():
-            out.append(entity("button", key, t("mqtt_" + key), icon=icon, command_topic="%s/%s/press" % (BASE, key)))
-        out.append(entity("select", "mode", t("mqtt_mode"), icon="mdi:shuffle-variant",
-                          options=list(mode_names().values()),
+        for key, (name, icon) in BUTTONS.items():
+            out.append(entity("button", key, name, icon=icon, command_topic="%s/%s/press" % (BASE, key)))
+        out.append(entity("select", "mode", "Mode", icon="mdi:shuffle-variant",
+                          options=list(MODES.values()),
                           state_topic=BASE + "/mode", command_topic=BASE + "/mode/set"))
-        out.append(entity("select", "category", t("mqtt_category"), icon="mdi:shape", options=self.rot.categories,
+        out.append(entity("select", "category", "Category", icon="mdi:shape", options=self.rot.categories,
                           state_topic=BASE + "/category", command_topic=BASE + "/category/set"))
-        out.append(entity("number", "interval", t("mqtt_interval"), icon="mdi:timer-outline", min=5, max=1440, step=5,
+        out.append(entity("number", "interval", "Interval", icon="mdi:timer-outline", min=5, max=1440, step=5,
                           mode="box", unit_of_measurement="min", state_topic=BASE + "/interval_minutes",
                           command_topic=BASE + "/interval_minutes/set"))
-        for key in SWITCHES:
-            out.append(entity("switch", key, t("mqtt_" + key), state_topic="%s/%s" % (BASE, key),
+        for key, name in SWITCHES.items():
+            out.append(entity("switch", key, name, state_topic="%s/%s" % (BASE, key),
                               command_topic="%s/%s/set" % (BASE, key), payload_on="ON", payload_off="OFF"))
-        out.append(entity("sensor", "showing", t("mqtt_showing"), icon="mdi:image", state_topic=BASE + "/showing",
+        out.append(entity("sensor", "showing", "Picture", icon="mdi:image", state_topic=BASE + "/showing",
                           value_template="{{ value_json.title }}", json_attributes_topic=BASE + "/showing"))
-        out.append(entity("sensor", "wanted", t("mqtt_wanted"), icon="mdi:crown-outline", state_topic=BASE + "/wanted"))
-        out.append(entity("image", "picture", t("mqtt_picture"), image_topic=BASE + "/picture",
+        out.append(entity("sensor", "wanted", "In charge", icon="mdi:crown-outline", state_topic=BASE + "/wanted"))
+        out.append(entity("image", "picture", "The picture on the wall", image_topic=BASE + "/picture",
                           content_type="image/jpeg"))
         return out
 
@@ -112,10 +112,10 @@ class Device:
         label = s.get("showing") or ""
         source, _, title = label.partition(": ") if ": " in label else ("", "", label)
         out = {
-            BASE + "/mode": mode_names().get(s["mode"], t("mqtt_shuffle")),
+            BASE + "/mode": MODES.get(s["mode"], MODES["shuffle"]),
             BASE + "/interval_minutes": str(int(st["interval_minutes"])),
             BASE + "/wanted": s["wanted"],
-            BASE + "/showing": json.dumps({"title": title or t("not_changed"), "source": source or None,
+            BASE + "/showing": json.dumps({"title": title or "Not changed yet", "source": source or None,
                                            "category": s["source_categories"].get(source),
                                            "changed": s["changed"] or None, "next": s["next"],
                                            "fixed_until": (s["fixed"] or {}).get("until")}, ensure_ascii=False),
@@ -138,16 +138,11 @@ class Device:
         return out.getvalue()
 
     async def publish_configs(self, client):
-        """Discovery, in the language in use."""
-        self.lang = i18n.lang()
+        """Discovery."""
         for topic, config in self.configs():
             await client.publish(topic, json.dumps(config, ensure_ascii=False), retain=True)
 
     async def publish_states(self, client):
-        if self.lang != i18n.lang():  # Home Assistant's language came, or changed: the names, and the mode's
-            await self.publish_configs(client)
-            self.sent.pop(BASE + "/mode", None)
-            self.sent.pop(BASE + "/showing", None)
         for topic, payload in self.states().items():
             if self.sent.get(topic) != payload:
                 await client.publish(topic, payload, retain=True)
@@ -186,7 +181,7 @@ class Device:
             elif name == "artmode/press":
                 self.run_task(self.rot.art_mode(), "Art Mode")
             elif name == "mode/set":
-                mode = {v: k for k, v in mode_names().items()}.get(payload)
+                mode = {v: k for k, v in MODES.items()}.get(payload)
                 if mode == "fixed":
                     self.rot.fix_showing()
                 elif mode:
