@@ -172,11 +172,14 @@ class Rijksmuseum(Source):
         if b"creativecommons.org/publicdomain/" not in raw:
             raise Skip("not marked public domain")
         o = json.loads(raw)
+        span = (o.get("produced_by") or {}).get("timespan") or {}
+        year = (span.get("begin_of_the_begin") or "")[:4].lstrip("0")
         iiif = self.iiif(o)
         info = net.get_json(iiif + "/info.json")
         self.check(info["width"], info["height"])
         img = image.open_image(net.get(iiif + "/full/!4000,4000/0/default.jpg", timeout=180))
-        return img, "%s (%s)" % (_rijks_title(o), year)
+        title = _rijks_title(o)
+        return img, "%s (%s)" % (title, year) if year else title
 
     def iiif(self, o):
         try:

@@ -8,14 +8,11 @@ import os
 from PIL import Image, ImageDraw, ImageFont
 
 from . import image, net
+from .i18n import lang, t
 
 FONT = os.path.join(os.path.dirname(__file__), "fonts", "InterVariable.ttf")
 TMDB = "https://image.tmdb.org/t/p/"
 ACCENT = (242, 201, 76)  # Frame TV's yellow
-
-DAYS = ["mandag", "tirsdag", "onsdag", "torsdag", "fredag", "lørdag", "søndag"]
-MONTHS = ["januar", "februar", "mars", "april", "mai", "juni", "juli", "august", "september", "oktober", "november",
-          "desember"]
 
 # Calm colours for the weather: (top, bottom, text)
 PALETTES = {
@@ -60,16 +57,16 @@ def morning_picture(now, weather, extra=None):
     soft = tuple(round(i * 0.72 + b * 0.28) for i, b in zip(ink, bottom))
     x, y = 260, 200
 
-    day, date = DAYS[now.weekday()].capitalize(), "%d. %s" % (now.day, MONTHS[now.month - 1])
+    day, date = t("days")[now.weekday()].capitalize(), t("date", day=now.day, month=t("months")[now.month - 1])
     size = 380
-    while size > 240 and d.textlength(date, font=font(size, 300)) > MORNING_LEFT - x:  # «28. september»
+    while size > 240 and d.textlength(date, font=font(size, 300)) > MORNING_LEFT - x:  # "28. september"
         size -= 10
     big = font(size, 300)
     d.text((x, y), day, font=big, fill=ink)
     d.text((x, y + size * 1.1), date, font=big, fill=ink)
     y += round(size * 2.32)
-    names = extra.get("names")
-    d.text((x + 8, y), "Uke %d" % now.isocalendar()[1] + (" · Navnedag: " + names if names else ""),
+    names = extra.get("names") if lang() == "nb" else ""  # the name days are Norwegian
+    d.text((x + 8, y), t("week", n=now.isocalendar()[1]) + (t("name_day", names=names) if names else ""),
            font=font(72, 400), fill=ink)
     y += 150
 
@@ -82,7 +79,7 @@ def morning_picture(now, weather, extra=None):
         d.text((x + w + 50, y), "/  %d°" % weather["low"], font=temp, fill=soft)
         y += 270
         words = weather["words"]
-        if weather["wet"]:  # «Regn det meste av dagen», not «Regn · regn det meste av dagen»
+        if weather["wet"]:  # "Rain most of the day", not "Rain · rain most of the day"
             wet = weather["kind"] in ("rain", "snow")
             words = weather["wet"].capitalize() if wet else words + " · " + weather["wet"]
         d.text((x, y), words, font=font(100, 400), fill=ink)
@@ -91,8 +88,8 @@ def morning_picture(now, weather, extra=None):
         if weather.get("temps"):
             d.text((x, y), "    ".join("%02d: %d°" % t for t in weather["temps"]), font=small, fill=ink)
             y += 115
-        d.text((x, y), "Sola opp %s · ned %s" % (weather["sunrise"], weather["sunset"]), font=small, fill=soft)
-        warn = [w for w in (weather.get("wind"), "Fare for glatte veier" if weather.get("slippery") else "") if w]
+        d.text((x, y), t("sun", rise=weather["sunrise"], set=weather["sunset"]), font=small, fill=soft)
+        warn = [w for w in (weather.get("wind"), t("slippery") if weather.get("slippery") else "") if w]
         if warn:
             d.text((x, y + 115), " · ".join(warn), font=font(76, 500), fill=ink)
     _day_column(d, extra, ink, soft, (top, bottom), now)
@@ -107,15 +104,15 @@ def _day_column(d, extra, ink, soft, gradient, now):
     x, right, y = MORNING_LEFT + 150, image.W - 260, 240
     head, body = font(56, 600), font(80, 400)
     power = extra.get("power") or {}
-    parts = [("I DAG", ["%s  %s" % (t, s) if t else s for t, s in extra.get("events") or []]),
-             ("NYTT I STASERA", extra.get("shows") or []),
-             ("STRØM", power.get("lines") or [])]
-    for heading, lines in parts:
+    parts = [(t("today"), ["%s  %s" % (at, s) if at else s for at, s in extra.get("events") or []]),
+             (t("new_in_stasera"), extra.get("shows") or []),
+             (t("electricity"), power.get("lines") or [])]
+    for n, (heading, lines) in enumerate(parts):
         if not lines or y > image.H - 500:
             continue
         d.text((x, y), heading, font=head, fill=soft)
         y += 100
-        if heading == "STRØM" and y < image.H - 760:
+        if n == 2 and y < image.H - 760:
             y = _prices(d, power, x, right, y, ink, soft, gradient, now)
         for line in lines:
             rows = _wrap(d, line, body, right - x)
@@ -154,8 +151,10 @@ def _prices(d, power, x, right, y, ink, soft, gradient, now):
 
 # MARK: - Tonight's poster
 
-def poster(item, heading="I KVELD"):
-    """item: one from Stasera's /tv/tonight or /tv/home. Raises when there's no backdrop to make it from."""
+def poster(item, heading=None):
+    """item: one from Stasera's /tv/tonight or /tv/home; heading: "TONIGHT" when it's None. Raises when there's no
+    backdrop to make it from."""
+    heading = heading or t("tonight")
     path = item.get("textlessBackdropPath") or item.get("backdropPath")
     if not path:
         raise ValueError("no backdrop")
@@ -166,9 +165,9 @@ def poster(item, heading="I KVELD"):
 
     lines = []  # under the title, from the top
     if item.get("kind") == "show" and item.get("seasonNumber") is not None:
-        ep = "Sesong %d, episode %d" % (item["seasonNumber"], item["episodeNumber"])
+        ep = t("episode", season=item["seasonNumber"], episode=item["episodeNumber"])
         if item.get("episodeName"):
-            ep += "  «%s»" % item["episodeName"]
+            ep += "  " + t("quote", text=item["episodeName"])
         lines.append(ep)
     elif item.get("runtime"):
         lines.append(_runtime(item["runtime"]))
@@ -215,10 +214,10 @@ def _logo(path):
 
 def _runtime(minutes):
     h, m = divmod(int(minutes), 60)
-    return ("%d t %d min" % (h, m) if m else "%d t" % h) if h else "%d min" % m
+    return (t("hours_minutes", h=h, m=m) if m else t("hours", h=h)) if h else t("minutes", m=m)
 
 
-# MARK: - Følg musikken (AUG-1495)
+# MARK: - Follow the music (AUG-1495)
 
 def music_picture(cover, title, artist, album):
     """cover: the album's cover, a PIL image. The cover big, on a flat in its own colours, with the song, the artist

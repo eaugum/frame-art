@@ -1,4 +1,4 @@
-"""Leser Kunstmodus-status fra Frame-en. Endrer ingenting."""
+"""Reads the Art Mode status from the Frame. Changes nothing."""
 import asyncio, json, logging, sys
 from samsungtvws.async_art import SamsungTVAsyncArt
 

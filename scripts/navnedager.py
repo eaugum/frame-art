@@ -1,4 +1,4 @@
-"""Makes frame_art/frameart/navnedager.json from Norwegian Wikipedia's «Liste over norske navnedager» (Almanakkforlaget's
+"""Makes frame_art/frameart/navnedager.json from Norwegian Wikipedia's "Liste over norske navnedager" (Almanakkforlaget's
 calendar, revised December 2025). Run it again after a new revision:
 
 curl -s "https://no.wikipedia.org/w/index.php?title=Liste_over_norske_navnedager&action=raw" > /tmp/navnedager.txt

@@ -151,7 +151,7 @@ class Stasera:
     # MARK: - Tonight
 
     def tonight(self):
-        """Stasera's «I kveld», first the one to watch: shows with the next episode, and movies. Raises Unlinked."""
+        """Stasera's "Tonight", first the one to watch: shows with the next episode, and movies. Raises Unlinked."""
         status, j = self._request("GET", "/tv/tonight")
         if status != 200 or not j:
             raise RuntimeError("Stasera answered %s" % status)

@@ -1,0 +1,38 @@
+configuration:
+  tv_host:
+    name: The TV's address
+    description: The Frame's IP address on the home network.
+  language:
+    name: Language
+    description: >-
+      The language on the wall, in Home Assistant and on the add-on's page. auto follows Home Assistant's language
+      (English when it's neither English nor Norwegian).
+  api_key:
+    name: API key
+    description: >-
+      The key Frame TV and others send (art_key in Frame TV). Left empty, the add-on makes one and writes it here.
+  weather_entity:
+    name: Weather
+    description: The weather entity for the morning picture (met.no). Empty gives no weather.
+  tv_entity:
+    name: The TV in Home Assistant
+    description: >-
+      A media_player that is turned on before the morning picture when the TV is off. Empty: never.
+  calendars:
+    name: Calendars
+    description: Calendars whose events today are in the morning picture.
+  price_entity:
+    name: Electricity price
+    description: >-
+      A Nord Pool or Tibber sensor; the morning picture shows the day's prices and the cheapest and dearest hours.
+  stasera_url:
+    name: Stasera
+    description: >-
+      Stasera's address, for tonight's show, the screensaver and the film sources. Linked on the add-on's page.
+  sources:
+    name: Sources
+    description: >-
+      Each with a category, a name, a type and a query (several with |). Every source here is used; tick them on the
+      add-on's page. See the README for the types.
+network:
+  8099/tcp: API for Home Assistant and Frame TV (change the picture, Art Mode)

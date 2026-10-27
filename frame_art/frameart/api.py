@@ -12,7 +12,7 @@ GET  /tv       whether the TV is off ({"off": true}), from tv_entity; null witho
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture. ?wake=1 (and on
                /show) turns the TV on first through Home Assistant when it's off.
-POST /show?key=…  that picture now, in Art Mode, standing until the next Morgenbildet (Fast bilde)
+POST /show?key=…  that picture now, in Art Mode, standing until the next morning picture (a fixed picture)
 POST /artmode  Art Mode on, with the picture it has
 POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, keep,
                morning, morning_time, tonight, tonight_time, screensaver, screensaver_stasera, music,
@@ -38,7 +38,7 @@ import urllib.request
 
 from aiohttp import web
 
-from . import sources
+from . import i18n, sources
 
 log = logging.getLogger(__name__)
 
@@ -207,7 +207,8 @@ def app(rotation):
         return await act(request, lambda: rotation.start_saver(minutes))
 
     async def page(request):
-        return web.Response(text=PAGE, content_type="text/html")
+        text = PAGE.replace("{{LANG}}", i18n.lang()).replace("/*STRINGS*/{}", json.dumps(i18n.page(), ensure_ascii=False))
+        return web.Response(text=text, content_type="text/html")
 
     async def picture(request):
         if not os.path.exists(rotation.showing_path):

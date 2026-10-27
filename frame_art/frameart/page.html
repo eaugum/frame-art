@@ -1,6 +1,7 @@
 <!doctype html>
-<!-- The add-on's page (GET /). Relative paths: through ingress it lives under /api/hassio_ingress/<token>/. -->
-<html lang="nb"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
+<!-- The add-on's page (GET /). Relative paths: through ingress it lives under /api/hassio_ingress/<token>/.
+     The text is in the add-on's language: api.py puts in the language and the strings (i18n.py), and data-t says which. -->
+<html lang="{{LANG}}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Frame Art</title>
 <style>
   :root { --bg: #111; --card: #1a1a1a; --line: #262626; --text: #eee; --dim: #999; --faint: #666; --accent: #f2c94c; }
@@ -86,64 +87,70 @@
   <p class="now"><b id="now-what"></b><span id="now"></span></p>
 
   <div class="actions">
-    <button id="next">Nytt bilde</button>
-    <button id="morning">Vis Morgenbildet</button>
-    <button id="tonight">Vis kveldens serie</button>
+    <button id="next" data-t="new_picture"></button>
+    <button id="morning" data-t="show_morning"></button>
+    <button id="tonight" data-t="show_tonight"></button>
   </div>
   <p class="note" id="msg"></p>
 
   <section>
-    <header><h2>Bildene</h2><span class="sum" id="sum"></span></header>
+    <header><h2 data-t="pictures"></h2><span class="sum" id="sum"></span></header>
     <p class="note" id="sources-note" style="margin: 0 0 8px"></p>
     <div id="groups"></div>
   </section>
 
   <div id="gallery" class="gallery" hidden>
     <p class="note" id="gallery-note"></p>
-    <h3 id="recent-title">Nylig vist</h3>
+    <h3 id="recent-title" data-t="recently_shown"></h3>
     <div id="recent" class="grid"></div>
-    <h3>Tilfeldige</h3>
+    <h3 data-t="random"></h3>
     <div id="random" class="grid"></div>
     <div class="actions">
-      <button id="more" class="small">Vis andre</button>
-      <button id="close" class="small">Lukk</button>
+      <button id="more" class="small" data-t="show_others"></button>
+      <button id="close" class="small" data-t="close"></button>
     </div>
   </div>
 
   <section>
-    <header><h2>Innstillinger</h2><span id="saved"></span></header>
-    <div class="row"><span>Bytt bilde hvert</span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
-    <div class="row"><span>Bilder som blir liggende på TV-en<small>Under «Mine bilder» i Kunstmodus; de eldre slettes</small></span>
+    <header><h2 data-t="settings"></h2><span id="saved"></span></header>
+    <div class="row"><span data-t="interval"></span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
+    <div class="row"><span><span data-t="keep"></span><small data-t="keep_note"></small></span>
       <input id="keep" type="number" min="1" max="20"></div>
-    <div class="row"><span>Morgenbildet<small>Dato, vær, uke og navnedag og nytt i Stasera; avtaler og strøm fra valgene i HA</small></span><input id="morning_time" type="time">
+    <div class="row"><span><span data-t="morning"></span><small data-t="morning_note"></small></span><input id="morning_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
-    <div class="row sub" id="tv-row"><span>Skru på TV-en først<small id="tv-note"></small></span>
+    <div class="row sub" id="tv-row"><span><span data-t="tv_on"></span><small id="tv-note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="morning_tv_on"><i></i></label></div>
-    <div class="row"><span>Kveldens serie<small>Fra «I kveld» i Stasera</small></span><input id="tonight_time" type="time">
+    <div class="row"><span><span data-t="tonight"></span><small data-t="tonight_note"></small></span><input id="tonight_time" type="time">
       <label class="switch"><input type="checkbox" data-setting="tonight"><i></i></label></div>
-    <div class="row"><span>Skjermsparer<small>Frame TV går i Kunstmodus når den står urørt</small></span>
+    <div class="row"><span><span data-t="screensaver"></span><small data-t="screensaver_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver"><i></i></label></div>
-    <div class="row sub"><span>Skjermspareren med Stasera-bildene<small>Med tittel; ellers vanlig rotasjon</small></span>
+    <div class="row sub"><span><span data-t="screensaver_stasera"></span><small data-t="screensaver_stasera_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver_stasera"><i></i></label></div>
-    <div class="row"><span>Følg musikken<small>Albumcoveret når det spilles musikk</small></span>
+    <div class="row"><span><span data-t="music"></span><small data-t="music_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="music"><i></i></label></div>
-    <div class="row sub"><span>Bare når noen er hjemme</span>
+    <div class="row sub"><span data-t="music_home_only"></span>
       <label class="switch"><input type="checkbox" data-setting="music_home_only"><i></i></label></div>
   </section>
 
   <section>
     <header><h2>Stasera</h2></header>
-    <div class="row"><span id="stasera"></span><button id="link" class="small">Koble til</button></div>
+    <div class="row"><span id="stasera"></span><button id="link" class="small"></button></div>
   </section>
 </main>
 <div id="ask" class="dialog" hidden><div>
-  <p>TV-en er av. Vil du slå den på?</p>
-  <p class="note">Det tar et halvt minutt før bildet kommer.</p>
-  <div class="actions"><button id="ask-yes" class="yes">Slå på</button><button id="ask-no">Avbryt</button></div>
+  <p data-t="tv_off"></p>
+  <p class="note" data-t="tv_off_note"></p>
+  <div class="actions"><button id="ask-yes" class="yes" data-t="turn_on"></button><button id="ask-no" data-t="cancel"></button></div>
 </div></div>
 <script>
+  var T = /*STRINGS*/{}, LOCALE = T.locale || "en-GB";
   var last = {}, open = null, savedAt = 0;
   function $(id) { return document.getElementById(id); }
+  /** The text for key, with {name} filled in from values. */
+  function tr(key, values) {
+    return (T[key] || key).replace(/\{(\w+)\}/g, function (all, k) { return values && k in values ? values[k] : all; });
+  }
+  document.querySelectorAll("[data-t]").forEach(function (e) { e.textContent = tr(e.dataset.t); });
   var gal = $("gallery");  // moved under the category it shows, so its parts are found through it
   function part(id) { return gal.querySelector("#" + id); }
   function el(tag, props, kids) {
@@ -151,13 +158,14 @@
     (kids || []).forEach(function (k) { e.append(k); });
     return e;
   }
-  function time(s) { return s ? new Date(s * 1000).toLocaleTimeString("nb-NO", {hour: "2-digit", minute: "2-digit"}) : "–"; }
+  function time(s) { return s ? new Date(s * 1000).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit"}) : "–"; }
   function day(s) {
     var d = new Date(s * 1000), today = new Date();
-    return (d.toDateString() === today.toDateString() ? "i dag" : "i morgen") + " kl. " + time(s);
+    return tr(d.toDateString() === today.toDateString() ? "today_at" : "tomorrow_at", {time: time(s)});
   }
   function count(n) {
-    return n === null || n === undefined ? "leses …" : n ? n.toLocaleString("nb-NO") + " bilder" : "ingen bilder";
+    return n === null || n === undefined ? tr("reading") : n ? tr("n_pictures", {n: n.toLocaleString(LOCALE)}) :
+      tr("no_pictures");
   }
   function off() { return ((last.settings || {}).sources_off || []).slice(); }
   function setOff(names, on) {
@@ -169,9 +177,9 @@
   function show(s) {
     last = s;
     var label = s.showing || "", cut = label.indexOf(": ");
-    $("title").textContent = cut < 0 ? (label || "Ikke byttet ennå") : label.slice(cut + 2);
+    $("title").textContent = cut < 0 ? (label || tr("not_changed")) : label.slice(cut + 2);
     var source = cut < 0 ? "" : label.slice(0, cut), category = (s.source_categories || {})[source];
-    $("info").textContent = [category !== source && category, source, s.changed && "byttet " + time(s.changed)]
+    $("info").textContent = [category !== source && category, source, s.changed && tr("changed_at", {time: time(s.changed)})]
       .filter(Boolean).join(" · ");
     $("pic").src = "showing.jpg?" + s.changed;
     busy(!!s.busy);
@@ -186,23 +194,23 @@
   function now(s) {
     var st = s.settings || {}, what, words = [];
     if (s.wanted === "music") {
-      what = "Følg musikken";
+      what = tr("music");
       words = [s.music.title + " – " + s.music.artist];
     } else if (s.wanted === "fixed") {
-      what = "Fast bilde";
-      words = ["står til " + day(s.fixed.until) + " ",
-        el("a", {textContent: "Fortsett rotasjonen nå", onclick: function () { save({mode: "shuffle"}); }})];
+      what = tr("fixed");
+      words = [tr("fixed_until", {when: day(s.fixed.until)}),
+        el("a", {textContent: tr("resume"), onclick: function () { save({mode: "shuffle"}); }})];
     } else if (s.wanted === "morning" || s.wanted === "tonight") {
-      what = s.wanted === "morning" ? "Morgenbildet" : "Kveldens serie";
-      words = ["kommer straks"];
+      what = tr(s.wanted === "morning" ? "morning" : "tonight");
+      words = [tr("coming")];
     } else if (s.wanted === "saver") {
-      what = "Skjermspareren";
-      words = ["Stasera-bildene, et nytt hvert " + s.interval_minutes + ". minutt"];
+      what = tr("saver");
+      words = [tr("saver_words", {n: s.interval_minutes})];
     } else {
       var on = (s.sources || []).filter(function (n) { return off().indexOf(n) < 0; }).length;
-      what = "Rotasjon";
-      words = [on ? "nytt bilde hvert " + st.interval_minutes + ". minutt fra " + on + (on === 1 ? " kilde" : " kilder") +
-        (s.next ? " · neste " + time(s.next) : "") : "står stille: ingen kilder er krysset av"];
+      what = tr("rotation");
+      words = [on ? tr("rotation_words", {n: st.interval_minutes, sources: tr(on === 1 ? "source_one" : "source_other",
+        {n: on})}) + (s.next ? tr("next_at", {time: time(s.next)}) : "") : tr("standing")];
     }
     $("now-what").textContent = what;
     $("now").innerHTML = "";
@@ -221,7 +229,7 @@
       var head = el("div", {className: "group-head"}, [
         el("label", {}, [all, c.name]),
         el("span", {className: "n", textContent: count(c.pictures)}),
-        el("a", {textContent: "Velg bilde", onclick: function () { gallery(c.name); }})]);
+        el("a", {textContent: tr("choose"), onclick: function () { gallery(c.name); }})]);
       var group = el("div", {className: "group"}, [head]);
       if (names.length > 1 || names[0] !== c.name) {
         group.append(el("div", {className: "sources"}, names.map(function (n) {
@@ -238,9 +246,8 @@
       });
     });
     var total = (s.sources || []).length;
-    $("sum").textContent = on + " av " + total + " kilder · " + pictures.toLocaleString("nb-NO") + " bilder";
-    $("sources-note").textContent = !on ? "Ingen kilder er krysset av, så bildet byttes ikke." :
-      unread && s.reading ? "Leser kildene som ikke er lest før …" : "";
+    $("sum").textContent = tr("sum", {on: on, total: total, pictures: pictures.toLocaleString(LOCALE)});
+    $("sources-note").textContent = !on ? tr("none_ticked") : unread && s.reading ? tr("reading_sources") : "";
   }
 
   function settings(st, s) {
@@ -256,19 +263,23 @@
     $("tv-row").hidden = !st.morning;
     tv.disabled = !s.tv_entity;
     if (!s.tv_entity) tv.checked = false;
-    $("tv-note").textContent = s.tv_entity ? "Gjennom Home Assistant, når den er av" :
-      "Sett tv_entity i add-on-ets konfigurasjon";
+    $("tv-note").textContent = tr(s.tv_entity ? "tv_on_note" : "tv_on_missing");
   }
 
   function connections(s) {
     var p = s.pairing, st = $("stasera");
     st.innerHTML = "";
-    if (s.stasera === "off") st.textContent = "Av: stasera_url mangler i valgene til add-on-et.";
-    else if (s.stasera === "linked") st.textContent = "Koblet. Kveldens serie kommer fra «I kveld».";
-    else if (p) st.append("Godkjenn koden ", el("b", {textContent: p.code}), " i ",
-      el("a", {href: p.url, target: "_blank", textContent: "Stasera"}), ".");
-    else st.textContent = "Ikke koblet.";
-    $("link").textContent = s.stasera === "linked" ? "Koble fra" : "Koble til";
+    if (s.stasera === "off") st.textContent = tr("stasera_off");
+    else if (s.stasera === "linked") st.textContent = tr("stasera_linked");
+    else if (p) {
+      // "Approve the code {code} in {stasera}.", with the code in bold and Stasera a link
+      tr("stasera_approve").split(/(\{code\}|\{stasera\})/).forEach(function (bit) {
+        st.append(bit === "{code}" ? el("b", {textContent: p.code}) :
+          bit === "{stasera}" ? el("a", {href: p.url, target: "_blank", textContent: "Stasera"}) : bit);
+      });
+    } else st.textContent = tr("stasera_unlinked");
+    $("link").textContent = tr(s.stasera === "linked" ? "unlink" : "link");
+    $("link").dataset.linked = s.stasera === "linked" ? "1" : "";
     $("link").hidden = s.stasera === "off" || !!p;
   }
 
@@ -286,7 +297,7 @@
       $("ask-yes").onclick = function () {
         $("ask").hidden = true;
         busy(true);
-        send(path + "&wake=1", "Slår på TV-en … " + doing);
+        send(path + "&wake=1", tr("turning_on", {doing: doing}));
       };
       $("ask-no").onclick = function () { $("ask").hidden = true; };
     });
@@ -296,21 +307,21 @@
     window.scrollTo({top: 0, behavior: "smooth"});
     fetch(path, {method: "POST"}).then(function (r) { return r.json(); }).then(function (s) {
       show(s);
-      $("msg").textContent = s.ok ? "Ferdig." : "Gikk ikke: " + (s.error || "ukjent feil");
-    }).catch(function () { $("msg").textContent = "Fikk ikke svar."; load(); });
+      $("msg").textContent = s.ok ? tr("done") : tr("failed", {error: s.error || tr("unknown_error")});
+    }).catch(function () { $("msg").textContent = tr("no_answer"); load(); });
   }
   function save(changes) {
     fetch("settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(changes)})
       .then(function (r) { return r.json(); }).then(function (s) {
         if (s.ok) {
-          $("saved").textContent = "Lagret";
+          $("saved").textContent = tr("saved");
           $("saved").style.opacity = 1;
           var at = savedAt = Date.now();
           setTimeout(function () { if (at === savedAt) $("saved").style.opacity = 0; }, 2000);
-        } else $("msg").textContent = "Ikke lagret: " + s.error;
+        } else $("msg").textContent = tr("not_saved", {error: s.error});
         if (document.activeElement.type !== "checkbox") document.activeElement.blur();
         show(s);
-      }).catch(function () { $("msg").textContent = "Fikk ikke lagret."; });
+      }).catch(function () { $("msg").textContent = tr("couldnt_save"); });
   }
 
   function thumbs(box, items) {
@@ -318,7 +329,7 @@
     items.forEach(function (it) {
       box.append(el("img", {src: "thumb?key=" + encodeURIComponent(it.key), title: it.label || "", loading: "lazy",
         onerror: function () { this.remove(); },
-        onclick: function () { act("show?key=" + encodeURIComponent(it.key), "Viser bildet og lar det stå til Morgenbildet …"); }}));
+        onclick: function () { act("show?key=" + encodeURIComponent(it.key), tr("showing_until")); }}));
     });
   }
   function gallery(name) {
@@ -330,23 +341,23 @@
       part("random").innerHTML = "";
       part("recent-title").hidden = true;
     }
-    part("gallery-note").textContent = "Henter …";
+    part("gallery-note").textContent = tr("fetching");
     show(last);  // puts the gallery under its category
     fetch("category?name=" + encodeURIComponent(name)).then(function (r) { return r.json(); }).then(function (g) {
       if (open !== name) return;
       part("recent-title").hidden = !g.recent.length;
       thumbs(part("recent"), g.recent);
       thumbs(part("random"), g.random);
-      part("gallery-note").textContent = g.off ? "Ingen av kildene i " + name + " er krysset av." : (g.reading.length ?
-        "Leser " + g.reading.join(", ") + " (første gang tar det litt). Trykk «Vis andre» om litt. " :
-        g.random.length ? "" : "Ingen bilder her. ") + "Et bilde du trykker på, står til neste Morgenbildet.";
+      part("gallery-note").textContent = g.off ? tr("gallery_off", {name: name}) : (g.reading.length ?
+        tr("gallery_reading", {names: g.reading.join(", ")}) : g.random.length ? "" : tr("gallery_empty")) +
+        tr("gallery_hint");
       if (first) gal.scrollIntoView({behavior: "smooth", block: "nearest"});
-    }).catch(function () { part("gallery-note").textContent = "Fikk ikke svar."; });
+    }).catch(function () { part("gallery-note").textContent = tr("no_answer"); });
   }
 
-  $("next").onclick = function () { act("next?art_mode=1", "Henter et nytt bilde og sender det til TV-en …"); };
-  $("morning").onclick = function () { act("next?art_mode=1&what=morning", "Lager Morgenbildet …"); };
-  $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", "Lager plakaten for kveldens serie …"); };
+  $("next").onclick = function () { act("next?art_mode=1", tr("fetching_new")); };
+  $("morning").onclick = function () { act("next?art_mode=1&what=morning", tr("making_morning")); };
+  $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", tr("making_tonight")); };
   $("more").onclick = function () { if (open) gallery(open); };
   $("close").onclick = function () { open = null; gal.hidden = true; };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
@@ -357,9 +368,9 @@
     b.onchange = function () { var c = {}; c[this.dataset.setting] = this.checked; save(c); };
   });
   $("link").onclick = function () {
-    var linked = this.textContent === "Koble fra";
+    var linked = !!this.dataset.linked;
     fetch(linked ? "stasera/unlink" : "stasera/link", {method: "POST"}).then(function (r) { return r.json(); })
-      .then(function (s) { show(s); if (!s.ok) $("stasera").textContent = s.error || "Fikk ikke svar fra Stasera."; });
+      .then(function (s) { show(s); if (!s.ok) $("stasera").textContent = s.error || tr("stasera_no_answer"); });
   };
   load();
   if (location.hash.length > 1) gallery(decodeURIComponent(location.hash.slice(1)));  // a link to a category

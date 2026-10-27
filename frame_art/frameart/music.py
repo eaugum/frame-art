@@ -1,4 +1,4 @@
-"""Følg musikken (AUG-1495): what Spotify plays, read from Home Assistant, without a Spotify token of our own.
+"""Follow the music (AUG-1495): what Spotify plays, read from Home Assistant, without a Spotify token of our own.
 
 In the add-on, Home Assistant is the Supervisor's proxy (homeassistant_api: true in config.yaml); outside it, ha_url and
 ha_token in the options. The player is the first media_player.spotify* (Spotify or SpotifyPlus) that plays.

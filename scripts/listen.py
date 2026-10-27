@@ -1,6 +1,6 @@
-"""Skriver ut alt kunst-kanalen på Frame-en sier i noen minutter (AUG-1494). Sender ingenting, endrer ingenting.
+"""Prints everything the Frame's art channel says for a few minutes (AUG-1494). Sends nothing, changes nothing.
 
-    python scripts/listen.py 10.1.2.36 [sekunder]
+    python scripts/listen.py 10.1.2.36 [seconds]
 """
 import asyncio, datetime, json, logging, sys
 from samsungtvws.async_art import SamsungTVAsyncArt
@@ -16,7 +16,7 @@ async def main(ip, seconds):
 
     tv.process_event = show
     await tv.start_listening()
-    print("lytter i %d s; gjør det du skal på TV-en nå" % seconds, flush=True)
+    print("listening for %d s; do what you want to on the TV now" % seconds, flush=True)
     await asyncio.sleep(seconds)
     await tv.close()
 

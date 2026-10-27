@@ -10,7 +10,7 @@ import json
 import logging
 import os
 
-from . import api, mqtt
+from . import api, i18n, mqtt
 from .service import Rotation
 
 
@@ -31,6 +31,11 @@ def main():
     data = a.data or os.path.dirname(os.path.abspath(a.config))
     os.makedirs(data, exist_ok=True)
     rot = Rotation(cfg, data)
+    if a.preview or a.once:
+        try:
+            i18n.ask(rot.ha)  # Home Assistant's language, once
+        except Exception:
+            pass  # English
 
     if a.preview:
         os.makedirs(a.preview, exist_ok=True)
@@ -54,13 +59,15 @@ async def run(rot, cfg, port):
         await api.serve(rot, port)
     device = asyncio.create_task(mqtt.serve(rot, cfg))  # Home Assistant, when there's a broker
     watcher = asyncio.create_task(rot.watch())  # back to Frame TV when Art Mode goes off
-    music = asyncio.create_task(rot.follow())  # Følg musikken, from Home Assistant
+    music = asyncio.create_task(rot.follow())  # Follow the music, from Home Assistant
+    language = asyncio.create_task(i18n.keep(rot.ha))  # Home Assistant's language, with auto
     try:
         await rot.run()
     finally:
         device.cancel()
         watcher.cancel()
         music.cancel()
+        language.cancel()
 
 
 main()

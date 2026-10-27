@@ -1,7 +1,7 @@
-"""Prøver tilbake-veien fra Kunstmodus (AUG-1494): når kunst-kanalen sier art_mode_changed off etter on, startes
-Frame TV over fjernkontroll-kanalen. Det er det eneste den sender.
+"""Tries the way back from Art Mode (AUG-1494): when the art channel says art_mode_changed off after on, Frame TV is
+started over the remote control channel. That's the only thing it sends.
 
-    python scripts/back.py 10.1.2.36 [sekunder] [app-id]
+    python scripts/back.py 10.1.2.36 [seconds] [app id]
 """
 import asyncio, datetime, json, logging, sys
 from samsungtvws.async_art import SamsungTVAsyncArt
@@ -18,7 +18,7 @@ async def launch(ip, app):
     try:
         await asyncio.wait_for(remote.start_listening(), 40)
         await remote.send_command(ChannelEmitCommand.launch_app(app))
-        say("sendte ed.apps.launch", app)
+        say("sent ed.apps.launch", app)
         await asyncio.sleep(3)
     finally:
         await remote.close()
@@ -44,7 +44,7 @@ async def main(ip, seconds, app):
 
     tv.process_event = watch
     await tv.start_listening()
-    say("lytter i %d s" % seconds)
+    say("listening for %d s" % seconds)
     await asyncio.sleep(seconds)
     for t in tasks:
         await t

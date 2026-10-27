@@ -1,4 +1,4 @@
-"""Kobler til fjernkontroll-kanalen (gir tilgangsspørsmål + token). Sender ingen taster."""
+"""Connects to the remote control channel (gives the permission prompt and a token). Sends no keys."""
 import asyncio, sys
 from samsungtvws.async_remote import SamsungTVWSAsyncRemote
 

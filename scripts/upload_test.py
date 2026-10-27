@@ -1,4 +1,4 @@
-"""Lager ett testbilde (3840x2160) og laster det opp til «Mine bilder». Viser det ikke."""
+"""Makes one test picture (3840x2160) and uploads it to "My Photos". Doesn't show it."""
 import asyncio, io, sys
 from PIL import Image, ImageDraw
 from samsungtvws.async_art import SamsungTVAsyncArt
@@ -7,7 +7,7 @@ def make():
     w, h = 3840, 2160
     img = Image.new("RGB", (w, h))
     d = ImageDraw.Draw(img)
-    for y in range(h):  # kveldshimmel over Oslo-fjorden
+    for y in range(h):  # an evening sky over the Oslofjord
         t = y / h
         d.line([(0, y), (w, y)], fill=(int(20 + 200 * t**2), int(30 + 90 * t**1.5), int(70 + 40 * t)))
     d.ellipse([w*0.62, h*0.52, w*0.62 + 360, h*0.52 + 360], fill=(255, 196, 120))

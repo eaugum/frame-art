@@ -8,6 +8,8 @@ import logging
 import os
 import urllib.parse
 
+from .i18n import t
+
 log = logging.getLogger(__name__)
 
 with open(os.path.join(os.path.dirname(__file__), "navnedager.json"), encoding="utf-8") as f:
@@ -18,13 +20,13 @@ PRICE_HOURS = 2  # the cheapest and the dearest stretch of this many hours, from
 
 
 def names(day):
-    """«Amandus og Amanda», or '' (1 January, 29 February and Christmas Day have none)."""
+    """"Amandus og Amanda", or '' (1 January, 29 February and Christmas Day have none). Norwegian name days."""
     n = NAME_DAYS.get(day.strftime("%m-%d")) or []
     return " og ".join([", ".join(n[:-1]), n[-1]]) if len(n) > 1 else "".join(n)
 
 
 def events(ha, calendars, now):
-    """[(«09.00» or '', summary)] for today from Home Assistant's calendars, all-day ones first."""
+    """[("09.00" or '', summary)] for today from Home Assistant's calendars, all-day ones first."""
     start = now.replace(hour=0, minute=0, second=0, microsecond=0)
     q = urllib.parse.urlencode({"start": start.isoformat(), "end": (start + datetime.timedelta(days=1)).isoformat()})
     out = []
@@ -35,7 +37,7 @@ def events(ha, calendars, now):
                 when = datetime.datetime.fromisoformat(at).astimezone(now.tzinfo) if at else None
                 if when and when.date() != now.date():
                     continue  # began yesterday
-                out.append((when.strftime("%H.%M") if when else "", (e.get("summary") or "").strip()))
+                out.append((when.strftime(t("clock")) if when else "", (e.get("summary") or "").strip()))
         except Exception as e:
             log.info("Morgenbildet: no events from %s (%s: %s)", entity, type(e).__name__, e)
     return sorted({o for o in out if o[1]})[:MAX_EVENTS]
@@ -55,13 +57,13 @@ def shows(stasera, day):
             continue
         title = i.get("title") or "?"
         if i.get("kind") == "movie":
-            out.append("Premiere: " + title)
+            out.append(t("premiere", title=title))
         elif i.get("episodeNumber") == 1 and i.get("seasonNumber") == 1:
-            out.append("Seriepremiere: " + title)
+            out.append(t("series_premiere", title=title))
         elif i.get("episodeNumber") == 1:
-            out.append("Ny sesong: %s, sesong %s" % (title, i.get("seasonNumber")))
+            out.append(t("new_season", title=title, season=i.get("seasonNumber")))
         else:
-            out.append("Ny episode: %s S%sE%s" % (title, i.get("seasonNumber"), i.get("episodeNumber")))
+            out.append(t("new_episode", title=title, season=i.get("seasonNumber"), episode=i.get("episodeNumber")))
     return out[:MAX_SHOWS]
 
 
@@ -102,13 +104,17 @@ def _tibber(ha, attrs, now):
 
 
 def _money(v, unit):
-    """In øre under a krone, else in kroner: «42 øre», «1,85 kr». The unit says whether it's øre or kroner already."""
-    ore = v if "øre" in (unit or "").lower() or "ore" in (unit or "").lower() else v * 100
-    return "%d øre" % round(ore) if ore < 100 else ("%.2f kr" % (ore / 100)).replace(".", ",")
+    """The price in the sensor's own currency, not the language's. In Norwegian money (NOK, øre, kr, or no unit), øre
+    under a krone, else kroner: "42 øre", "1,85 kr". Another currency is the number with it: "0.25 EUR"."""
+    u = (unit or "").lower()
+    if not u or "nok" in u or "øre" in u or "ore" in u or u.startswith("kr"):
+        ore = v if "øre" in u or "ore" in u else v * 100
+        return "%d øre" % round(ore) if ore < 100 else ("%.2f kr" % (ore / 100)).replace(".", t("decimal"))
+    return ("%.2f %s" % (v, unit.split("/")[0].strip())).replace(".", t("decimal"))
 
 
 def power(ha, entity, now):
-    """{hourly: {hour: price}, lines: [«Billigst kl. 13–15: 42 øre», «Dyrest kl. 17–19: 1,85 kr»], cheap: hour,
+    """{hourly: {hour: price}, lines: ["Cheapest 13–15: 42 øre", "Dearest 17–19: 1.85 kr"], cheap: hour,
     dear: hour} for the rest of today, or None. The prices are in the sensor (Nord Pool), or from Tibber when it's a
     Tibber sensor."""
     try:
@@ -124,5 +130,5 @@ def power(ha, entity, now):
     lo, hi = min(starts, key=mean.get), max(starts, key=mean.get)
     unit = a.get("unit_of_measurement") or a.get("unit") or ""
     return {"hourly": hourly, "cheap": lo, "dear": hi, "hours": PRICE_HOURS,
-            "lines": ["Billigst kl. %02d–%02d: %s" % (lo, lo + PRICE_HOURS, _money(mean[lo], unit)),
-                      "Dyrest kl. %02d–%02d: %s" % (hi, hi + PRICE_HOURS, _money(mean[hi], unit))]}
+            "lines": [t("cheapest", start="%02d" % lo, end="%02d" % (lo + PRICE_HOURS), price=_money(mean[lo], unit)),
+                      t("dearest", start="%02d" % hi, end="%02d" % (hi + PRICE_HOURS), price=_money(mean[hi], unit))]}

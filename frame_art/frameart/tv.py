@@ -20,13 +20,13 @@ class TV:
         self.host, self.token_file, self.name = host, token_file, name
 
     def _new(self):
-        # timeout covers the first connection, while someone answers «Tillat» on the TV
+        # timeout covers the first connection, while someone answers "Allow" on the TV
         return SamsungTVAsyncArt(host=self.host, port=8002, token_file=self.token_file, name=self.name, timeout=60)
 
     async def pair(self):
-        """The art channel never asks «Tillat»; it stays silent without a token. The remote control channel asks, and
+        """The art channel never asks "Allow"; it stays silent without a token. The remote control channel asks, and
         its token works for both. No keys are sent."""
-        log.info("no token yet: answer «Tillat» for %s on the TV", self.name)
+        log.info("no token yet: answer 'Allow' for %s on the TV", self.name)
         remote = SamsungTVWSAsyncRemote(host=self.host, port=8002, token_file=self.token_file, name=self.name,
                                         timeout=60)
         try:
@@ -37,7 +37,7 @@ class TV:
             except Exception:
                 pass
         if not self.has_token():
-            raise RuntimeError("the TV gave no token (was «Tillat» answered?)")
+            raise RuntimeError("the TV gave no token (was 'Allow' answered?)")
         log.info("got a token from the TV")
 
     def has_token(self):

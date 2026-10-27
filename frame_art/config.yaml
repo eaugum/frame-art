@@ -1,9 +1,9 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see README.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.19.0"
+version: "0.20.0"
 slug: frame_art
-description: Tilfeldig rotasjon i The Frames Kunstmodus, fra en mappe, museer, Commons, NASA og film, med kildene du krysser av, Morgenbildet og kveldens serie
+description: Random rotation in The Frame's Art Mode, from a folder, museums, Commons, NASA and film, with the sources you tick, a morning picture and tonight's show
 url: https://github.com/eaugum/frame-art
 arch: [aarch64, amd64]
 init: false
@@ -15,10 +15,10 @@ panel_icon: mdi:image-frame
 ports:
   8099/tcp: 8099
 ports_description:
-  8099/tcp: API for Home Assistant and Frame TV (bytt bilde, Kunstmodus)
+  8099/tcp: API for Home Assistant and Frame TV (change the picture, Art Mode)
 services:
   - mqtt:want  # Home Assistant sees it as a device through Mosquitto; it runs without too
-homeassistant_api: true  # Følg musikken reads the Spotify player from Home Assistant
+homeassistant_api: true  # Follow the music reads the Spotify player, and language: auto the language, from Home Assistant
 hassio_api: true  # a key the add-on makes is written into its own options (api_key)
 map:
   - type: media
@@ -27,13 +27,16 @@ map:
 # day (the sources that are ticked, the interval, the times, the switches) is on the add-on's page.
 options:
   tv_host: 10.1.2.36
+  # The language on the wall, in Home Assistant and on the add-on's page: auto follows Home Assistant (English when
+  # it's neither English nor Norwegian)
+  language: auto
   # The key Frame TV and others send (art_key in Frame TV); left empty, the add-on makes one and writes it here
   api_key: ""
-  # Morgenbildet's weather (met.no in Home Assistant); empty: no weather
+  # The morning picture's weather (met.no in Home Assistant); empty: no weather
   weather_entity: weather.forecast_home
-  # The TV in Home Assistant, turned on before Morgenbildet when it's off; empty: never
+  # The TV in Home Assistant, turned on before the morning picture when it's off; empty: never
   tv_entity: ""
-  # Calendars whose events today are in Morgenbildet, and a Nord Pool sensor for the electricity price
+  # Calendars whose events today are in the morning picture, and a Nord Pool or Tibber sensor for the electricity price
   calendars: []
   price_entity: ""
   stasera_url: "https://www.stasera.app"
@@ -41,47 +44,48 @@ options:
   # |). Every source here is used; tick them on the add-on's page. Only pictures close to 16:9, cropped to fill the
   # screen. Types and queries: README.md.
   sources:
-    # Mine egne
-    - {category: Mine bilder, name: Mine bilder, type: folder, query: /media/frame-art}
-    # Malerier
-    - {category: Malerier, name: Landskap og hav (The Met), type: met, query: landscape|seascape}
-    - {category: Malerier, name: Rijksmuseum, type: rijksmuseum, query: landschap|zee}
-    - {category: Malerier, name: Nasjonalmuseet, type: nasjonalmuseet,
+    # Your own
+    - {category: My pictures, name: My pictures, type: folder, query: /media/frame-art}
+    # Paintings
+    - {category: Paintings, name: Landscapes and seascapes (The Met), type: met, query: landscape|seascape}
+    - {category: Paintings, name: Rijksmuseum, type: rijksmuseum, query: landschap|zee}
+    - {category: Paintings, name: Nasjonalmuseet, type: nasjonalmuseet,
        query: Hans Gude|Harald Sohlberg|Edvard Munch|Nikolai Astrup|Theodor Kittelsen}
-    - {category: Malerier, name: Cleveland, type: cleveland, query: landscape|seascape}
-    - {category: Malerier, name: Dansk gullalder (SMK), type: smk, query: "*"}
-    - {category: Malerier, name: Impresjonistene, type: commons,
+    - {category: Paintings, name: Cleveland, type: cleveland, query: landscape|seascape}
+    - {category: Paintings, name: Danish Golden Age (SMK), type: smk, query: "*"}
+    - {category: Paintings, name: The Impressionists, type: commons,
        query: Paintings by Claude Monet|Paintings by Camille Pissarro|Paintings by Alfred Sisley|Paintings by Vincent van Gogh}
-    - {category: Malerier, name: Romantikken, type: commons,
+    - {category: Paintings, name: Romanticism, type: commons,
        query: Paintings by Caspar David Friedrich|Paintings by Joseph Mallord William Turner|Paintings by Ivan Aivazovsky|Paintings by Albert Bierstadt}
-    - {category: Malerier, name: Nordisk lys, type: commons,
+    - {category: Paintings, name: Nordic light, type: commons,
        query: Paintings by Peder Severin Krøyer|Paintings by Akseli Gallen-Kallela|Paintings by Anders Zorn|Paintings by Vilhelm Hammershøi}
-    # Abstrakt
-    - {category: Abstrakt, name: Abstrakt, type: commons,
+    # Abstract
+    - {category: Abstract, name: Abstract, type: commons,
        query: Paintings by Wassily Kandinsky|Paintings by Piet Mondrian|Paintings by Kazimir Malevich|Paintings by Paul Klee|Paintings by Robert Delaunay|Paintings by Hilma af Klint|Paintings by Sophie Taeuber-Arp|Paintings by Lyubov Popova}
     # Japan
-    - {category: Japan, name: Japanske tresnitt (The Met), type: met, query: medium=Prints&q=Hiroshige|medium=Prints&q=Hokusai}
-    - {category: Japan, name: Japanske tresnitt (Cleveland), type: cleveland,
+    - {category: Japan, name: Japanese woodblock prints (The Met), type: met, query: medium=Prints&q=Hiroshige|medium=Prints&q=Hokusai}
+    - {category: Japan, name: Japanese woodblock prints (Cleveland), type: cleveland,
        query: type=Print&q=Hiroshige|type=Print&q=Hokusai}
     - {category: Japan, name: Kawase Hasui, type: commons, query: Kawase Hasui}
-    # Plakater
-    - {category: Plakater, name: Art nouveau-plakater, type: commons, query: Art Nouveau posters|Posters by Alfons Mucha}
-    - {category: Plakater, name: Art deco-plakater, type: commons, query: Art Deco posters}
-    - {category: Plakater, name: Nasjonalparkplakater, type: commons, query: "WPA posters, National Park Service"}
-    # Natur og rommet
-    - {category: Natur og rommet, name: Botanikk, type: wellcome, query: botanical}
-    - {category: Natur og rommet, name: Naturfoto, type: commons,
+    # Posters
+    - {category: Posters, name: Art Nouveau posters, type: commons, query: Art Nouveau posters|Posters by Alfons Mucha}
+    - {category: Posters, name: Art Deco posters, type: commons, query: Art Deco posters}
+    - {category: Posters, name: National park posters, type: commons, query: "WPA posters, National Park Service"}
+    # Nature and space
+    - {category: Nature and space, name: Botany, type: wellcome, query: botanical}
+    - {category: Nature and space, name: Nature photos, type: commons,
        query: Featured pictures of landscapes|Featured pictures of mountains|Featured pictures of Norway}
-    - {category: Natur og rommet, name: Rommet (NASA), type: nasa, query: nebula|spiral galaxy|star cluster}
-    - {category: Natur og rommet, name: Jorda fra rommet, type: nasa, query: earth from space}
-    - {category: Natur og rommet, name: Astrofoto, type: commons, query: Featured pictures of astronomy}
-    # Film og serier: fra Stasera (stasera_url, og koblet på add-on-siden)
-    - {category: Film, name: Filmplakater, type: commons, query: 1920s film posters|Film posters of the United States}
-    - {category: Film, name: Det vi ser på, type: stasera, query: watching|wantToStart}
-    - {category: Film, name: Filmene våre, type: stasera, query: movies}
-    - {category: Film, name: Anbefalt, type: stasera, query: recommendations}
+    - {category: Nature and space, name: Space (NASA), type: nasa, query: nebula|spiral galaxy|star cluster}
+    - {category: Nature and space, name: Earth from space, type: nasa, query: earth from space}
+    - {category: Nature and space, name: Astrophotography, type: commons, query: Featured pictures of astronomy}
+    # Film and TV: from Stasera (stasera_url, and linked on the add-on's page)
+    - {category: Film, name: Film posters, type: commons, query: 1920s film posters|Film posters of the United States}
+    - {category: Film, name: What we're watching, type: stasera, query: watching|wantToStart}
+    - {category: Film, name: Our movies, type: stasera, query: movies}
+    - {category: Film, name: Recommended, type: stasera, query: recommendations}
 schema:
   tv_host: str
+  language: list(auto|en|nb)?
   api_key: password?
   weather_entity: match(^(weather\..+)?$)?
   tv_entity: match(^(media_player\..+)?$)?

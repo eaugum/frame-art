@@ -7,14 +7,14 @@ Two pictures we make have a time of their own (AUG-1447): Morgenbildet, with the
 time comes; the rotation goes on after it.
 
 The rotation draws from the sources that are ticked on the add-on's page (sources_off are the others); they're grouped
-in categories only to be found. A picture chosen on the add-on's page (Fast bilde) stands until the next Morgenbildet,
+in categories only to be found. A picture chosen on the add-on's page (a fixed picture) stands until the next Morgenbildet,
 then the rotation goes on. What wins is decided in one place, wanted().
 
 Frame TV's screensaver (AUG-1494) says so with POST /saver: Art Mode on, and with screensaver_stasera what we watch and
 want to start in Stasera, with the title, in turn with the interval, until Art Mode goes off. Art Mode going off while
 the TV is on opens Frame TV, since the remote's keys only give the TV's own Art Mode menu.
 
-Følg musikken (AUG-1495): while Spotify plays (read from Home Assistant), the album's cover with the song, a picture
+Follow the music (AUG-1495): while Spotify plays (read from Home Assistant), the album's cover with the song, a picture
 per song, in front of everything else. A few minutes after it stops, what was on the wall before comes back.
 
 What the add-on's page changes (SETTINGS, and the fixed picture) is kept in settings.json, before the add-on's options.
@@ -30,7 +30,8 @@ import shutil
 import time
 from zoneinfo import ZoneInfo
 
-from . import __version__, image, made, music, net, sources, today as todaymod, weather
+from . import __version__, i18n, image, made, music, net, sources, today as todaymod, weather
+from .i18n import t
 from .stasera import Stasera, Unlinked
 from . import tv as tvmod
 from .tv import TV
@@ -41,12 +42,12 @@ RECENT = 200  # not the same picture again within this many changes (or the whol
 RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Stasera didn't answer
 MADE = ("morning", "tonight")
-MODES = ("shuffle", "category")  # «category» only from older callers: it becomes that category's sources
+MODES = ("shuffle", "category")  # "category" only from older callers: it becomes that category's sources
 BACK_APP = "FrameTVapp.FrameTV"  # opened when Art Mode goes off while the TV is on (AUG-1494)
-SAVER = {"watching": "SER PÅ", "wantToStart": "VIL BEGYNNE PÅ"}  # Stasera's lists for the screensaver, and the heading
-HISTORY = 100  # pictures from the rotation remembered for «Nylig vist»
+SAVER = {"watching": "watching", "wantToStart": "want_to_start"}  # Stasera's lists for the screensaver -> the heading
+HISTORY = 100  # pictures from the rotation remembered for "Recently shown"
 THUMBS = 600  # small copies kept for the add-on's page
-OWN = ("saver", "music")  # pictures of the moment: not in «Nylig vist», and not prepared ahead
+OWN = ("saver", "music")  # pictures of the moment: not in "Recently shown", and not prepared ahead
 MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 TV_ON_WAIT = 30  # seconds from Home Assistant turning the TV on until Art Mode answers
@@ -69,7 +70,7 @@ SETTINGS = {
     "category": ("", lambda v: str(v).strip()),
     "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),  # before sources_off
     "sources_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
-    # Kept for the screensaver (AUG-1494) and Følg musikken (AUG-1495); the page shows them already
+    # Kept for the screensaver (AUG-1494) and Follow the music (AUG-1495); the page shows them already
     # The TV (tv_entity in the options) turned on through Home Assistant before Morgenbildet, when it's off
     "morning_tv_on": (True, _bool),
     "screensaver": (True, _bool),  # off: Frame TV doesn't start its screensaver (it reads this from /status)
@@ -124,9 +125,10 @@ class Rotation:
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
         self.saver_minutes = None  # how often the picture changes meanwhile, from Frame TV
-        self.back_at = 0  # when Frame TV was last opened; the TV says «off» twice
+        self.back_at = 0  # when Frame TV was last opened; the TV says "off" twice
         self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
         self.ha = music.HomeAssistant(cfg)
+        i18n.setup(cfg)
         self.music, self.music_at = None, 0  # what played last, and when it was last seen playing
         self.wake = asyncio.Event()  # the music changed: the timer looks at once
         self.listened = asyncio.Event()  # the player has been looked at once since the start
@@ -225,8 +227,8 @@ class Rotation:
     def wanted(self):
         """What should be on the wall now: the first of these that has something to say (AUG-1490).
 
-        1. Følg musikken, while music plays (AUG-1495)
-        2. What you chose yourself: a fixed picture («neste» is a change right away)
+        1. Follow the music, while music plays (AUG-1495)
+        2. What you chose yourself: a fixed picture ("next" is a change right away)
         3. Morgenbildet and tonight's show; a fixed picture is ended by Morgenbildet, not by tonight's show
         4. The screensaver, with Stasera's pictures (AUG-1494)
         5. The rotation, in its mode
@@ -334,7 +336,7 @@ class Rotation:
         try:
             if kind == "morning":
                 w = self.weather(now)
-                img, label = made.morning_picture(now, w, self._day(now)), "Morgenbildet"
+                img, label = made.morning_picture(now, w, self._day(now)), t("label_morning")
             else:
                 items = [i for i in self.stasera.tonight() if i.get("textlessBackdropPath") or i.get("backdropPath")]
                 if not items:
@@ -342,7 +344,7 @@ class Rotation:
                     self.state["made"][kind] = today  # not again today
                     self.state.save()
                     return None
-                img, label = made.poster(items[0]), "I kveld: %s" % (items[0].get("title") or "?")
+                img, label = made.poster(items[0]), t("label_tonight", title=items[0].get("title") or "?")
         except Unlinked:
             log.info("Stasera isn't linked: link it on the add-on's page")
             return None
@@ -393,7 +395,7 @@ class Rotation:
         recent = self.state["recent"][-(len(keys) - 1):] if len(keys) > 1 else []
         n = next((n for n, k in enumerate(keys) if k not in recent), 0)
         try:
-            img = made.poster(items[n], SAVER[items[n]["list"]])
+            img = made.poster(items[n], t(SAVER[items[n]["list"]]))
         except Exception as e:
             log.warning("couldn't make the screensaver's picture (%s: %s)", type(e).__name__, e)
             return None
@@ -408,7 +410,7 @@ class Rotation:
         except Exception as e:
             log.warning("couldn't make the cover's picture (%s: %s)", type(e).__name__, e)
             return None
-        return image.to_jpeg(img), "Musikk: %s – %s" % (m["title"], m["artist"]), m["key"]
+        return image.to_jpeg(img), t("label_music", title=m["title"], artist=m["artist"]), m["key"]
 
     def prepared(self, what=None):
         """The picture for the next change, made once and kept until it's on the TV (the TV may be off for hours).
@@ -606,7 +608,7 @@ class Rotation:
         except Exception as e:
             log.warning("Art Mode off, but couldn't open %s (%s: %s)", app, type(e).__name__, e)
 
-    # MARK: - Følg musikken (AUG-1495)
+    # MARK: - Follow the music (AUG-1495)
 
     def playing(self):
         """The music is on and plays, or stopped less than MUSIC_GRACE ago."""
@@ -618,10 +620,10 @@ class Rotation:
         return self.ha.playing(time.time())
 
     async def follow(self):
-        """Looks at Home Assistant's Spotify player every few seconds while Følg musikken is on, and wakes the timer
+        """Looks at Home Assistant's Spotify player every few seconds while Follow the music is on, and wakes the timer
         when the song changes or the music stops."""
         if not self.ha.ready():
-            log.info("Følg musikken: no Home Assistant (homeassistant_api, or ha_url and ha_token)")
+            log.info("Follow the music: no Home Assistant (homeassistant_api, or ha_url and ha_token)")
             return
         failing, was = False, None
         while True:
@@ -629,17 +631,17 @@ class Rotation:
                 try:
                     now = await asyncio.to_thread(self._listen)
                     if failing:
-                        log.info("Følg musikken: Home Assistant answers again")
+                        log.info("Follow the music: Home Assistant answers again")
                     failing = False
                     if now:
                         self.music, self.music_at = now, time.time()
                 except Exception as e:
                     if not failing:
-                        log.info("Følg musikken: Home Assistant didn't answer (%s: %s)", type(e).__name__, e)
+                        log.info("Follow the music: Home Assistant didn't answer (%s: %s)", type(e).__name__, e)
                     failing = True
             key = self.music["key"] if self.playing() else None
             if key != was:
-                log.info("Følg musikken: %s", "%s – %s" % (self.music["title"], self.music["artist"]) if key else
+                log.info("Follow the music: %s", "%s – %s" % (self.music["title"], self.music["artist"]) if key else
                          "the music stopped")
                 self.wake.set()
                 was = key
@@ -794,7 +796,7 @@ class Rotation:
 
     async def gallery(self, category, n=24):
         """For a category: what's been on the wall lately (newest first), and n at random from what it has. Sources
-        not listed yet are listed in the background; «reading» says which."""
+        not listed yet are listed in the background; "reading" says which."""
         if category not in self.categories:
             raise ValueError("no category called %s" % category)
         names = {s.name for s in self.in_play() if s.category == category}  # what's ticked
@@ -814,7 +816,7 @@ class Rotation:
                 "random": [{"key": k} for k in random.sample(keys, min(n, len(keys)))], "reading": unlisted}
 
     async def clean(self, tv):
-        """Deletes our own older uploads, keeping the newest few; never anything else in «Mine bilder»."""
+        """Deletes our own older uploads, keeping the newest few; never anything else in "My Photos"."""
         keep = max(1, int(self.cfg.get("keep") or 3))
         on_tv = await tv.my_photos()  # raises rather than giving an empty list, so nothing is forgotten by mistake
         ours = [u for u in self.state["uploaded"] if u["content_id"] in on_tv]  # forget what someone deleted

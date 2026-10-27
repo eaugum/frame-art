@@ -1,162 +1,180 @@
-# Endringer
+# Changes
+
+## 0.20.0
+
+- English or Norwegian: the morning picture, the posters, the device in Home Assistant and the add-on's page follow
+  Home Assistant's language. The new option `language` is `auto` (the default), `en` or `nb`; other languages give
+  English. The entity ids stay the same, so automations and dashboards keep working.
+- The options have names and help text in HA (`translations/`), and the default sources have English names. Sources
+  already saved in your options keep theirs.
+- The electricity price follows the sensor's currency: øre and kroner for NOK, otherwise the number with its unit.
+- The README and this changelog are in English.
+- The Rijksmuseum source works again; since 0.15.0 every picture from it failed.
 
 ## 0.19.0
 
-- Add-on-siden: er TV-en av (`tv_entity`) når du trykker en knapp eller velger et bilde, spør siden om den skal slå
-  den på. Da skrur HA den på, og bildet kommer i Kunstmodus et halvt minutt etter. `GET /tv` sier om TV-en er av, og
-  `?wake=1` på `/next` og `/show` slår den på først.
+- The add-on's page: if the TV is off (`tv_entity`) when you press a button or choose a picture, the page asks whether
+  to turn it on. Then HA turns it on, and the picture comes in Art Mode half a minute later. `GET /tv` says whether the
+  TV is off, and `?wake=1` on `/next` and `/show` turns it on first.
 
 ## 0.18.0
 
-- Morgenbildet bruker hele skjermen, med større skrift. Under været står temperaturen kl. 8, 12, 16 og 20, vinden fra
-  frisk bris og «Fare for glatte veier» når det er nedbør rundt null grader om morgenen.
-- Strømmen vises som søyler time for time, med de billigste og dyreste timene merket. Tibbers prissensor virker nå
-  (`tibber.get_prices`), i tillegg til Nord Pool.
+- The morning picture uses the whole screen, with bigger type. Under the weather are the temperatures at 8, 12, 16 and
+  20, the wind from fresh breeze, and "Risk of icy roads" when there's precipitation around zero degrees in the morning.
+- The electricity is shown as bars hour by hour, with the cheapest and dearest hours marked. Tibber's price sensor now
+  works (`tibber.get_prices`), as well as Nord Pool.
 
 ## 0.17.1
 
-- Morgenbildet: været fra HA (`weather_entity`, standard `weather.forecast_home`, met.no) og sol opp og ned fra
-  `sun.sun`. Uten den, eller når HA ikke svarer, kommer bildet uten vær. Open-Meteo og `location` er fjernet.
+- The morning picture: the weather from HA (`weather_entity`, by default `weather.forecast_home`, met.no) and sunrise
+  and sunset from `sun.sun`. Without it, or when HA doesn't answer, the picture comes without weather. Open-Meteo and
+  `location` are removed.
 
 ## 0.17.0
 
-- Morgenbildet: været fra HA (`weather_entity`) med Open-Meteo som reserve (fjernet igjen i 0.17.1).
+- The morning picture: the weather from HA (`weather_entity`) with Open-Meteo as a fallback (removed again in 0.17.1).
 
 ## 0.16.0
 
-- `tmdb_key`, `back_app` og kildetypen `tmdb` er fjernet; Stasera gir filmbildene, og Frame TV er alltid appen som
-  åpnes når Kunstmodus går av.
-- Add-on-siden: bryteren «Skru på TV-en først» under Morgenbildet er tilbake (på som standard). TV-en er `tv_entity`
-  i valgene; uten den er bryteren grå.
+- `tmdb_key`, `back_app` and the source type `tmdb` are removed; Stasera gives the film pictures, and Frame TV is always
+  the app opened when Art Mode goes off.
+- The add-on's page: the switch "Turn the TV on first" under the morning picture is back (on by default). The TV is
+  `tv_entity` in the options; without it the switch is grey.
 
 ## 0.15.0
 
-- Valgene i HA har det som settes opp én gang: `api_key` (tom: add-on-et lager en og skriver den inn), `location`
-  (et stedsnavn for været; tom: hjemmet i HA), `tv_entity`, `calendars` og `price_entity`. Add-on-siden viser ikke
-  lenger nøkkelen og har ikke lenger valgene for TV-en, kalenderne og strømmen. Er de valgt på siden før, må de inn i
-  valgene.
-- Kildene har bare `name`, `category`, `type` og `query`. `years`, `shape`, `weight` og `enabled` overses: alle i
-  lista er med, like ofte, fra alle årstall. Stumfilm (som var av) er fjernet fra standardlista.
+- The options in HA have what's set up once: `api_key` (empty: the add-on makes one and writes it in), `location` (a
+  place name for the weather; empty: the home in HA), `tv_entity`, `calendars` and `price_entity`. The add-on's page no
+  longer shows the key and no longer has the choices for the TV, the calendars and the electricity. If they were chosen
+  on the page before, they must go into the options.
+- The sources only have `name`, `category`, `type` and `query`. `years`, `shape`, `weight` and `enabled` are ignored:
+  everything in the list is included, equally often, from every year. Silent film (which was off) is removed from the
+  default list.
 
 ## 0.14.0
 
-- Bare bilder nær 16:9 (1,45–2,0), beskåret så de fyller skjermen. `shape` overses, og ingen bilder vises lenger
-  hele på en uskarp bakgrunn. Kildene leses på nytt ved oppstart; plakater og tresnitt får derfor langt færre bilder.
-- Valgene i HA er bare det add-on-et trenger for å starte: TV-en, Stasera, `tmdb_key`, `back_app` og kildene.
-  Intervallet, tidene og Morgenbildet står på add-on-siden som før, og «Bilder som blir liggende på TV-en» (`keep`)
-  er flyttet dit. Været er for hjemmet i HA, med mindre `latitude` og `longitude` står i valgene.
-- Add-on-siden: lista over TV-er og strømsensorer viser entiteten også. «Slå på Kunstmodus» er borte; de andre
-  knappene slår den på.
+- Only pictures close to 16:9 (1.45–2.0), cropped to fill the screen. `shape` is ignored, and no pictures are shown
+  whole on a blurred background any more. The sources are read again at startup; posters and woodblock prints therefore
+  get far fewer pictures.
+- The options in HA are only what the add-on needs to start: the TV, Stasera, `tmdb_key`, `back_app` and the sources.
+  The interval, the times and the morning picture are on the add-on's page as before, and "Pictures left on the TV"
+  (`keep`) has moved there. The weather is for the home in HA, unless `latitude` and `longitude` are in the options.
+- The add-on's page: the list of TVs and electricity sensors shows the entity too. "Turn on Art Mode" is gone; the
+  other buttons turn it on.
 
 ## 0.13.0
 
-- Morgenbildet: uka og navnedagen under datoen, og til høyre dagens avtaler fra kalenderne i HA, nytt i Stasera i dag
-  (episoder og premierer) og de billigste og dyreste timene for strøm. Kalenderne og strømsensoren velges på
-  add-on-siden.
-- Skjermspareren: Frame TV sier hvor ofte bildet skal byttes (`POST /saver?minutes=`), ikke lenger intervallet.
+- The morning picture: the week and the name day under the date, and on the right today's events from the calendars in
+  HA, what's new in Stasera today (episodes and premieres) and the cheapest and dearest hours for electricity. The
+  calendars and the electricity sensor are chosen on the add-on's page.
+- The screensaver: Frame TV says how often the picture changes (`POST /saver?minutes=`), no longer the interval.
 
 ## 0.12.0
 
-- Morgenbildet kan skru på TV-en først: velg TV-en blant mediespillerne i HA på add-on-siden og slå på «Skru på
-  TV-en først». Er den av, skrur HA den på, og Morgenbildet kommer i Kunstmodus.
-- Add-on-siden: en linje under tittelen sier hva som styrer nå (Rotasjon, Fast bilde, Følg musikken, Morgenbildet,
-  Skjermspareren), og knappene er like. Kategorien står foran kilden; versjonen er borte.
-- «Velg bilde» viser bare bilder fra kildene som er krysset av.
-- Bryteren «Skjermsparer» (`screensaver`, `switch.frame_art_screensaver`): av, og Frame TV starter ingen skjermsparer.
-  Frame TV leser den fra `/status`.
+- The morning picture can turn the TV on first: choose the TV among the media players in HA on the add-on's page and
+  turn on "Turn the TV on first". If it's off, HA turns it on, and the morning picture comes in Art Mode.
+- The add-on's page: a line under the title says what's in charge now (Rotation, Fixed picture, Follow the music, the
+  morning picture, the screensaver), and the buttons are alike. The category is in front of the source; the version is
+  gone.
+- "Choose picture" only shows pictures from the sources that are ticked.
+- The switch "Screensaver" (`screensaver`, `switch.frame_art_screensaver`): off, and Frame TV starts no screensaver.
+  Frame TV reads it from `/status`.
 
 ## 0.11.0
 
-- Add-on-siden: hver kilde har sin avkrysning, og rotasjonen trekker fra dem som er krysset av. Kildene står under
-  kategorien sin, som krysser av alle i den på en gang. Modusene Shuffle og Kategori er borte; det som var valgt, blir
-  avkrysningen (`sources_off` i `/data/settings.json`).
-- Siden er ryddet: knappene samlet under bildet, kildene i én liste, innstillingene og tilkoblingene for seg.
-  «Velg bilde» åpner bildene under kategorien.
-- Kilder som aldri er lest, leses i bakgrunnen ved oppstart, så antallet bilder står der med en gang.
-- HA: `select.frame_art_mode` er Shuffle eller Fast bilde; `select.frame_art_category` krysser av bare den kategorien.
+- The add-on's page: each source has its own tick, and the rotation draws from those that are ticked. The sources are
+  under their category, which ticks all in it at once. The modes Shuffle and Category are gone; what was chosen becomes
+  the ticks (`sources_off` in `/data/settings.json`).
+- The page is tidied: the buttons together under the picture, the sources in one list, the settings and the connections
+  on their own. "Choose picture" opens the pictures under the category.
+- Sources that have never been read are read in the background at startup, so the number of pictures is there at once.
+- HA: `select.frame_art_mode` is Shuffle or Fixed picture; `select.frame_art_category` ticks only that category.
 
 ## 0.10.2
 
-- Følg musikken: en omstart mens musikken spiller viser ikke lenger bildet fra før et øyeblikk.
+- Follow the music: a restart while music is playing no longer shows the picture from before for a moment.
 
 ## 0.10.1
 
-- Følg musikken: et nytt bilde for hver sang, med sangen, artisten og albumet (når det ikke heter det samme som
-  sangen). Spilleren sjekkes hvert 4. sekund.
-- Add-on-siden: Skjermspareren og Følg musikken står ikke lenger som «kommer», og «neste» vises ikke mens musikken
-  styrer.
+- Follow the music: a new picture for each song, with the song, the artist and the album (when it isn't called the same
+  as the song). The player is checked every 4 seconds.
+- The add-on's page: the screensaver and Follow the music are no longer "coming", and "next" isn't shown while the
+  music is in charge.
 
 ## 0.10.0
 
-- Følg musikken: når Spotify spiller (`media_player.spotify*` i HA, også SpotifyPlus), kommer albumcoveret på veggen,
-  stort på en flate i coverets farger, med albumet og artisten. Ett bilde per album. Tre minutter etter at musikken
-  stopper, kommer det som var der før. Det går foran alt annet; `wanted` kan være `music`. Bryteren «Bare når noen er
-  hjemme» bruker `zone.home`.
-- Add-on-et leser tilstanden i HA (`homeassistant_api`), uten eget Spotify-token. `GET /status` har `music`.
+- Follow the music: when Spotify plays (`media_player.spotify*` in HA, SpotifyPlus too), the album cover comes on the
+  wall, big on a surface in the cover's colours, with the album and the artist. One picture per album. Three minutes
+  after the music stops, what was there before comes back. It goes in front of everything else; `wanted` can be
+  `music`. The switch "Only when someone is home" uses `zone.home`.
+- The add-on reads the state in HA (`homeassistant_api`), without a Spotify token of its own. `GET /status` has
+  `music`.
 
 ## 0.9.1
 
-- `stasera_url` er `https://www.stasera.app` som standard. Den gamle adressen (`https://<deployment>.convex.site`)
-  virker fortsatt. Bruk www: `stasera.app` sender videre dit, og koblingen tåler det ikke.
+- `stasera_url` is `https://www.stasera.app` by default. The old address (`https://<deployment>.convex.site`) still
+  works. Use www: `stasera.app` redirects there, and the linking doesn't survive that.
 
 ## 0.9.0
 
-- Skjermspareren (`POST /saver`): med «Stasera i skjermspareren» på kommer det vi ser på og vil begynne på i Stasera, som
-  plakater med tittel, på rundgang med intervallet, til Kunstmodus slås av. `wanted` kan være `saver`.
-- Tilbake til Frame TV: går Kunstmodus av mens TV-en er på (Tilbake eller av/på på fjernkontrollen), åpner add-on-et
-  Frame TV. Valget `back_app` (tom slår det av).
-- Et bilde som fortsatt ligger på TV-en, sendes ikke på nytt.
+- The screensaver (`POST /saver`): with "Stasera in the screensaver" on, what we watch and want to start in Stasera
+  comes, as posters with the title, in turn with the interval, until Art Mode is turned off. `wanted` can be `saver`.
+- Back to Frame TV: if Art Mode goes off while the TV is on (Back or power on the remote), the add-on opens Frame TV.
+  The option `back_app` (empty turns it off).
+- A picture still on the TV isn't sent again.
 
 ## 0.8.1
 
-- Koblingen til Stasera sier at den er Home Assistant, så den står under Home Assistant på Staseras side
-  Tilkoblinger, ikke som en TV. En kobling fra før står som TV til den kobles på nytt.
+- The link to Stasera says it's Home Assistant, so it's under Home Assistant on Stasera's Connections page, not as a
+  TV. A link from before is a TV until it's linked again.
 
 ## 0.8.0
 
-- API-et krever en nøkkel (header `Authorization: Bearer …` eller `?key=`). Add-on-et lager den, og add-on-siden viser
-  den. Siden i HA trenger den ikke. Kall uten nøkkel, som gamle `rest_command`-er, avvises: bruk MQTT-knappene.
-- `POST /saver`: Frame TV-s skjermsparer slår på Kunstmodus.
+- The API needs a key (the header `Authorization: Bearer …` or `?key=`). The add-on makes it, and the add-on's page
+  shows it. The page in HA doesn't need it. Calls without a key, like old `rest_command`s, are refused: use the MQTT
+  buttons.
+- `POST /saver`: Frame TV's screensaver turns on Art Mode.
 
 ## 0.7.0
 
-- Frame Art er en enhet i Home Assistant over MQTT (Mosquitto): knapper, modus og kategori, intervall, brytere,
-  bildet som vises og hva som bestemmer nå. Tilkoblingen kommer fra Supervisor. Uten Mosquitto går den som før.
+- Frame Art is a device in Home Assistant over MQTT (Mosquitto): buttons, mode and category, interval, switches, the
+  picture showing and what decides now. The connection comes from the Supervisor. Without Mosquitto it runs as before.
 
 ## 0.6.1
 
-- Ny kildetype `stasera`: bakgrunnsbildene av det vi ser på, filmene og anbefalingene i Stasera, uten TMDB-nøkkel.
-  Film-kategorien i standardvalgene bruker den i stedet for `tmdb`, og `tmdb_key` er ikke lenger med der.
+- A new source type `stasera`: the backdrops of what we watch, the movies and the recommendations in Stasera, without a
+  TMDB key. The Film category in the defaults uses it instead of `tmdb`, and `tmdb_key` is no longer there.
 
 ## 0.6.0
 
-- Kategorier: feltet `category` på kildene, sju i standardvalgene. Legg det til i dine egne kilder (uten det er
-  kategorien kildens navn).
-- Moduser på add-on-siden: Shuffle (kategoriene som er krysset av), Kategori (én) og Fast bilde (velg et bilde fra en
-  kategori; det står til neste Morgenbildet).
-- Hva som vinner avgjøres ett sted: det du velger selv, så Morgenbildet og kveldens serie, så rotasjonen.
-- API: `/settings`, `/category`, `/thumb` og `/show`.
+- Categories: the field `category` on the sources, seven in the defaults. Add it to your own sources (without it the
+  category is the source's name).
+- Modes on the add-on's page: Shuffle (the categories that are ticked), Category (one) and Fixed picture (choose a
+  picture from a category; it stays until the next morning picture).
+- What wins is decided in one place: what you choose yourself, then the morning picture and tonight's show, then the
+  rotation.
+- API: `/settings`, `/category`, `/thumb` and `/show`.
 
 ## 0.5.4
 
-- `/status` og add-on-siden viser riktig versjon.
+- `/status` and the add-on's page show the right version.
 
 ## 0.5.3
 
-- Eget repo, `eaugum/frame-art`: installeres og oppdateres fra Add-on Store.
+- A repo of its own, `eaugum/frame-art`: installed and updated from the Add-on Store.
 
 ## 0.5.2
 
-- Add-on-siden skiller en kilde som ikke er lest ennå fra en uten bilder.
+- The add-on's page tells a source not read yet from one without pictures.
 
 ## 0.5.1
 
-- Koblingen til Stasera sier hva som gikk galt.
+- The link to Stasera says what went wrong.
 
 ## 0.5
 
-- Morgenbildet og kveldens serie fra Stasera, og tidsplanen på add-on-siden.
+- The morning picture and tonight's show from Stasera, and the schedule on the add-on's page.
 
 ## 0.4
 
-- Kildene er en liste i valgene, med 26 kilder: malerier, abstrakt, Japan, plakater, natur, rommet og film.
+- The sources are a list in the options, with 26 sources: paintings, abstract, Japan, posters, nature, space and film.
