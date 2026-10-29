@@ -91,7 +91,8 @@
   .tabs a.on { color: var(--text); border-bottom-color: var(--accent); }
   .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
   .filters button { padding: 4px 10px; font-size: 13px; }
-  .filters button.on { font-weight: 400; }
+  .filters button.on { background: #2a2a2a; color: var(--text); font-weight: 400; }
+  .filters button:not(.on) { opacity: .4; }
   .day { font-size: 13px; color: var(--dim); font-weight: 600; margin: 16px 0 4px; }
   .ev { display: flex; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
   .ev time { flex: none; width: 62px; color: var(--faint); font-variant-numeric: tabular-nums; }
@@ -100,6 +101,18 @@
   .ev .kind { color: var(--faint); font-size: 12px; margin-left: 6px; }
   .ev .why { display: block; color: var(--dim); font-size: 13px; }
   .ev .why.outside { color: var(--accent); }
+  .daynav { display: flex; align-items: center; gap: 10px; margin: 0 0 10px; }
+  .daynav b { flex: 1; text-align: center; font-weight: 600; }
+  .lanes { margin: 0 0 16px; }
+  .lane { display: flex; align-items: center; gap: 10px; margin: 4px 0; }
+  .lane > span { flex: none; width: 120px; font-size: 13px; color: var(--dim); }
+  .bar { position: relative; flex: 1; height: 16px; background: #202020; border-radius: 3px; overflow: hidden; }
+  .bar i { position: absolute; top: 0; bottom: 0; }
+  .bar i.unknown { background: repeating-linear-gradient(45deg, #2c2c2c 0 4px, #202020 4px 8px); }
+  .bar b { position: absolute; top: 1px; width: 4px; height: 14px; margin-left: -2px; border-radius: 1px; }
+  .bar u { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; opacity: .6; }
+  .hours { position: relative; flex: 1; height: 14px; font-size: 11px; color: var(--faint); }
+  .hours span { position: absolute; transform: translateX(-50%); }
 </style></head>
 <body><main>
   <nav class="tabs"><a data-tab="art" class="on">Frame Art</a><a data-tab="debug" data-t="debug"></a></nav>
@@ -170,9 +183,12 @@
     <section>
       <header><h2 data-t="events"></h2><span class="sum" id="events-sum"></span></header>
       <p class="note" data-t="events_note" style="margin: 0 0 12px"></p>
+      <div class="daynav"><button id="day-prev" class="small">‹</button><b id="day"></b>
+        <button id="day-next" class="small">›</button></div>
+      <div id="lanes" class="lanes"></div>
       <div id="filters" class="filters"></div>
       <div id="log"></div>
-      <div class="actions"><button id="older" class="small" data-t="older"></button></div>
+      <div class="actions"><a class="small" href="events/export" download data-t="export"></a></div>
     </section>
   </div>
 </main>
@@ -446,59 +462,151 @@
     fetch(linked ? "stasera/unlink" : "stasera/link", {method: "POST"}).then(function (r) { return r.json(); })
       .then(function (s) { show(s); if (!s.ok) $("stasera").textContent = s.error || tr("stasera_no_answer"); });
   };
-  // The Debug tab (AUG-1520): the event log, newest first, a day at a time and then new ones every few seconds
+  // The Debug tab (AUG-1520): a day at a time, its timeline (AUG-1524) and its events, newest first; new ones every
+  // few seconds. The day before is fetched too, for what the TV was doing when the day began.
   var SOURCES = ["tv", "rotation", "morning", "tonight", "music", "saver", "mqtt", "api", "app"];
   var COLORS = {tv: "#6fa8dc", rotation: "#93c47d", morning: "#f2c94c", tonight: "#e69138", music: "#c27ba0",
                 saver: "#8e7cc3", mqtt: "#76a5af", api: "#b4a7d6", app: "#e06666"};
-  var DAY = 86400000, evs = [], evFrom = 0, evTo = 0, hiddenSources = {}, polling = null;
+  var OFF = ["tv:power_off", "tv:standby"];
+  // Each lane: the events that turn it on and off ("source:kind"); known: false when not knowing is the same as off
+  var LANES = [
+    {name: "lane_power", color: COLORS.tv, on: ["tv:power_on"], off: OFF},
+    {name: "lane_art", color: "#f2c94c", on: ["tv:art_mode_on"], off: ["tv:art_mode_off"].concat(OFF)},
+    {name: "lane_app", color: COLORS.app, on: ["app:start", "app:shown", "app:reopened"], off: ["app:hidden"].concat(OFF)},
+    {name: "lane_saver", color: COLORS.saver, on: ["saver:start", "app:saver_own"], known: false,
+     off: ["saver:over", "saver:failed", "app:saver_stop"].concat(OFF)},
+    {name: "lane_music", color: COLORS.music, on: ["music:playing"], off: ["music:stopped"], known: false, each: true},
+    {name: "lane_made", points: {"morning:shown": COLORS.morning, "morning:ready": COLORS.morning,
+                                 "tonight:shown": COLORS.tonight, "tonight:ready": COLORS.tonight,
+                                 "morning:failed": "#e06666", "tonight:failed": "#e06666"}}
+  ];
+  var DAY = 86400000, evs = [], evFrom = 0, evTo = 0, hiddenSources = {}, polling = null, day = 0, fetching = false;
   function getEvents(query, then) {
     fetch("events?" + query).then(function (r) { return r.json(); }).then(then)
-      .catch(function () { $("events-sum").textContent = tr("no_answer"); });
+      .catch(function () { fetching = false; $("events-sum").textContent = tr("no_answer"); });
   }
-  function firstEvents() {
-    evFrom = Date.now() - DAY;
-    getEvents("since=" + evFrom, function (g) {
-      evs = g.events;
-      if (g.more && evs.length) evFrom = evs[0].id - 1;
-      evTo = evs.length ? evs[evs.length - 1].id : evFrom;
-      drawEvents();
+  function midnight(ms) { var d = new Date(ms); d.setHours(0, 0, 0, 0); return d.getTime(); }
+  /** The events back to `from` fetched, then then(); 2000 at a time. */
+  function back(from, then) {
+    if (evTo && evFrom <= from) { then(); return; }
+    fetching = true;
+    var until = evTo ? "&until=" + (evFrom + 1) : "";
+    getEvents("since=" + from + until, function (g) {
+      evs = g.events.concat(evs);
+      if (!evTo) evTo = evs.length ? evs[evs.length - 1].id : Date.now() - 1;
+      evFrom = g.more && g.events.length ? g.events[0].id - 1 : from;
+      fetching = false;
+      back(from, then);
     });
   }
   function newEvents() {
+    if (fetching) return;
     getEvents("since=" + evTo, function (g) {
       if (!g.events.length) return;
       evs = evs.concat(g.events);
       evTo = evs[evs.length - 1].id;
-      drawEvents();
+      drawDay();
     });
   }
-  $("older").onclick = function () {
-    var from = evFrom - DAY;
-    getEvents("since=" + from + "&until=" + (evFrom + 1), function (g) {
-      evs = g.events.concat(evs);
-      evFrom = g.more && g.events.length ? g.events[0].id - 1 : from;
-      drawEvents();
-    });
-  };
-  function clock(ms) {
-    return new Date(ms).toLocaleTimeString(LOCALE, {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+  function showDay(start) {
+    day = start;
+    $("day").textContent = new Date(day).toLocaleDateString(LOCALE, {weekday: "long", day: "numeric", month: "long"});
+    $("day-next").disabled = day >= midnight(Date.now());
+    $("lanes").innerHTML = "";
+    $("log").innerHTML = "";
+    $("events-sum").textContent = tr("fetching");
+    back(day - DAY, drawDay);
   }
-  function drawEvents() {
+  $("day-prev").onclick = function () { showDay(midnight(day - DAY / 2)); };
+  $("day-next").onclick = function () { showDay(midnight(day + DAY * 1.5)); };
+  function clock(ms, seconds) {
+    return new Date(ms).toLocaleTimeString(LOCALE, seconds === false ? {hour: "2-digit", minute: "2-digit"} :
+      {hour: "2-digit", minute: "2-digit", second: "2-digit"});
+  }
+  function byTime(a, b) { return a.at - b.at || a.id - b.id; }
+  function drawDay() {
+    var end = day + DAY, sorted = evs.slice().sort(byTime);
+    drawLanes(sorted, day, end);
+    drawEvents(sorted.filter(function (e) { return e.at * 1000 >= day && e.at * 1000 < end; }));
+  }
+
+  /** [state, from, to, label] for one lane between t0 and t1: true on, false off, null not known. */
+  function segments(lane, sorted, t0, t1) {
+    var state = lane.known === false ? false : null, since = t0, label = "", out = [];
+    var stop = Math.min(t1, Date.now());
+    sorted.forEach(function (e) {
+      var k = e.source + ":" + e.kind, ms = e.at * 1000;
+      var to = lane.on.indexOf(k) >= 0 ? true : lane.off.indexOf(k) >= 0 ? false : null;
+      if (to === null || ms >= stop) return;
+      if (ms <= t0) { state = to; label = e.detail; return; }
+      if (to !== state || (to && lane.each)) {
+        out.push([state, since, ms, label]);
+        state = to;
+        since = ms;
+      }
+      if (to) label = e.detail;
+    });
+    if (stop > t0) out.push([state, since, stop, label]);
+    return out;
+  }
+  function at(ms, t0) { return ((ms - t0) / DAY * 100) + "%"; }
+  function drawLanes(sorted, t0, t1) {
+    var box = $("lanes");
+    box.innerHTML = "";
+    LANES.forEach(function (lane) {
+      var bar = el("div", {className: "bar"});
+      if (lane.points) {
+        sorted.forEach(function (e) {
+          var c = lane.points[e.source + ":" + e.kind], ms = e.at * 1000;
+          if (!c || ms < t0 || ms >= t1) return;
+          var b = el("b", {title: clock(ms, false) + " " + e.detail});
+          b.style.left = at(ms, t0);
+          b.style.background = c;
+          if (e.kind === "ready") b.style.opacity = .5;
+          bar.append(b);
+        });
+      } else {
+        segments(lane, sorted, t0, t1).forEach(function (s) {
+          if (s[0] === false) return;
+          var i = el("i", {className: s[0] === null ? "unknown" : "",
+            title: clock(s[1], false) + "–" + clock(s[2], false) + (s[0] === null ? " " + tr("not_known") :
+              s[3] ? " " + s[3] : "")});
+          i.style.left = at(s[1], t0);
+          i.style.width = Math.max((s[2] - s[1]) / DAY * 100, .15) + "%";
+          if (s[0]) i.style.background = lane.color;
+          bar.append(i);
+        });
+      }
+      if (Date.now() >= t0 && Date.now() < t1) {
+        var now = el("u");
+        now.style.left = at(Date.now(), t0);
+        bar.append(now);
+      }
+      box.append(el("div", {className: "lane"}, [el("span", {textContent: tr(lane.name)}), bar]));
+    });
+    var hours = el("div", {className: "hours"});
+    for (var h = 0; h <= 24; h += 3) {
+      var label = el("span", {textContent: (h < 10 ? "0" : "") + h});
+      label.style.left = (h / 24 * 100) + "%";
+      hours.append(label);
+    }
+    box.append(el("div", {className: "lane"}, [el("span"), hours]));
+  }
+
+  function drawEvents(list) {
     var counts = {};
-    evs.forEach(function (e) { counts[e.source] = (counts[e.source] || 0) + 1; });
+    list.forEach(function (e) { counts[e.source] = (counts[e.source] || 0) + 1; });
     $("filters").innerHTML = "";
     SOURCES.forEach(function (src) {
       $("filters").append(el("button", {className: hiddenSources[src] ? "" : "on",
         textContent: tr("source_" + src) + " " + (counts[src] || 0),
-        onclick: function () { hiddenSources[src] = !hiddenSources[src]; drawEvents(); }}));
+        onclick: function () { hiddenSources[src] = !hiddenSources[src]; drawDay(); }}));
     });
-    var box = $("log"), lastDay = "", shown = 0;
+    var box = $("log"), shown = 0;
     box.innerHTML = "";
-    for (var i = evs.length - 1; i >= 0; i--) {
-      var e = evs[i];
+    for (var i = list.length - 1; i >= 0; i--) {
+      var e = list[i];
       if (hiddenSources[e.source]) continue;
-      var d = new Date(e.at * 1000).toLocaleDateString(LOCALE, {weekday: "long", day: "numeric", month: "long"});
-      if (d !== lastDay) box.append(el("div", {className: "day", textContent: lastDay = d}));
       var what = el("span", {className: "what"}, [e.detail || e.kind, el("span", {className: "kind", textContent: e.kind})]);
       if (e.why) what.append(el("span", {className: e.why === "from outside" ? "why outside" : "why",
         textContent: "← " + e.why}));
@@ -508,8 +616,7 @@
       shown++;
     }
     if (!shown) box.append(el("p", {className: "note", textContent: tr("events_empty")}));
-    $("events-sum").textContent = tr("events_since", {n: shown, when: new Date(evFrom).toLocaleString(LOCALE,
-      {weekday: "short", hour: "2-digit", minute: "2-digit"})});
+    $("events-sum").textContent = tr(shown === 1 ? "events_one" : "events_other", {n: shown});
   }
   function tab(name) {
     document.querySelectorAll(".tabs a").forEach(function (a) { a.className = a.dataset.tab === name ? "on" : ""; });
@@ -518,7 +625,7 @@
     clearInterval(polling);
     polling = null;
     if (name === "debug") {
-      if (!evTo) firstEvents(); else newEvents();
+      if (!evTo) showDay(midnight(Date.now())); else newEvents();
       polling = setInterval(function () { if (evTo) newEvents(); }, 5000);
     }
   }

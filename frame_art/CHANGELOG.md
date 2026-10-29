@@ -1,5 +1,14 @@
 # Changes
 
+## 0.26.0
+
+- The Debug tab shows a day at a time, with a timeline at the top: when the TV was on, in Art Mode, showing Frame TV,
+  the screensaver and the music, and when the morning picture and tonight's show came. ‹ and › go between the days.
+- "Export as JSON" downloads the whole log (`GET /events/export`).
+- Three new entities in Home Assistant: `binary_sensor.frame_art_tv_on`, `binary_sensor.frame_art_art_mode` and
+  `sensor.frame_art_activity` (off, app, art, morning, tonight, saver, music), so the history shows what the TV did.
+- The events are in the order they happened, also those Frame TV sent later.
+
 ## 0.25.0
 
 - The Debug tab follows the TV: the add-on asks every 20 seconds whether it's on, and hears when Art Mode goes on or

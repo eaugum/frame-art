@@ -135,9 +135,11 @@ Open **Frame Art** in the sidebar. A line under the title says what's in charge 
   (a backdrop with a logo after all, or a picture you don't like). Another one comes at once,
 - link the add-on to Stasera.
 
-The **Debug** tab lists what the add-on did and what it saw the TV do, newest first: when, what and why (the timer,
-the morning picture at 07:00, Home Assistant, Frame TV or the page). A button per source shows or hides its events, and
-"A day earlier" goes back. The last 7 days are kept in `/data/events.jsonl`.
+The **Debug** tab shows a day at a time; ‹ and › go between the days. At the top is a timeline: when the TV was on, in
+Art Mode, showing Frame TV, the screensaver and the music, and when the morning picture and tonight's show came (striped:
+not known). Under it is what the add-on did and what it saw the TV do, newest first: when, what and why (the timer, the
+morning picture at 07:00, Home Assistant, Frame TV or the page). A button per source shows or hides its events.
+"Export as JSON" downloads all of it. The last 7 days are kept in `/data/events.jsonl`.
 
 The add-on asks the TV every 20 seconds whether it's on, and hears from the TV when Art Mode goes on or off. Only
 changes are listed. A change that comes within two minutes of something Frame Art did says what that was; any other
@@ -227,6 +229,8 @@ to set up. Without Mosquitto it runs as before.
 | `sensor.frame_art_showing` | The picture's title, with the source, the category, when it changed and the next change as attributes |
 | `sensor.frame_art_wanted` | What's in charge: `music`, `rotation`, `fixed`, `morning`, `tonight` or `saver` |
 | `image.frame_art_picture` | The picture on the wall, 1280 pixels wide |
+| `binary_sensor.frame_art_tv_on`, `_art_mode` | Whether the TV is on, and in Art Mode, as the add-on sees it (asked every 20 seconds) |
+| `sensor.frame_art_activity` | What the TV does: `off`, `app` (Frame TV or another app), `art`, `morning`, `tonight`, `saver`, `music` or `unknown` |
 
 A new category comes into the select after a restart of the add-on. A dashboard card:
 
@@ -266,6 +270,7 @@ The answers wait for the TV.
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
 | `POST /event` | For Frame TV's events: `{"events": [{"at": <ms>, "kind": "hidden", "detail": "…"}]}`, up to 100 at a time |
+| `GET /events/export` | All of it, the last 7 days, as a file |
 | `GET /events?since=<id>` | What happened, oldest first: `{"events": [{id, at, source, kind, detail, why}], "more": false}`, the newest 2000 after that id (an id is the time in ms). `?until=<id>` for those before one |
 
 Art Mode is turned on with the Art Mode API. If that doesn't take, Frame Art sends one short press of the power key,

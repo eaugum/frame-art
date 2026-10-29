@@ -25,6 +25,7 @@ DISCOVERY = "homeassistant"
 AVAILABILITY = BASE + "/status"
 LOOK_SECONDS = 5
 PICTURE_WIDTH = 1280  # the image entity: big enough for a card, small enough for MQTT
+ACTIVITIES = ["off", "app", "art", "morning", "tonight", "saver", "music", "unknown"]  # Rotation.activity()
 
 MODES = {"shuffle": "Shuffle", "fixed": "Fixed picture"}  # -> the select's options
 SWITCHES = {  # settings
@@ -100,6 +101,12 @@ class Device:
         out.append(entity("sensor", "showing", "Picture", icon="mdi:image", state_topic=BASE + "/showing",
                           value_template="{{ value_json.title }}", json_attributes_topic=BASE + "/showing"))
         out.append(entity("sensor", "wanted", "In charge", icon="mdi:crown-outline", state_topic=BASE + "/wanted"))
+        # What the TV does, for Home Assistant's history and automations (AUG-1524)
+        out.append(entity("binary_sensor", "tv_on", "TV on", device_class="power", state_topic=BASE + "/tv_on"))
+        out.append(entity("binary_sensor", "art_mode", "Art Mode", icon="mdi:image-frame",
+                          state_topic=BASE + "/art_mode"))
+        out.append(entity("sensor", "activity", "Activity", icon="mdi:television-guide", device_class="enum",
+                          options=ACTIVITIES, state_topic=BASE + "/activity"))
         out.append(entity("image", "picture", "The picture on the wall", image_topic=BASE + "/picture",
                           content_type="image/jpeg"))
         return out
@@ -120,6 +127,9 @@ class Device:
                                            "changed": s["changed"] or None, "next": s["next"],
                                            "fixed_until": (s["fixed"] or {}).get("until")}, ensure_ascii=False),
         }
+        for key, on in (("tv_on", s["tv"]["power"]), ("art_mode", s["tv"]["art_mode"])):
+            out["%s/%s" % (BASE, key)] = "None" if on is None else "ON" if on else "OFF"  # None: unknown
+        out[BASE + "/activity"] = s["tv"]["activity"]
         if s["category"]:  # what's ticked is one category's sources
             out[BASE + "/category"] = s["category"]
         for key in SWITCHES:

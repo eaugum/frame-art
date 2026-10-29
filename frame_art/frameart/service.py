@@ -653,6 +653,23 @@ class Rotation:
         cause = events.cause(what)
         events.add("tv", what, SEEN[what], why=cause or ("first look" if was is None else "from outside"))
 
+    def activity(self):
+        """What the TV is doing, from what's been seen (AUG-1524): off, app (Frame TV or another app), art, morning,
+        tonight, saver or music; unknown before the TV has been seen."""
+        power, art = self.seen["power"], self.seen["art_mode"]
+        if power is False:
+            return "off"
+        if power is None or art is None:
+            return "unknown"
+        if not art:
+            return "app"
+        if self.playing():
+            return "music"
+        kind = (self.state["recent"][-1] if self.state["recent"] else "").split(":", 1)[0]
+        if kind in MADE:
+            return kind
+        return "saver" if self.saver else "art"
+
     async def watch_power(self):
         """Asks the TV whether it's on every POWER_LOOK seconds; "off" only after two looks, since a busy TV can miss
         one."""
@@ -897,6 +914,8 @@ class Rotation:
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
                 "saver": self.saver, "showing_key": self.showing_key(), "tv_entity": bool(self.cfg.get("tv_entity")),
                 "home_entity": self.home_entity(),
+                "tv": {"power": self.seen["power"], "activity": self.activity(),
+                       "art_mode": False if self.seen["power"] is False else self.seen["art_mode"]},
                 "music": {k: self.music[k] for k in ("album", "artist", "title")}
                 if self.playing() else None}
 

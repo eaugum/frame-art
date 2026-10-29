@@ -29,6 +29,7 @@ POST /saver    Frame TV's screensaver started: Art Mode on, with what we watch i
 POST /event    what Frame TV did, for the event log (AUG-1523): {"events": [{"at": ms, "kind": "hidden", "detail": "…"}]}
 GET  /events?since=<id>  what happened, when and why (AUG-1520), oldest first: {"events": [...], "more": bool}, the
                newest 2000 after that id (an id is the time in ms); ?until=<id> for those before one
+GET  /events/export  all of it (the last 7 days), as a file
 
 Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: it's
 api_key in the add-on's options (made and written there when it's empty). The page itself, through ingress, doesn't
@@ -278,6 +279,12 @@ def app(rotation):
         got, more = events.since(after, until, limit)
         return web.json_response({"events": got, "more": more}, headers=CORS)
 
+    async def export(request):
+        got, _ = events.since(0, None, limit=10 ** 9)
+        name = "frame-art-events-%s.json" % time.strftime("%Y-%m-%d")
+        return web.Response(text=json.dumps(got, ensure_ascii=False, indent=1), content_type="application/json",
+                            headers=dict(CORS, **{"Content-Disposition": 'attachment; filename="%s"' % name}))
+
     async def page(request):
         text = PAGE.replace("/*STRINGS*/{}", json.dumps(i18n.PAGE, ensure_ascii=False))
         return web.Response(text=text, content_type="text/html")
@@ -293,7 +300,7 @@ def app(rotation):
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
                   web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv), web.post("/tv/on", tv_on),
-                  web.get("/events", event_log), web.post("/event", app_event),
+                  web.get("/events", event_log), web.get("/events/export", export), web.post("/event", app_event),
                   web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/never", never),
                   web.post("/settings", settings), web.post("/schedule", settings), web.post("/saver", saver),
