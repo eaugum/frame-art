@@ -52,6 +52,9 @@ MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 TV_ON_WAIT = 30  # seconds from Home Assistant turning the TV on until Art Mode answers
 WAKE_WAIT = 90  # seconds the page's "Turn the TV on" waits for the TV to say it's on
+POWER_LOOK = 20  # seconds between asking the TV whether it's on, for the event log (AUG-1523)
+SEEN = {"power_on": "the TV came on", "power_off": "the TV went off", "art_mode_on": "Art Mode on",
+        "art_mode_off": "Art Mode off"}
 
 
 def _bool(v):
@@ -138,6 +141,7 @@ class Rotation:
         self.wake = asyncio.Event()  # the music changed: the timer looks at once
         self.retry_at = 0  # the TV didn't answer: a new song doesn't try again before this
         self.listened = asyncio.Event()  # the player has been looked at once since the start
+        self.seen = {"power": None, "art_mode": None}  # what the TV was last seen doing; None: not known
         self._from_categories()
 
     def _from_categories(self):
@@ -638,13 +642,42 @@ class Rotation:
             log.info("no picture for the screensaver (%s: %s)", type(e).__name__, e)
             events.add("saver", "failed", "no picture (%s: %s)" % (type(e).__name__, e))
 
+    def _seen(self, name, on):
+        """The TV's power or Art Mode, as watched (AUG-1523): only a change is logged, with the command that caused
+        it, or "from outside" (the remote, the motion sensor, the TV's own sleep)."""
+        was = self.seen[name]
+        if was == on:
+            return
+        self.seen[name] = on
+        what = "%s_%s" % (name, "on" if on else "off")
+        cause = events.cause(what)
+        events.add("tv", what, SEEN[what], why=cause or ("first look" if was is None else "from outside"))
+
+    async def watch_power(self):
+        """Asks the TV whether it's on every POWER_LOOK seconds; "off" only after two looks, since a busy TV can miss
+        one."""
+        host = self.cfg.get("tv_host")
+        if not host:
+            return
+        misses = 0
+        while True:
+            on = await asyncio.to_thread(tvmod.powered_on, host, 5)
+            misses = 0 if on else misses + 1
+            if on or misses >= 2 or self.seen["power"] is None:
+                self._seen("power", on)
+                if not on:
+                    self.seen["art_mode"] = None  # known again when the art channel answers
+            await asyncio.sleep(POWER_LOOK)
+
     async def _art_event(self, event, data):
         off = event == "art_mode_changed" and data.get("status") == "off"
-        if event == "art_mode_changed":
-            events.add("tv", "art_mode_" + str(data.get("status")), "the TV says Art Mode is %s" % data.get("status"),
-                       why="")
+        status = data.get("value", data.get("status"))
+        if (event == "art_mode_changed" or "artmode_status" in (event or "")) and status in ("on", "off"):
+            self._seen("art_mode", status == "on")
         elif event == "go_to_standby":
-            events.add("tv", "standby", "the TV says it's going to standby", why="")
+            events.add("tv", "standby", "the TV says it's going to standby",
+                       why=events.cause("power_off") or "from outside")
+            self.seen["art_mode"] = None
         if (off or event == "go_to_standby") and self.saver:
             self.saver = False
             log.info("the screensaver is over")
@@ -783,6 +816,7 @@ class Rotation:
     async def turn_on(self):
         """The TV on through Home Assistant, and time for Art Mode to answer. False when it couldn't."""
         entity = self.cfg.get("tv_entity")
+        events.expect("power_on")
         try:
             await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
         except Exception as e:
@@ -802,6 +836,7 @@ class Rotation:
         if not entity:
             raise ValueError("tv_entity is empty in the add-on's configuration")
         if not await asyncio.to_thread(tvmod.powered_on, host):
+            events.expect("power_on")
             await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
             log.info("turned the TV on through Home Assistant (%s), from the page", entity)
             events.add("tv", "turned_on", "turned the TV on through Home Assistant (%s)" % entity)

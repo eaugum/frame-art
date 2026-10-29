@@ -60,6 +60,7 @@ async def run(rot, cfg, port):
         await api.serve(rot, port)
     device = asyncio.create_task(mqtt.serve(rot, cfg))  # Home Assistant, when there's a broker
     watcher = asyncio.create_task(rot.watch())  # back to Frame TV when Art Mode goes off
+    power = asyncio.create_task(rot.watch_power())  # the TV on or off, for the event log
     music = asyncio.create_task(rot.follow())  # Follow the music, from Home Assistant
     language = asyncio.create_task(i18n.keep(rot.ha))  # Home Assistant's language, with auto
     try:
@@ -67,6 +68,7 @@ async def run(rot, cfg, port):
     finally:
         device.cancel()
         watcher.cancel()
+        power.cancel()
         music.cancel()
         language.cancel()
 

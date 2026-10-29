@@ -99,6 +99,7 @@
   .ev .what { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   .ev .kind { color: var(--faint); font-size: 12px; margin-left: 6px; }
   .ev .why { display: block; color: var(--dim); font-size: 13px; }
+  .ev .why.outside { color: var(--accent); }
 </style></head>
 <body><main>
   <nav class="tabs"><a data-tab="art" class="on">Frame Art</a><a data-tab="debug" data-t="debug"></a></nav>
@@ -496,13 +497,14 @@
     for (var i = evs.length - 1; i >= 0; i--) {
       var e = evs[i];
       if (hiddenSources[e.source]) continue;
-      var d = new Date(e.id).toLocaleDateString(LOCALE, {weekday: "long", day: "numeric", month: "long"});
+      var d = new Date(e.at * 1000).toLocaleDateString(LOCALE, {weekday: "long", day: "numeric", month: "long"});
       if (d !== lastDay) box.append(el("div", {className: "day", textContent: lastDay = d}));
       var what = el("span", {className: "what"}, [e.detail || e.kind, el("span", {className: "kind", textContent: e.kind})]);
-      if (e.why) what.append(el("span", {className: "why", textContent: "← " + e.why}));
+      if (e.why) what.append(el("span", {className: e.why === "from outside" ? "why outside" : "why",
+        textContent: "← " + e.why}));
       var src = el("span", {className: "src", textContent: tr("source_" + e.source)});
       src.style.color = COLORS[e.source] || "";
-      box.append(el("div", {className: "ev"}, [el("time", {textContent: clock(e.id)}), src, what]));
+      box.append(el("div", {className: "ev"}, [el("time", {textContent: clock(e.at * 1000)}), src, what]));
       shown++;
     }
     if (!shown) box.append(el("p", {className: "note", textContent: tr("events_empty")}));

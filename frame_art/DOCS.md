@@ -139,6 +139,12 @@ The **Debug** tab lists what the add-on did and what it saw the TV do, newest fi
 the morning picture at 07:00, Home Assistant, Frame TV or the page). A button per source shows or hides its events, and
 "A day earlier" goes back. The last 7 days are kept in `/data/events.jsonl`.
 
+The add-on asks the TV every 20 seconds whether it's on, and hears from the TV when Art Mode goes on or off. Only
+changes are listed. A change that comes within two minutes of something Frame Art did says what that was; any other
+change is marked **from outside**: the remote, the motion sensor, or the TV going to sleep by itself. Frame TV sends its
+own events too: started, hidden and shown, what it opened, its screensaver and errors. When the add-on doesn't answer,
+they wait on the TV and come later, with the time they happened.
+
 **What wins**, top first. When the top one is done, the next takes over.
 
 1. Follow the music, when it's on and music is playing
@@ -259,6 +265,7 @@ The answers wait for the TV.
 | `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_time`, `morning_tv_on`, `tonight`, `tonight_time`, `tonight_tv_on`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only` |
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
+| `POST /event` | For Frame TV's events: `{"events": [{"at": <ms>, "kind": "hidden", "detail": "…"}]}`, up to 100 at a time |
 | `GET /events?since=<id>` | What happened, oldest first: `{"events": [{id, at, source, kind, detail, why}], "more": false}`, the newest 2000 after that id (an id is the time in ms). `?until=<id>` for those before one |
 
 Art Mode is turned on with the Art Mode API. If that doesn't take, Frame Art sends one short press of the power key,

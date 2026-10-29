@@ -93,6 +93,7 @@ class TV:
     async def art_mode_on(self):
         """Only called when the TV has just said it's on and not in Art Mode, so a short press on power (the
         fallback) can only go from TV to Art Mode, never switch it off."""
+        events.expect("art_mode_on")
         await asyncio.wait_for(self.art.set_artmode("on"), 30)
         if await self._settled():
             events.add("tv", "art_mode_on", "Art Mode on")
@@ -211,4 +212,5 @@ def powered_on(host, timeout=10):
 def launch(host, app_id):
     """Opens an app on the TV, or brings it forward when it's running: the REST API on port 8001, with no token. The
     websocket's ed.apps.launch doesn't do it from Art Mode's menu; this does (tested 26.10.2026)."""
+    events.expect("art_mode_off")  # an app in front ends Art Mode, when it was on
     return _rest(host, "POST", "applications/" + app_id, timeout=15) is True

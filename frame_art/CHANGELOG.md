@@ -1,5 +1,13 @@
 # Changes
 
+## 0.25.0
+
+- The Debug tab follows the TV: the add-on asks every 20 seconds whether it's on, and hears when Art Mode goes on or
+  off. A change that comes soon after something Frame Art did says what that was; any other is marked "from outside"
+  (the remote, the motion sensor, the TV's own sleep).
+- Frame TV's own events are in the log too (`POST /event`): started, hidden and shown, what it opened, its screensaver
+  and errors, also those it sent later while the add-on didn't answer.
+
 ## 0.24.0
 
 - A Debug tab on the add-on's page: what the add-on did and what it saw the TV do, newest first, with when, what and

@@ -26,6 +26,7 @@ POST /stasera/unlink  forgets the Stasera token
 POST /saver    Frame TV's screensaver started: Art Mode on, with what we watch in Stasera when screensaver_stasera is
                on, until Art Mode goes off (AUG-1494); ?minutes=5 changes the picture that often meanwhile
 
+POST /event    what Frame TV did, for the event log (AUG-1523): {"events": [{"at": ms, "kind": "hidden", "detail": "…"}]}
 GET  /events?since=<id>  what happened, when and why (AUG-1520), oldest first: {"events": [...], "more": bool}, the
                newest 2000 after that id (an id is the time in ms); ?until=<id> for those before one
 
@@ -39,6 +40,7 @@ import json
 import logging
 import os
 import secrets
+import time
 import urllib.request
 
 from aiohttp import web
@@ -52,6 +54,7 @@ with open(os.path.join(os.path.dirname(__file__), "page.html"), encoding="utf-8"
 
 CORS = {"Access-Control-Allow-Origin": "*", "Access-Control-Allow-Methods": "GET, POST, OPTIONS",
         "Access-Control-Allow-Headers": "Content-Type, Authorization"}
+APP_EVENTS = 100  # at most this many from Frame TV in one call
 INGRESS = "172.30.32.2"  # the Supervisor, when the page is opened in Home Assistant
 
 
@@ -241,6 +244,30 @@ def app(rotation):
                                                                     if minutes else ""))
         return await act(request, lambda: rotation.start_saver(minutes))
 
+    async def app_event(request):
+        """Frame TV's events, sent when they happened or later from its queue: the time is Frame TV's."""
+        try:
+            body = await request.json()
+            got = body.get("events") if isinstance(body, dict) else None
+            if not isinstance(got, list):
+                raise ValueError
+        except ValueError:
+            return web.json_response({"ok": False, "error": 'send {"events": [...]}'}, status=400, headers=CORS)
+        now = time.time()
+        for e in got[:APP_EVENTS]:
+            if not isinstance(e, dict) or not e.get("kind"):
+                continue
+            try:
+                at = float(e.get("at")) / 1000
+            except (TypeError, ValueError):
+                at = now
+            if not now - events.KEEP_DAYS * 86400 < at <= now + 60:
+                at = now  # the TV's clock is off, or it's too old
+            late = now - at
+            events.add("app", str(e.get("kind") or "?")[:40], str(e.get("detail") or "")[:300],
+                       why="Frame TV" + (", sent %d min later" % (late // 60) if late >= 120 else ""), at=at)
+        return web.json_response({"ok": True, "n": min(len(got), APP_EVENTS)}, headers=CORS)
+
     async def event_log(request):
         try:
             after, until = int(request.query.get("since") or 0), int(request.query.get("until") or 0) or None
@@ -266,7 +293,7 @@ def app(rotation):
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
                   web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv), web.post("/tv/on", tv_on),
-                  web.get("/events", event_log),
+                  web.get("/events", event_log), web.post("/event", app_event),
                   web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/never", never),
                   web.post("/settings", settings), web.post("/schedule", settings), web.post("/saver", saver),
