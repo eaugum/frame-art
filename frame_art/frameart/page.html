@@ -17,7 +17,11 @@
   #never { position: absolute; top: 10px; right: 10px; padding: 6px 12px; font-size: 13px; color: #fff;
            background: rgba(0, 0, 0, .55); }
   #never:hover { background: rgba(0, 0, 0, .75); }
-  #pic { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #222; border-radius: 10px; }
+  #pic { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #222; border-radius: 10px;
+         transition: opacity .4s, filter .4s; }
+  .frame.away #pic { opacity: .45; filter: grayscale(.8); }
+  #away { position: absolute; top: 10px; left: 10px; padding: 4px 10px; font-size: 13px; color: #fff;
+          background: rgba(0, 0, 0, .65); border-radius: 6px; }
   h1 { font-size: 22px; margin: 16px 0 2px; }
   .info { color: var(--dim); margin: 0; font-size: 14px; }
   .now { display: flex; align-items: baseline; gap: 10px; margin: 14px 0 0; font-size: 14px; color: #ccc; }
@@ -120,10 +124,12 @@
   <div class="frame">
     <img id="pic" alt="" onerror="this.style.visibility = 'hidden'" onload="this.style.visibility = ''">
     <button id="never" data-t="never" hidden></button>
+    <span id="away" hidden></span>
   </div>
   <h1 id="title">…</h1>
   <p class="info" id="info"></p>
   <p class="now"><b id="now-what"></b><span id="now"></span></p>
+  <p class="note" id="away-note" data-t="away_note" hidden></p>
 
   <div class="actions">
     <button id="next" data-t="new_picture"></button>
@@ -131,6 +137,7 @@
     <button id="tonight" data-t="show_tonight"></button>
     <button id="music" data-t="music"></button>
     <button id="power" data-t="turn_tv_on" hidden></button>
+    <button id="artmode" data-t="turn_art_mode_on" hidden></button>
   </div>
   <p class="note" id="msg"></p>
 
@@ -247,6 +254,7 @@
     $("music").title = tr("music_note");
     busy(!!s.busy || s.wanted === "music");
     now(s);
+    away(s.tv);
 
     sources(s);
     settings(s.settings || {}, s);
@@ -279,6 +287,30 @@
     $("now").innerHTML = "";
     $("now").append.apply($("now"), words);
   }
+
+  // The TV out of Art Mode (AUG-1526): the picture is only ready for it. Unknown (just started, or after standby until
+  // the art channel answers) says nothing, but keeps what was known for a while, so the mark doesn't blink.
+  var awayWas = null, awayAt = 0, awayAfterAsk = 0;
+  function away(tv) {
+    tv = tv || {};
+    var state = tv.art_mode === false ? (tv.power === false ? "off" : "app") : tv.art_mode ? null : undefined;
+    if (state === undefined) state = Date.now() - awayAt < 90000 ? awayWas : null;
+    else awayAt = Date.now();
+    if (Date.now() < awayAfterAsk) state = null;  // just asked for Art Mode: the TV says so in a moment
+    awayWas = state;
+    document.querySelector(".frame").className = "frame" + (state ? " away" : "");
+    $("away").hidden = $("away-note").hidden = !state;
+    $("away").textContent = state ? tr(state === "off" ? "away_off" : "away_app") : "";
+    $("artmode").hidden = state !== "app";
+  }
+  $("artmode").onclick = function () {
+    send("artmode", tr("turning_art_mode_on"), function () {
+      if ($("msg").textContent === tr("done")) {
+        awayAfterAsk = Date.now() + 15000;
+        away({});
+      }
+    });
+  };
 
   function sources(s) {
     var o = off(), pools = s.pools || {}, on = 0, pictures = 0, unread = 0;
@@ -634,6 +666,10 @@
   load();
   if (location.hash.length > 1) gallery(decodeURIComponent(location.hash.slice(1)));  // a link to a category
   setInterval(load, 30000);
+  setInterval(function () {  // the TV's state, more often than the rest
+    fetch("status").then(function (r) { return r.json(); }).then(function (s) { last = s; away(s.tv); })
+      .catch(function () {});
+  }, 10000);
   setInterval(function () { if ($("stasera").querySelector("b") || last.reading) load(); }, 3000);  // a code, or reading
 </script>
 </body></html>

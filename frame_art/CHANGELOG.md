@@ -1,5 +1,11 @@
 # Changes
 
+## 0.27.0
+
+- The add-on's page says when the picture isn't on the wall: when the TV is on without Art Mode, the picture is
+  dimmed, marked "The TV isn't in Art Mode", with "Ready for the next time Art Mode comes on." and a "Turn Art Mode on"
+  button; when the TV is off, the mark says so. While the TV's state isn't known, the page is as before.
+
 ## 0.26.0
 
 - The Debug tab shows a day at a time, with a timeline at the top: when the TV was on, in Art Mode, showing Frame TV,
