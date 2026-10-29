@@ -1,5 +1,12 @@
 # Changes
 
+## 0.28.0
+
+- The rotation waits while the TV is off or out of Art Mode, instead of sending pictures nobody sees; when Art Mode
+  comes on again and the interval has passed, a new one comes at once. The Debug tab says when it started waiting, and
+  why. While the TV's state isn't known, the rotation goes on as before.
+- When the TV closes the art channel, Art Mode counts as not known, not as what it was last heard to be.
+
 ## 0.27.0
 
 - The add-on's page says when the picture isn't on the wall: when the TV is on without Art Mode, the picture is

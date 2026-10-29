@@ -142,6 +142,7 @@ class Rotation:
         self.retry_at = 0  # the TV didn't answer: a new song doesn't try again before this
         self.listened = asyncio.Event()  # the player has been looked at once since the start
         self.seen = {"power": None, "art_mode": None}  # what the TV was last seen doing; None: not known
+        self.waiting = False  # the rotation waits for Art Mode (AUG-1526)
         self._from_categories()
 
     def _from_categories(self):
@@ -649,6 +650,8 @@ class Rotation:
         if was == on:
             return
         self.seen[name] = on
+        if on and name == "art_mode":
+            self.wake.set()  # a rotation that waited for Art Mode goes on
         what = "%s_%s" % (name, "on" if on else "off")
         cause = events.cause(what)
         events.add("tv", what, SEEN[what], why=cause or ("first look" if was is None else "from outside"))
@@ -669,6 +672,11 @@ class Rotation:
         if kind in MADE:
             return kind
         return "saver" if self.saver else "art"
+
+    def away(self):
+        """Known to be off or out of Art Mode (AUG-1526): the rotation waits instead of sending pictures nobody sees.
+        Not known (just started, after standby, the art channel closed) is not away."""
+        return self.seen["power"] is False or self.seen["art_mode"] is False
 
     async def watch_power(self):
         """Asks the TV whether it's on every POWER_LOOK seconds; "off" only after two looks, since a busy TV can miss
@@ -695,6 +703,8 @@ class Rotation:
             events.add("tv", "standby", "the TV says it's going to standby",
                        why=events.cause("power_off") or "from outside")
             self.seen["art_mode"] = None
+        elif event == "channel_closed":
+            self.seen["art_mode"] = None  # not heard any more, so not known
         if (off or event == "go_to_standby") and self.saver:
             self.saver = False
             log.info("the screensaver is over")
@@ -902,7 +912,8 @@ class Rotation:
                                "sources_on": [n for n in names if n not in off],
                                "pictures": sum(counts) if counts else None, "unread": len(names) - len(counts)})
         fixed = self.fixed()
-        rotating = not fixed and not self.playing()  # no next change while the music or a fixed picture stands
+        # no next change while the music or a fixed picture stands, or while it waits for Art Mode
+        rotating = not fixed and not self.playing() and not self.waiting
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
                 "next": int(self.state["changed"] + interval) if self.state["changed"] and rotating else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
@@ -1058,8 +1069,19 @@ class Rotation:
             elif want == "fixed" or (want in ("rotation", "saver") and wait > 0):
                 await self._nap(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
                 continue
+            elif want in ("rotation", "saver") and self.away():
+                if not self.waiting:
+                    self.waiting = True
+                    log.info("the rotation waits for Art Mode")
+                    events.add("rotation", "waiting", "waiting for Art Mode: no new picture until it's on",
+                               why="the TV is off" if self.seen["power"] is False else "the TV isn't in Art Mode")
+                await self._nap(60)  # woken when Art Mode comes on
+                continue
             else:
                 why = self._reason(want)
+                if self.waiting and want in ("rotation", "saver"):
+                    why = "Art Mode came on again"
+                self.waiting = False
                 with events.because(why):
                     woke = want in MADE and await self._tv_on(want)
                 job = self.change(art_mode=woke, what=want if want in OWN else None)

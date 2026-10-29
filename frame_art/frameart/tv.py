@@ -154,8 +154,8 @@ class TV:
 
 async def watch(host, token_file, on_event, name="FrameArtWatch"):
     """Listens on the art channel for good, connecting again when the TV has been away; on_event(sub_event, data)
-    for each of the art app's events (art_mode_changed, go_to_standby...). Only listens: it sends nothing but the
-    library's own question about Art Mode when it connects."""
+    for each of the art app's events (art_mode_changed, go_to_standby...), and channel_closed when it stops
+    answering. Only listens: it sends nothing but the library's own question about Art Mode when it connects."""
     while True:
         try:
             art = await _art(host=host, port=8002, token_file=token_file, name=name, timeout=30)
@@ -175,8 +175,10 @@ async def watch(host, token_file, on_event, name="FrameArtWatch"):
             await seen(event, response)
 
         art.process_event = heard
+        listening = False
         try:
             await asyncio.wait_for(art.start_listening(), 60)
+            listening = True
             log.info("listening for Art Mode going off")
             events.add("tv", "channel_open", "the art channel answers: listening for Art Mode", why="")
             while art.is_alive():
@@ -192,6 +194,8 @@ async def watch(host, token_file, on_event, name="FrameArtWatch"):
                 await art.close()
             except Exception:
                 pass
+        if listening:
+            await on_event("channel_closed", {})
         await asyncio.sleep(60)
 
 

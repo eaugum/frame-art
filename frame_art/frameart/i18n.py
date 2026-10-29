@@ -147,7 +147,7 @@ PAGE = {
     "turning_art_mode_on": "Turning Art Mode on …",
     "away_app": "The TV isn't in Art Mode",
     "away_off": "The TV is off",
-    "away_note": "Ready for the next time Art Mode comes on.",
+    "away_note": "This picture comes up when Art Mode is on again; the rotation waits until then.",
     "waking": "Turning the TV on …",
     "home_only": "Only when someone is home",
     "home_only_note": "Follow the music, and turning the TV on; from {entity}",
