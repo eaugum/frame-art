@@ -30,7 +30,7 @@ import shutil
 import time
 from zoneinfo import ZoneInfo
 
-from . import __version__, i18n, image, made, music, net, sources, today as todaymod, weather
+from . import __version__, events, i18n, image, made, music, net, sources, today as todaymod, weather
 from .i18n import t
 from .stasera import Stasera, Unlinked
 from . import tv as tvmod
@@ -42,6 +42,7 @@ RECENT = 200  # not the same picture again within this many changes (or the whol
 RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Stasera didn't answer
 MADE = ("morning", "tonight")
+EVENT_SOURCES = ("morning", "tonight", "music", "saver")  # a picture's kind -> the event log's source; else rotation
 MODES = ("shuffle", "category")  # "category" only from older callers: it becomes that category's sources
 SAVER = {"watching": "watching", "wantToStart": "want_to_start"}  # Stasera's lists for the screensaver -> the heading
 HISTORY = 100  # pictures from the rotation remembered for "Recently shown"
@@ -209,6 +210,8 @@ class Rotation:
         f = self.cfg.get("fixed")
         if f and time.time() >= f.get("until", 0):
             log.info("the fixed picture has had its time; back to the rotation")
+            events.add("rotation", "fixed_over", "the fixed picture has had its time; back to the rotation",
+                       why="the next morning picture")
             self._keep({"fixed": None})
             return None
         return f
@@ -220,6 +223,7 @@ class Rotation:
         self._keep({"fixed": {"key": self.state["recent"][-1], "label": self.state.d.get("showing"),
                               "until": self._next_morning()}})
         log.info("fixed what's showing until the next Morgenbildet")
+        events.add("rotation", "fixed", "%s, until the next morning picture" % self.state.d.get("showing"))
 
     def _next_morning(self):
         now = self.now()
@@ -305,6 +309,7 @@ class Rotation:
                 bad.add(full)
             except Exception as e:
                 log.warning("couldn't fetch %s: %s", full, e)
+                events.add("rotation", "fetch_failed", "couldn't fetch %s: %s" % (full, e))
         return None
 
     # MARK: - The pictures we make
@@ -346,15 +351,19 @@ class Rotation:
                 items = [i for i in self.stasera.tonight() if i.get("textlessBackdropPath") or i.get("backdropPath")]
                 if not items:
                     log.info("nothing in Stasera tonight")
+                    events.add(kind, "nothing", "nothing in Stasera tonight")
                     self.state["made"][kind] = today  # not again today
                     self.state.save()
                     return None
                 img, label = made.poster(items[0]), "Tonight: %s" % (items[0].get("title") or "?")
         except Unlinked:
             log.info("Stasera isn't linked: link it on the add-on's page")
+            events.add(kind, "unlinked", "Stasera isn't linked")
             return None
         except Exception as e:
             log.warning("couldn't make %s (%s: %s)", kind, type(e).__name__, e)
+            events.add(kind, "failed", "couldn't make it (%s: %s); trying again in %d min" % (
+                type(e).__name__, e, MADE_RETRY_MINUTES))
             self.state["tried"][kind] = time.time()
             self.state.save()
             return None
@@ -390,9 +399,11 @@ class Rotation:
             return None
         except Exception as e:
             log.warning("nothing from Stasera for the screensaver (%s: %s)", type(e).__name__, e)
+            events.add("saver", "failed", "nothing from Stasera (%s: %s)" % (type(e).__name__, e))
             return None
         if not items:
             log.info("nothing in Stasera for the screensaver")
+            events.add("saver", "nothing", "nothing in Stasera for the screensaver")
             return None
         # the next episode is in the key, so a new one makes a new picture
         keys = ["saver:%s:%s%s" % (i.get("kind"), i.get("tmdbId"), ":%sx%s" % (i["seasonNumber"], i.get(
@@ -403,6 +414,7 @@ class Rotation:
             img = made.poster(items[n], t(SAVER[items[n]["list"]]))
         except Exception as e:
             log.warning("couldn't make the screensaver's picture (%s: %s)", type(e).__name__, e)
+            events.add("saver", "failed", "couldn't make the picture (%s: %s)" % (type(e).__name__, e))
             return None
         return image.to_jpeg(img), "Stasera: %s" % (items[n].get("title") or "?"), keys[n]
 
@@ -414,6 +426,7 @@ class Rotation:
             img = made.music_picture(cover, m["title"], m["artist"], m["album"])
         except Exception as e:
             log.warning("couldn't make the cover's picture (%s: %s)", type(e).__name__, e)
+            events.add("music", "failed", "couldn't make the cover's picture (%s: %s)" % (type(e).__name__, e))
             return None
         return image.to_jpeg(img), "Music: %s – %s" % (m["title"], m["artist"]), m["key"]
 
@@ -476,6 +489,7 @@ class Rotation:
             await self._put(*got, force=True)
             self._keep({"fixed": {"key": full, "label": got[1], "until": self._next_morning()}})
             log.info("fixed until %s", datetime.datetime.fromtimestamp(self.cfg["fixed"]["until"], self.zone))
+            events.add("rotation", "fixed", "%s, until the next morning picture" % got[1])
         return True
 
     def showing_key(self):
@@ -499,6 +513,7 @@ class Rotation:
             self._keep({"fixed": None})
         self.state.save()
         log.info("never again: %s", key)
+        events.add("rotation", "never", "never again: %s" % key)
         return await self.change()
 
     async def _change(self, force, what=None):
@@ -506,6 +521,8 @@ class Rotation:
         if not got:
             log.warning("nothing to show: %s", "couldn't make %s" % what if what else
                         "no source is on, or none has pictures")
+            events.add(what if what in EVENT_SOURCES else "rotation", "nothing", "nothing to show: %s" % (
+                "couldn't make it" if what else "no source is on, or none has pictures"))
             return False
         await self._put(*got, force=force, prepared=got[2].split(":")[0] not in OWN)
         return True
@@ -517,6 +534,7 @@ class Rotation:
             art_mode = await tv.in_art_mode()
             if self.saver and not art_mode and not force:
                 log.info("not in Art Mode: the screensaver is over")
+                events.add("saver", "over", "the screensaver is over", why="the TV wasn't in Art Mode")
                 self.saver = False
             # the same picture again (the screensaver's come round) is chosen where it is, not sent again
             old = next((u for u in reversed(self.state["uploaded"]) if u["key"] == key), None)
@@ -532,10 +550,13 @@ class Rotation:
                 art_mode = True
             await tv.show(content_id, now=art_mode)
             log.info("%s %s (%s)", "showing" if art_mode else "ready for Art Mode:", label, content_id)
+            kind, _, day = key.partition(":")
+            events.add(kind if kind in EVENT_SOURCES else "rotation", "shown" if art_mode else "ready",
+                       ("showing %s" if art_mode else "ready for Art Mode (the TV isn't in it): %s") % label)
             if await tv.slideshow_on():
                 log.warning("the TV's own slideshow is on and will change the picture too")
+                events.add("tv", "slideshow", "the TV's own slideshow is on and will change the picture too")
 
-            kind, _, day = key.partition(":")
             if kind == "music":
                 self._keep_before()
                 self.state["music_shown"] = key
@@ -585,6 +606,8 @@ class Rotation:
                 if not await tv.in_art_mode():
                     await tv.art_mode_on()
                     log.info("Art Mode on")
+                else:
+                    events.add("tv", "art_mode_already", "already in Art Mode")
         return True
 
     # MARK: - Leaving Art Mode (AUG-1494)
@@ -596,10 +619,13 @@ class Rotation:
         """Frame TV's screensaver started: Art Mode on, and the answer, at once (Frame TV waits a minute); then
         Stasera's pictures when that's on, until Art Mode goes off, a new one every `minutes` (else the interval)."""
         self.saver, self.saver_minutes = True, minutes
+        events.add("saver", "start", "the screensaver started%s" % (", a new picture every %d min" % minutes
+                                                                      if minutes else ""))
         try:
             await self.art_mode()
-        except Exception:
+        except Exception as e:
             self.saver = False  # Frame TV shows its own
+            events.add("saver", "failed", "no Art Mode (%s: %s): Frame TV shows its own" % (type(e).__name__, e))
             raise
         if self.wanted() == "saver":
             asyncio.create_task(self._saver_picture())
@@ -610,14 +636,23 @@ class Rotation:
             await self.change(what="saver")
         except Exception as e:
             log.info("no picture for the screensaver (%s: %s)", type(e).__name__, e)
+            events.add("saver", "failed", "no picture (%s: %s)" % (type(e).__name__, e))
 
     async def _art_event(self, event, data):
         off = event == "art_mode_changed" and data.get("status") == "off"
+        if event == "art_mode_changed":
+            events.add("tv", "art_mode_" + str(data.get("status")), "the TV says Art Mode is %s" % data.get("status"),
+                       why="")
+        elif event == "go_to_standby":
+            events.add("tv", "standby", "the TV says it's going to standby", why="")
         if (off or event == "go_to_standby") and self.saver:
             self.saver = False
             log.info("the screensaver is over")
+            events.add("saver", "over", "the screensaver is over",
+                       why="Art Mode went off" if off else "the TV went to standby")
         if off:
-            await self._back()
+            with events.because("Art Mode went off"):
+                await self._back()
 
     async def _back(self):
         """Art Mode went off: a key on the remote opens the TV's own Art Mode menu, which has no way back but Home
@@ -631,12 +666,16 @@ class Rotation:
         host = self.cfg["tv_host"]
         if not await asyncio.to_thread(tvmod.powered_on, host):
             log.info("Art Mode off, and the TV isn't on: nothing opened")
+            events.add("tv", "back_app_skipped", "the TV isn't on: %s not opened" % app)
             return
         try:
             ok = await asyncio.to_thread(tvmod.launch, host, app)
             log.info("Art Mode off: %s %s", "opened" if ok else "the TV didn't open", app)
+            events.add("tv", "back_app" if ok else "back_app_failed", "%s %s" % (
+                "opened" if ok else "the TV didn't open", app))
         except Exception as e:
             log.warning("Art Mode off, but couldn't open %s (%s: %s)", app, type(e).__name__, e)
+            events.add("tv", "back_app_failed", "couldn't open %s (%s: %s)" % (app, type(e).__name__, e))
 
     # MARK: - Follow the music (AUG-1495)
 
@@ -662,17 +701,22 @@ class Rotation:
                     now = await asyncio.to_thread(self._listen)
                     if failing:
                         log.info("Follow the music: Home Assistant answers again")
+                        events.add("music", "ha_back", "Home Assistant answers again", why="")
                     failing = False
                     if now:
                         self.music, self.music_at = now, time.time()
                 except Exception as e:
                     if not failing:
                         log.info("Follow the music: Home Assistant didn't answer (%s: %s)", type(e).__name__, e)
+                        events.add("music", "ha_failed", "Home Assistant didn't answer (%s: %s)" % (
+                            type(e).__name__, e), why="")
                     failing = True
             key = self.music["key"] if self.playing() else None
             if key != was:
                 log.info("Follow the music: %s", "%s – %s" % (self.music["title"], self.music["artist"]) if key else
                          "the music stopped")
+                events.add("music", "playing" if key else "stopped", "%s – %s" % (
+                    self.music["title"], self.music["artist"]) if key else "the music stopped", why="")
                 self.wake.set()
                 was = key
             self.listened.set()
@@ -692,6 +736,7 @@ class Rotation:
         async with self.lock:
             await self._put(jpeg, b["label"], b["key"], force=False)
         log.info("the music stopped: back to %s", b["label"])
+        events.add("music", "back", "back to %s" % b["label"])
 
     async def _tv_on(self, kind):
         """Before Morgenbildet or tonight's show: the TV on through Home Assistant when it's off and someone is home,
@@ -717,9 +762,11 @@ class Rotation:
             home = await asyncio.to_thread(self.ha.home, entity)
         except Exception as e:
             log.info("no state for %s (%s: %s); turning the TV on anyway", entity, type(e).__name__, e)
+            events.add("tv", "home_unknown", "no state for %s; turning the TV on anyway" % entity)
             return True
         if not home and self.away_logged != self.now().date():
             log.info("nobody home (%s): the TV stays off, and the picture waits until it's on", entity)
+            events.add("tv", "stays_off", "nobody home (%s): the TV stays off, and the picture waits" % entity)
             self.away_logged = self.now().date()
         return home
 
@@ -740,8 +787,11 @@ class Rotation:
             await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
         except Exception as e:
             log.info("couldn't turn the TV on through Home Assistant (%s: %s)", type(e).__name__, e)
+            events.add("tv", "turn_on_failed", "couldn't turn the TV on through Home Assistant (%s: %s)" % (
+                type(e).__name__, e))
             return False
         log.info("turned the TV on through Home Assistant (%s)", entity)
+        events.add("tv", "turned_on", "the TV was off: turned it on through Home Assistant (%s)" % entity)
         await asyncio.sleep(TV_ON_WAIT)
         return True
 
@@ -754,9 +804,11 @@ class Rotation:
         if not await asyncio.to_thread(tvmod.powered_on, host):
             await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
             log.info("turned the TV on through Home Assistant (%s), from the page", entity)
+            events.add("tv", "turned_on", "turned the TV on through Home Assistant (%s)" % entity)
             until = time.time() + WAKE_WAIT
             while not await asyncio.to_thread(tvmod.powered_on, host):
                 if time.time() > until:
+                    events.add("tv", "turn_on_failed", "the TV didn't come on")
                     raise RuntimeError("the TV didn't come on")
                 await asyncio.sleep(2)
         self.retry_at = 0
@@ -769,10 +821,12 @@ class Rotation:
             try:
                 if await asyncio.to_thread(tvmod.launch, host, app):
                     log.info("opened %s", app)
+                    events.add("tv", "back_app", "opened %s" % app)
                     return True
             except Exception as e:
                 log.info("couldn't open %s yet (%s: %s)", app, type(e).__name__, e)
             await asyncio.sleep(3)
+        events.add("tv", "back_app_failed", "the TV is on, but didn't open %s" % app)
         raise RuntimeError("the TV is on, but didn't open %s" % app)
 
     async def _nap(self, seconds):
@@ -912,12 +966,22 @@ class Rotation:
             return self.saver_minutes * 60
         return max(1, float(self.cfg.get("interval_minutes", 60))) * 60
 
+    def _reason(self, want):
+        """Why the timer changes the picture now, for the event log."""
+        if want in MADE:
+            return "%s at %s" % ("the morning picture" if want == "morning" else "tonight's show",
+                                 self._clock(want + "_time").strftime("%H:%M"))
+        if want == "music":
+            return "Follow the music"
+        return "%s, every %g min" % ("the screensaver" if want == "saver" else "the rotation", self.interval() / 60)
+
     async def run(self):
         if not self.cfg.get("tv_host"):
             log.error("tv_host is empty: set the TV's IP address in the add-on's configuration, then start it again")
             return
         log.info("Frame Art %s for %s, every %g min, sources: %s", __version__, self.cfg["tv_host"],
                  self.interval() / 60, ", ".join(s.name for s in self.sources) or "none")
+        events.add("rotation", "started", "Frame Art %s started" % __version__, why="")
         if self.unlisted():
             self.reading.add("*")
             asyncio.get_running_loop().run_in_executor(None, self.read_unlisted)
@@ -936,18 +1000,23 @@ class Rotation:
                 await self._nap(60)  # the same song still
                 continue
             if want != "music" and (self.state.d.get("music_shown") or self.state.d.get("before")):
-                job = self._after_music(want)
+                why, job = "the music stopped", self._after_music(want)
             elif want == "fixed" or (want in ("rotation", "saver") and wait > 0):
                 await self._nap(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
                 continue
             else:
-                woke = want in MADE and await self._tv_on(want)
+                why = self._reason(want)
+                with events.because(why):
+                    woke = want in MADE and await self._tv_on(want)
                 job = self.change(art_mode=woke, what=want if want in OWN else None)
             try:
-                ok = (await job) is not False
+                with events.because(why):
+                    ok = (await job) is not False
             except Exception as e:
                 # off, away, or busy with something that stops the art app (AirPlay, some apps): never interrupted
                 log.info("Art Mode not answering (%s: %s); trying again in %d min", type(e).__name__, e, RETRY_MINUTES)
+                events.add("tv", "not_answering", "Art Mode not answering (%s: %s); trying again in %d min" % (
+                    type(e).__name__, e, RETRY_MINUTES), why=why)
                 ok = False
             if not ok:
                 self.retry_at = time.time() + RETRY_MINUTES * 60

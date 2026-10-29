@@ -135,6 +135,10 @@ Open **Frame Art** in the sidebar. A line under the title says what's in charge 
   (a backdrop with a logo after all, or a picture you don't like). Another one comes at once,
 - link the add-on to Stasera.
 
+The **Debug** tab lists what the add-on did and what it saw the TV do, newest first: when, what and why (the timer,
+the morning picture at 07:00, Home Assistant, Frame TV or the page). A button per source shows or hides its events, and
+"A day earlier" goes back. The last 7 days are kept in `/data/events.jsonl`.
+
 **What wins**, top first. When the top one is done, the next takes over.
 
 1. Follow the music, when it's on and music is playing
@@ -255,6 +259,7 @@ The answers wait for the TV.
 | `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_time`, `morning_tv_on`, `tonight`, `tonight_time`, `tonight_tv_on`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only` |
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
+| `GET /events?since=<id>` | What happened, oldest first: `{"events": [{id, at, source, kind, detail, why}], "more": false}`, the newest 2000 after that id (an id is the time in ms). `?until=<id>` for those before one |
 
 Art Mode is turned on with the Art Mode API. If that doesn't take, Frame Art sends one short press of the power key,
 but only when the TV has just said it's on and not in Art Mode.

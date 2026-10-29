@@ -10,7 +10,7 @@ import json
 import logging
 import os
 
-from . import api, i18n, mqtt
+from . import api, events, i18n, mqtt
 from .service import Rotation
 
 
@@ -30,6 +30,7 @@ def main():
         cfg = json.load(f)
     data = a.data or os.path.dirname(os.path.abspath(a.config))
     os.makedirs(data, exist_ok=True)
+    events.setup(data)
     rot = Rotation(cfg, data)
     if a.preview or a.once:
         try:

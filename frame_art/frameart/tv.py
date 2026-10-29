@@ -10,6 +10,8 @@ from samsungtvws.async_remote import SamsungTVWSAsyncRemote
 from samsungtvws.exceptions import ConnectionFailure
 from samsungtvws.remote import SendRemoteKey
 
+from . import events
+
 log = logging.getLogger(__name__)
 
 MY_PHOTOS = "MY-C0002"
@@ -93,8 +95,10 @@ class TV:
         fallback) can only go from TV to Art Mode, never switch it off."""
         await asyncio.wait_for(self.art.set_artmode("on"), 30)
         if await self._settled():
+            events.add("tv", "art_mode_on", "Art Mode on")
             return
         log.info("set_artmode didn't take; pressing power once")
+        events.add("tv", "power_key", "set_artmode didn't take; pressing power once")
         remote = SamsungTVWSAsyncRemote(host=self.host, port=8002, token_file=self.token_file, name=self.name,
                                         timeout=30)
         try:
@@ -106,7 +110,9 @@ class TV:
             except Exception:
                 pass
         if not await self._settled():
+            events.add("tv", "art_mode_failed", "the TV didn't go to Art Mode, even after power")
             raise RuntimeError("the TV didn't go to Art Mode")
+        events.add("tv", "art_mode_on", "Art Mode on, after pressing power")
 
     async def _settled(self):
         for _ in range(5):
@@ -171,9 +177,11 @@ async def watch(host, token_file, on_event, name="FrameArtWatch"):
         try:
             await asyncio.wait_for(art.start_listening(), 60)
             log.info("listening for Art Mode going off")
+            events.add("tv", "channel_open", "the art channel answers: listening for Art Mode", why="")
             while art.is_alive():
                 await asyncio.sleep(10)
             log.info("the TV closed the art channel; connecting again in a minute")
+            events.add("tv", "channel_closed", "the TV closed the art channel (off, or asleep)", why="")
         except asyncio.CancelledError:
             raise
         except Exception as e:

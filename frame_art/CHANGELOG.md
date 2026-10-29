@@ -1,5 +1,11 @@
 # Changes
 
+## 0.24.0
+
+- A Debug tab on the add-on's page: what the add-on did and what it saw the TV do, newest first, with when, what and
+  why (the timer, the morning picture at 07:00, Home Assistant, Frame TV or the page). A button per source shows or
+  hides its events. The last 7 days are kept in `/data/events.jsonl`, and `GET /events` gives them as JSON.
+
 ## 0.23.2
 
 - "Don't show again" is in the top right corner of the picture on the add-on's page, not among the buttons, and asks

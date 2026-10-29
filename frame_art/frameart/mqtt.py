@@ -16,7 +16,7 @@ import urllib.request
 import aiomqtt
 from PIL import Image
 
-from . import __version__
+from . import __version__, events
 
 log = logging.getLogger(__name__)
 
@@ -162,8 +162,10 @@ class Device:
                 ok = await coro
                 if ok is False:
                     log.info("MQTT: %s didn't happen (see above)", what)
+                    events.add("mqtt", "failed", "%s didn't happen" % what)
             except Exception as e:
                 log.info("MQTT: %s failed (%s: %s)", what, type(e).__name__, e)
+                events.add("mqtt", "failed", "%s: %s: %s" % (what, type(e).__name__, e))
         task = asyncio.create_task(go())
         self.tasks.add(task)
         task.add_done_callback(self.tasks.discard)
@@ -171,6 +173,11 @@ class Device:
     def command(self, topic, payload):
         name = topic[len(BASE) + 1:]
         log.info("MQTT: %s %s", name, payload)
+        events.add("mqtt", name.rsplit("/", 1)[0], payload, why="Home Assistant (MQTT)")
+        with events.because("Home Assistant (MQTT %s)" % name):
+            self._command(name, payload)
+
+    def _command(self, name, payload):
         try:
             if name == "next/press":
                 self.run_task(self.rot.change(art_mode=True), "a new picture")
@@ -194,6 +201,7 @@ class Device:
                 self.rot.set_settings({name[:-4]: payload == "ON"})
         except (ValueError, TypeError) as e:
             log.info("MQTT: %s %s: %s", name, payload, e)
+            events.add("mqtt", "failed", "%s %s: %s" % (name, payload, e))
 
     # MARK: - Running
 

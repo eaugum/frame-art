@@ -198,6 +198,22 @@ PAGE = {
     "fetching_new": "Fetching a new picture and sending it to the TV …",
     "making_morning": "Making the morning picture …",
     "making_tonight": "Making the poster for tonight's show …",
+    # The Debug tab (AUG-1520)
+    "debug": "Debug",
+    "events": "What happened",
+    "events_note": "What the add-on did and saw the TV do, and why. The last 7 days are kept; GET /events gives them as JSON.",
+    "events_since": "{n} since {when}",
+    "events_empty": "Nothing yet.",
+    "older": "A day earlier",
+    "source_tv": "TV",
+    "source_rotation": "Rotation",
+    "source_morning": "Morning picture",
+    "source_tonight": "Tonight",
+    "source_music": "Music",
+    "source_saver": "Screensaver",
+    "source_mqtt": "Home Assistant",
+    "source_api": "API",
+    "source_app": "Frame TV",
 }
 
 _chosen = "auto"  # the option

@@ -26,6 +26,9 @@ POST /stasera/unlink  forgets the Stasera token
 POST /saver    Frame TV's screensaver started: Art Mode on, with what we watch in Stasera when screensaver_stasera is
                on, until Art Mode goes off (AUG-1494); ?minutes=5 changes the picture that often meanwhile
 
+GET  /events?since=<id>  what happened, when and why (AUG-1520), oldest first: {"events": [...], "more": bool}, the
+               newest 2000 after that id (an id is the time in ms); ?until=<id> for those before one
+
 Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: it's
 api_key in the add-on's options (made and written there when it's empty). The page itself, through ingress, doesn't
 need it. The answers wait for the TV (up to a minute or two).
@@ -40,7 +43,7 @@ import urllib.request
 
 from aiohttp import web
 
-from . import i18n, sources
+from . import events, i18n, sources
 
 log = logging.getLogger(__name__)
 
@@ -98,6 +101,16 @@ def app(rotation):
     def ingress(request):
         return request.remote == INGRESS
 
+    def caller(request):
+        """Who asked, for the event log's why."""
+        if ingress(request):
+            return "the add-on's page"
+        if request.remote == rotation.cfg.get("tv_host"):
+            return "Frame TV"
+        if request.headers.get("User-Agent", "").startswith("HomeAssistant"):
+            return "Home Assistant"
+        return request.remote or "someone"
+
     @web.middleware
     async def keyed(request, handler):
         if request.method == "OPTIONS" or (request.method == "GET" and request.path == "/") or ingress(request):
@@ -107,7 +120,10 @@ def app(rotation):
         if not hmac.compare_digest(given.encode(), key.encode()):
             return web.json_response({"ok": False, "error": "wrong or no key (see the add-on's page)"}, status=401,
                                      headers=CORS)
-        return await handler(request)
+        if request.method != "POST":
+            return await handler(request)
+        with events.because("%s (%s)" % (caller(request), request.path)):
+            return await handler(request)
 
     async def status(request):
         return web.json_response(rotation.status(), headers=CORS)
@@ -127,6 +143,7 @@ def app(rotation):
         if what not in (None, "morning", "tonight"):
             return web.json_response({"ok": False, "error": "what is morning or tonight"}, status=400, headers=CORS)
         log.info("asked for %s%s", what or "a new picture", " in Art Mode" if art_mode else "")
+        events.add("api", "next", "%s%s" % (what or "a new picture", " in Art Mode" if art_mode else ""))
 
         async def go():
             await wake(request)
@@ -140,6 +157,7 @@ def app(rotation):
 
     async def tv_on(request):
         log.info("asked to turn the TV on")
+        events.add("api", "tv_on", "turn the TV on")
         return await act(request, rotation.wake_up)
 
     async def tv(request):
@@ -151,6 +169,7 @@ def app(rotation):
             if not isinstance(changes, dict):
                 raise ValueError("send a JSON object")
             rotation.set_settings(changes)
+            events.add("api", "settings", ", ".join("%s=%s" % kv for kv in sorted(changes.items())))
         except ValueError as e:
             return web.json_response(dict(rotation.status(), ok=False, error=str(e)), status=400, headers=CORS)
         return web.json_response(dict(rotation.status(), ok=True), headers=CORS)
@@ -178,6 +197,7 @@ def app(rotation):
     async def show(request):
         key = request.query.get("key", "")
         log.info("asked to show %s", key)
+        events.add("api", "show", key)
         try:
             await wake(request)
             ok = await rotation.choose(key)
@@ -198,14 +218,17 @@ def app(rotation):
     async def unlink(request):
         rotation.stasera.unlink()
         log.info("Stasera unlinked")
+        events.add("api", "unlink", "Stasera unlinked")
         return web.json_response(dict(rotation.status(), ok=True), headers=CORS)
 
     async def never(request):
         log.info("asked never to show %s again", rotation.showing_key())
+        events.add("api", "never", rotation.showing_key())
         return await act(request, rotation.never)
 
     async def artmode(request):
         log.info("asked for Art Mode")
+        events.add("api", "artmode", "Art Mode on")
         return await act(request, rotation.art_mode)
 
     async def saver(request):
@@ -214,7 +237,19 @@ def app(rotation):
         except ValueError:
             minutes = None  # an older Frame TV: the interval
         log.info("Frame TV's screensaver started%s", ", a new picture every %d min" % minutes if minutes else "")
+        events.add("api", "saver", "the screensaver started%s" % (", a new picture every %d min" % minutes
+                                                                    if minutes else ""))
         return await act(request, lambda: rotation.start_saver(minutes))
+
+    async def event_log(request):
+        try:
+            after, until = int(request.query.get("since") or 0), int(request.query.get("until") or 0) or None
+            limit = min(max(int(request.query.get("limit") or events.LIMIT), 1), events.LIMIT)
+        except ValueError:
+            return web.json_response({"ok": False, "error": "since, until and limit are numbers"}, status=400,
+                                     headers=CORS)
+        got, more = events.since(after, until, limit)
+        return web.json_response({"events": got, "more": more}, headers=CORS)
 
     async def page(request):
         text = PAGE.replace("/*STRINGS*/{}", json.dumps(i18n.PAGE, ensure_ascii=False))
@@ -231,6 +266,7 @@ def app(rotation):
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
                   web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv), web.post("/tv/on", tv_on),
+                  web.get("/events", event_log),
                   web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/never", never),
                   web.post("/settings", settings), web.post("/schedule", settings), web.post("/saver", saver),
