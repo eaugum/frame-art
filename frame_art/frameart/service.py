@@ -41,6 +41,7 @@ log = logging.getLogger(__name__)
 RECENT = 200  # not the same picture again within this many changes (or the whole pool, if it's smaller)
 RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Stasera didn't answer
+MADE_UNSEEN_MINUTES = 10  # the TV off this soon after Morgenbildet or tonight's show: it stays until it's seen
 MADE = ("morning", "tonight")
 EVENT_SOURCES = ("morning", "tonight", "music", "saver")  # a picture's kind -> the event log's source; else rotation
 MODES = ("shuffle", "category")  # "category" only from older callers: it becomes that category's sources
@@ -571,6 +572,9 @@ class Rotation:
             self.state["recent"] = (self.state["recent"] + [key])[-RECENT:]
             self.state["changed"] = time.time()
             self.state["showing"] = label
+            self.state.d.pop("unseen", None)
+            if kind in MADE and not art_mode:
+                self._unseen(kind, "the TV isn't in Art Mode")
             if kind in MADE:
                 if self.now().time() >= self._clock(kind + "_time"):
                     self.state["made"][kind] = day  # one asked for before its time doesn't use up today's
@@ -655,6 +659,40 @@ class Rotation:
         what = "%s_%s" % (name, "on" if on else "off")
         cause = events.cause(what)
         events.add("tv", what, SEEN[what], why=cause or ("first look" if was is None else "from outside"))
+        if on is False and was is not None:
+            self._went_away("the TV went off" if name == "power" else "Art Mode went off")
+        elif on:
+            self._seen_again(name)
+
+    def _went_away(self, why):
+        """Morgenbildet or tonight's show, with the TV off or out of Art Mode right after it (AUG-1527)."""
+        kind = (self.state["recent"][-1] if self.state["recent"] else "").split(":", 1)[0]
+        if kind in MADE and time.time() - self.state["changed"] < MADE_UNSEEN_MINUTES * 60:
+            self._unseen(kind, why + " right after it")
+
+    def _unseen(self, kind, why):
+        """Not seen yet: it stays, and the rotation counts from when it's on the wall."""
+        if self.state.d.get("unseen"):
+            return
+        self.state["unseen"] = kind
+        self.state.save()
+        name = "the morning picture" if kind == "morning" else "tonight's show"
+        log.info("%s stays: %s", name, why)
+        events.add(kind, "stays", "%s stays: %s" % (name, why), why=why)
+
+    def _seen_again(self, name):
+        """The TV on, or Art Mode on, with a picture not seen yet: the rotation counts from now. Art Mode on is the
+        end of it; the TV on alone counts too, in case Art Mode isn't heard."""
+        kind = self.state.d.get("unseen")
+        if not kind:
+            return
+        self.state["changed"] = time.time()
+        self.waiting = False
+        if name == "art_mode":
+            self.state.d.pop("unseen", None)
+            events.add(kind, "seen", "%s is on the wall; the rotation counts from now" % (
+                "the morning picture" if kind == "morning" else "tonight's show"), why="Art Mode came on again")
+        self.state.save()
 
     def activity(self):
         """What the TV is doing, from what's been seen (AUG-1524): off, app (Frame TV or another app), art, morning,
@@ -702,6 +740,8 @@ class Rotation:
         elif event == "go_to_standby":
             events.add("tv", "standby", "the TV says it's going to standby",
                        why=events.cause("power_off") or "from outside")
+            if self.seen["power"]:
+                self._went_away("the TV went to standby")
             self.seen["art_mode"] = None
         elif event == "channel_closed":
             self.seen["art_mode"] = None  # not heard any more, so not known

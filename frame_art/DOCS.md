@@ -193,6 +193,10 @@ tonight, there's no poster.
 
 Tonight's show has its own "Turn the TV on first", which works like the morning picture's.
 
+When the TV goes off or out of Art Mode within 10 minutes of the morning picture or tonight's show, or the picture
+came while the TV wasn't in Art Mode, it stays: the rotation counts from when Art Mode is on again, not from when the
+picture was put up.
+
 To link: press "Link" on the add-on's page, and approve the code in Stasera. "Unlink" forgets it.
 
 ## The screensaver

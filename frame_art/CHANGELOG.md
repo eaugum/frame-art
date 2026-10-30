@@ -1,5 +1,12 @@
 # Changes
 
+## 0.29.0
+
+- The morning picture and tonight's show stay until they've been seen: when the TV goes off or out of Art Mode within
+  10 minutes of them (the TV's own sleep in a dark room, say), the rotation counts from when Art Mode is on again,
+  instead of changing the picture as soon as it comes back. The Debug tab says so ("the morning picture stays: the TV
+  went to standby right after it").
+
 ## 0.28.0
 
 - The rotation waits while the TV is off or out of Art Mode, instead of sending pictures nobody sees; when Art Mode
