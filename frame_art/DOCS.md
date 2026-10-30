@@ -19,6 +19,40 @@ New versions show up as "Update available" in Home Assistant (⋮ → Check for 
 **The TV and Home Assistant must be on the same local network.** If the TV is on a separate network or VLAN, it may
 refuse the connection without ever showing the Allow prompt.
 
+## What it needs
+
+Frame Art starts with only `tv_host`. The rest is optional, and each piece adds something.
+
+**From the TV:** a Samsung The Frame, on and on the same network, that has answered **Allow** once.
+
+**From Home Assistant's integrations:**
+
+| Integration | Gives | Used for |
+|---|---|---|
+| [Mosquitto broker](https://www.home-assistant.io/integrations/mqtt/) add-on and the MQTT integration | The device **Frame Art** | [Buttons, switches and sensors](#in-home-assistant-mqtt). The add-on runs without it |
+| Met.no, or another with a `weather.*` entity that gives forecasts | `weather_entity` | The weather on the morning picture |
+| Any calendar integration, such as Google Calendar or Local Calendar | `calendars` | Today's events on the morning picture |
+| Nord Pool or Tibber | `price_entity` | The electricity price on the morning picture |
+| Samsung Smart TV | `tv_entity` | Turning the TV on. Check that `media_player.turn_on` under Developer tools turns the TV on from standby |
+| Spotify or SpotifyPlus | A `media_player.spotify*` | [Follow the music](#follow-the-music) |
+| Person, Device tracker or a Zone | `home_entity` | "Only when someone is home" |
+
+**What the add-on asks Home Assistant for** (in `config.yaml`, nothing to set up):
+
+| Access | Why |
+|---|---|
+| `services: mqtt:want` | The broker's address and login, when Mosquitto is there |
+| `homeassistant_api` | The weather, calendars, price, Spotify player, who's home, the language, and turning the TV on |
+| `hassio_api` | Writing the key it makes into its own options (`api_key`) |
+| `ingress` | The page in the sidebar |
+| `map: media` | Reading your own pictures in `/media`, read-only |
+| Port 8099 | The API, for Frame TV and scripts. Turned off under Network on the Configuration tab, Frame TV can't reach it |
+
+**From Stasera:** an account, for tonight's show, the posters and the film sources. See
+[Tonight's show](#tonights-show-stasera). The add-on has its own link, separate from Frame TV's.
+
+**From museums and archives:** nothing. No keys are needed, but the add-on needs the internet.
+
 ## Options
 
 What's set up once is in the add-on's options. What you change from day to day (which sources are ticked, the
@@ -28,7 +62,7 @@ interval, the times and the switches) is on the add-on's page and is saved in `/
 |---|---|
 | `tv_host` | The TV's IP address |
 | `language` | The language of the morning picture and the posters: `auto` (default), `en` or `nb`. See [Language](#language) |
-| `api_key` | The key for the API. Left empty, the add-on makes one and writes it in |
+| `api_key` | The key for the API and Frame TV's `art_key`. Left empty, the add-on makes one at its start and writes it in |
 | `weather_entity` | The weather for the morning picture, e.g. `weather.forecast_home` (Met.no). Empty gives no weather |
 | `tv_entity` | The TV as a `media_player` in Home Assistant, turned on before the morning picture and tonight's show when it's off. Empty: never |
 | `home_entity` | Who's home, for "Only when someone is home": `zone.home` (default; someone in it), or a `person`, `device_tracker`, `group`, `binary_sensor` or `input_boolean` that is `home` or `on`. Empty: always home |
@@ -253,6 +287,58 @@ cards:
       - button.frame_art_artmode
 ```
 
+### Automations
+
+Three examples. All of them use the device above.
+
+```yaml
+# Art Mode when everyone has left
+- alias: Frame Art - Art Mode when we leave
+  triggers:
+    - trigger: state
+      entity_id: zone.home
+      to: "0"
+  actions:
+    - action: button.press
+      target:
+        entity_id: button.frame_art_artmode
+
+# Posters from Saturday morning on (until the category is changed again)
+- alias: Frame Art - Posters on Saturday
+  triggers:
+    - trigger: time
+      at: "09:00:00"
+  conditions:
+    - condition: time
+      weekday: [sat]
+  actions:
+    - action: select.select_option
+      target:
+        entity_id: select.frame_art_category
+      data:
+        option: Posters
+
+# Follow the music on from the afternoon (a second automation can turn it off at night)
+- alias: Frame Art - Follow the music from 17:00
+  triggers:
+    - trigger: time
+      at: "17:00:00"
+  actions:
+    - action: switch.turn_on
+      target:
+        entity_id: switch.frame_art_music
+```
+
+## Frame TV
+
+Frame TV, a home screen for The Frame, has buttons for Frame Art; the add-on still decides what's on the wall. In Frame
+TV's settings:
+
+- `art_url`: Home Assistant's address with port 8099, for example `http://192.168.1.10:8099`,
+- `art_key`: `api_key` from the add-on's Configuration tab.
+
+To go back to Frame TV when Art Mode is turned off, set `back_app` to `FrameTVapp.FrameTV`.
+
 ## The API
 
 The add-on answers on port 8099 on the local network, for scripts and apps on the TV. Every call needs the key, as
@@ -282,11 +368,35 @@ but only when the TV has just said it's on and not in Art Mode.
 
 ## Troubleshooting
 
+**Where to look:** the add-on's **Log** tab says what it does and why something failed, and the **Debug** tab on the
+add-on's page shows the day's events. Every change of picture is in the log.
+
+- **The log says `tv_host is empty`:** set the TV's IP address in the options, and start the add-on again.
 - **No Allow prompt on the TV:** the TV has to be on, and on the same network as Home Assistant. The Art Mode channel
   never asks by itself, so Frame Art first connects to the remote control channel (without sending keys) to get the
   prompt. The token it gets is saved in `/data/token.txt`; delete it to ask again.
+- **`Art Mode not answering … trying again`:** the TV is off, busy with AirPlay, or not on that address. Frame Art tries
+  again every 5 minutes. If the address has changed, give the TV a fixed one in your router.
+- **The picture doesn't change:** the rotation waits while the TV is off or out of Art Mode. The add-on's page says so,
+  and the Debug tab says when it started waiting, and why. A fixed picture also stays until the next morning picture.
+- **The picture changes by itself as well:** the log says `the TV's own slideshow is on`. Turn it off in Art Mode on the
+  TV.
 - **A source has 0 pictures:** the name or the query is probably wrong; the log says which.
-- **The morning picture has no weather:** check `weather_entity`.
+- **The film sources are empty:** the add-on isn't linked to Stasera, or the link is gone (`Stasera no longer takes the
+  token`). Press "Link" on the add-on's page. A studio's first pictures take a minute or two.
+- **The morning picture has no weather:** check `weather_entity`. The log says `no weather from …`.
+- **No calendar or electricity price on the morning picture:** check `calendars` and `price_entity`. They only show when
+  there's something today.
+- **The TV doesn't turn on:** check `tv_entity`, try `media_player.turn_on` on it under Developer tools, and check
+  whether "Only when someone is home" stopped it. The log says `nobody home`.
+- **No device in Home Assistant:** the log says `no broker`. Install Mosquitto, add the MQTT integration, and restart
+  the add-on.
+- **Follow the music does nothing:** the switch is off by default, and it needs a `media_player.spotify*` that is
+  playing. It doesn't turn on Art Mode by itself.
+- **An API call answers `wrong or no key`:** use `api_key` from the options, and check the `Authorization` header.
+- **Frame TV can't reach the add-on:** open `http://<Home Assistant>:8099/status?key=<api_key>` in a browser. `wrong or
+  no key` means `art_key` doesn't match `api_key`. No answer means the add-on isn't running, or port 8099 is turned off
+  under Network on the Configuration tab.
 
 ## Running it without Home Assistant
 

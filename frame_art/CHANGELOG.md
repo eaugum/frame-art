@@ -1,5 +1,11 @@
 # Changes
 
+## 0.29.1
+
+- The documentation says what the add-on needs from Home Assistant and which integrations give what, has examples of
+  automations and how Frame TV connects, and a longer troubleshooting section.
+- A call with the wrong key says where the key is: `api_key` in the add-on's options.
+
 ## 0.29.0
 
 - The morning picture and tonight's show stay until they've been seen: when the TV goes off or out of Art Mode within

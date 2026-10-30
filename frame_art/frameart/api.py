@@ -122,7 +122,7 @@ def app(rotation):
         given = request.headers.get("Authorization", "")
         given = given[7:] if given.startswith("Bearer ") else request.query.get("key", "")
         if not hmac.compare_digest(given.encode(), key.encode()):
-            return web.json_response({"ok": False, "error": "wrong or no key (see the add-on's page)"}, status=401,
+            return web.json_response({"ok": False, "error": "wrong or no key (api_key in the add-on's options)"}, status=401,
                                      headers=CORS)
         if request.method != "POST":
             return await handler(request)
