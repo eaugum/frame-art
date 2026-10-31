@@ -571,8 +571,101 @@ class Tmdb(Source):
         return self.IMAGES + "w780" + key.split(":", 2)[2]
 
 
+def _at(o, path):
+    """'images.0.url' in a JSON answer, None when it isn't there; an empty path is the answer itself."""
+    for part in path.split(".") if path else []:
+        if isinstance(o, list) and part.isdigit() and int(part) < len(o):
+            o = o[int(part)]
+        elif isinstance(o, dict) and part in o:
+            o = o[part]
+        else:
+            return None
+    return o
+
+
+def _filled(spec, o):
+    """A path, or a text with paths in braces ("{image_id}/full/max/0/default.jpg"); None when one is missing."""
+    fields = re.findall(r"\{([^{}]+)\}", spec) if "{" in spec else [spec]
+    values = [_at(o, f) for f in fields]
+    if not spec or any(isinstance(v, (dict, list, type(None))) or v == "" for v in values):
+        return None
+    return str(values[0]) if "{" not in spec else re.sub(r"\{[^{}]+\}", lambda _: str(values.pop(0)), spec)
+
+
+class Json(Source):
+    """Any open JSON API, described in the options, so a new service takes no code. url is the search, with {query}
+    (each of the query's), and {page} or {offset} for the next pages; items is where the list is in the answer; image,
+    title and thumb are paths in an item, or texts with paths in braces; width and height, if the list has them, leave
+    out the wrong shapes before they're downloaded. We can't see the license, so url has to ask for free pictures."""
+    type = "json"
+    PAGES = 5
+
+    def __init__(self, entry, cfg):
+        Source.__init__(self, entry, cfg)
+        self.spec = entry
+        self.items = {}  # image URL -> (label, thumbnail URL)
+
+    def link(self, spec, o, base):
+        """An absolute http(s) URL from the answer, or None: what it says isn't ours to open as a file."""
+        url = _filled(spec, o) if spec else None
+        url = urllib.parse.urljoin(base, url) if url else None
+        return url if url and url.startswith(("http://", "https://")) else None
+
+    def keys(self):
+        spec = self.spec
+        if not spec.get("url") or not spec.get("image"):
+            log.warning("%s: a json source needs url and image", self.name)
+            return []
+        items, seen = {}, 0
+        for q in self.queries or [""]:
+            search = spec["url"].replace("{query}", urllib.parse.quote(q))
+            offset = 0
+            for page in range(1, self.PAGES + 1):
+                url = search.replace("{page}", str(page)).replace("{offset}", str(offset))
+                found = _at(net.get_json(url), spec.get("items") or "")
+                if not isinstance(found, list):
+                    log.warning("%s: no list at %r in the answer", self.name, spec.get("items") or "")
+                    break
+                for o in found:
+                    wide = spec.get("width") and spec.get("height")
+                    if wide and not self.usable(int(_at(o, spec["width"]) or 0), int(_at(o, spec["height"]) or 0)):
+                        continue
+                    image_url = self.link(spec["image"], o, url)
+                    if image_url:
+                        label = _filled(spec.get("title") or "", o) or self.name
+                        items.setdefault(image_url, (label, self.link(spec.get("thumb"), o, url)))
+                seen += len(found)
+                offset += len(found)
+                if not found or url == search:  # the end, or a url that doesn't page
+                    break
+        if seen and not items:
+            log.warning("%s: %d found, but none with a usable %r", self.name, seen, spec["image"])
+        self.items = items
+        return list(items)
+
+    def item(self, key):
+        if key not in self.items:
+            self.keys()  # after a restart
+        if key not in self.items:
+            raise RuntimeError("%s isn't in the answer now" % key)  # not Skip: it may come back
+        return self.items[key]
+
+    def fetch(self, key):
+        label = self.item(key)[0]
+        raw = net.get(key, timeout=180)
+        try:
+            img = image.open_image(raw)
+        except Exception as e:
+            raise Skip("not a picture Pillow reads: %s" % e)
+        self.check(*img.size)
+        return img, label
+
+    def thumb(self, key):
+        return self.item(key)[1] or Source.thumb(self, key)
+
+
 TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome,
-                             Stasera, Tmdb)}
+                             Stasera, Tmdb, Json)}
 
 
 def from_config(cfg, stasera=None):

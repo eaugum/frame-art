@@ -1,5 +1,11 @@
 # Changes
 
+## 0.31.0
+
+- A new service no longer takes code: the source type `json` describes any open JSON API in the options, with its
+  address, where the list is and where each picture's address, title and size are. See "A new service" in the
+  documentation. The sources already there are as they were.
+
 ## 0.30.0
 
 - A TV in standby wakes for a minute now and then and says it's in Art Mode. That no longer counts until the TV is seen

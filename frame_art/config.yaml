@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see DOCS.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.30.0"
+version: "0.31.0"
 slug: frame_art
 description: A living gallery in The Frame's Art Mode, from museums, NASA and your own photos, with a morning picture and Follow the music
 url: https://github.com/eaugum/frame-art
@@ -110,5 +110,13 @@ schema:
   sources:
     - name: str
       category: str?
-      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|stasera|tmdb)
+      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|stasera|tmdb|json)
       query: str?
+      # Only for type json: url isn't url?, since {query} and {page} are in it
+      url: str?
+      items: str?
+      image: str?
+      title: str?
+      thumb: str?
+      width: str?
+      height: str?

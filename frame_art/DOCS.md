@@ -108,6 +108,7 @@ says which.
 | `wellcome` | Wellcome Collection, public domain and CC0: old illustrations | Search words (`botanical`) |
 | `stasera` | Backdrops of what you watch in Stasera, without text where there is a version without. Needs `stasera_url` and the add-on linked to Stasera | The lists: `watching`, `wantToStart`, `movies`, `recommendations` |
 | `tmdb` | Backdrops without text from TMDB, through Stasera: up to 5 per film or show, 4K where there is, short films left out. Needs `stasera_url` and the add-on linked to Stasera | TMDB ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
+| `json` | Any open JSON API, described in the options. See [A new service](#a-new-service) | What goes in `{query}` in `url`; can be left out |
 
 **What fits:** only pictures close to 16:9 are used (from 3:2 to a little wider than 16:9), cropped to fill the
 screen. Pictures from the online sources must also be at least 1920 pixels wide. The rest are left out when the source
@@ -149,6 +150,42 @@ aren't on TMDB; download them yourself and put them in a folder source in the sa
 
 The film pictures from Stasera come from TMDB and aren't free, but are for use at home. Everything else is public
 domain or free to use.
+
+### A new service
+
+A service that isn't in the table takes no code if it has an open JSON API and the list it answers with has the
+picture's address, or an id to build the address from. Describe it with `type: json`:
+
+```yaml
+- name: Cleveland landscapes
+  category: Paintings
+  type: json
+  query: landscape|seascape
+  url: "https://openaccess-api.clevelandart.org/api/artworks/?q={query}&type=Painting&has_image=1&cc0=1&limit=100&skip={offset}"
+  items: data
+  image: images.print.url
+  title: "{title}, {creators.0.description}"
+  thumb: images.web.url
+  width: images.print.width
+  height: images.print.height
+```
+
+| Field | | |
+|---|---|---|
+| `url` | Required | The search. `{query}` is each of the source's queries, and `{page}` (from 1) or `{offset}` (from 0) gives up to 5 pages per query; without them, one |
+| `items` | | Where the list is in the answer, as a path. Empty: the answer is the list |
+| `image` | Required | The picture's address in an item: a path (`images.0.url`, numbers for lists), or a text with paths in braces, like `https://example.org/iiif/{id}/full/max/0/default.jpg` |
+| `title` | | The text for the picture, written like `image`. If a field is missing, the source's name |
+| `thumb` | | A small copy for the add-on's page, written like `image`. Without it the page downloads the whole picture |
+| `width`, `height` | | Paths to the picture's size in the list, so the wrong shapes are left out before they're downloaded. Without them, a wrong shape is found out when it's drawn, after the download |
+
+Three things are up to you:
+
+- **The license:** the add-on can't see it, so let `url` ask for free pictures only, as `cc0=1` does above.
+- **Two steps:** if the service needs another call per picture to find the address, as The Met does, it takes a type of
+  its own in `sources.py`.
+- **Downloads:** a service can answer the search and still refuse to let the add-on download its pictures; the Art
+  Institute of Chicago answers 403. The log says `couldn't fetch`, and the Debug tab shows it.
 
 ## The add-on's page
 
