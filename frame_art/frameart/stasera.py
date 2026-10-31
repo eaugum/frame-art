@@ -136,7 +136,7 @@ class Stasera:
 
     def titles(self, lists):
         """Titles from Stasera's lists: watching, wantToStart and movies (/tv/home) and recommendations, each
-        {kind, tmdbId, title, year, backdropPath, textlessBackdropPath?, logoPath?, list}. Raises Unlinked."""
+        {kind, titleId, title, year, backdropPath, textlessBackdropPath?, logoPath?, list}. Raises Unlinked."""
         out = []
         home = [l for l in lists if l in ("watching", "wantToStart", "movies")]
         if home:
@@ -174,13 +174,13 @@ class Stasera:
             status, h = self._request("GET", "/tv/home?parts=watching,movies")
             if status == 200 and h:
                 for w in (h.get("watching") or []) + (h.get("movies") or []):
-                    extra[(w.get("kind"), w.get("tmdbId"))] = w
+                    extra[(w.get("kind"), w.get("titleId"))] = w
         except Unlinked:
             raise
         except Exception as e:
             log.info("Stasera: no logos (%s)", e)
         for it in items:
-            w = extra.get((it.get("kind"), it.get("tmdbId"))) or {}
+            w = extra.get((it.get("kind"), it.get("titleId"))) or {}
             for k in ("textlessBackdropPath", "logoPath"):
                 if w.get(k) and not it.get(k):
                     it[k] = w[k]

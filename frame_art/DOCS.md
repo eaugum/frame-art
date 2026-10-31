@@ -117,7 +117,7 @@ A source whose service is gone is left out, and the log says so.
 | `wellcome` | Wellcome Collection, public domain and CC0: old illustrations | Search words (`botanical`) |
 | `stasera` | Backdrops of what you watch in Stasera. Needs `stasera_url` and the add-on linked to Stasera | The lists: `watching`, `wantToStart`, `movies` |
 | `stasera-recommendations` | Stasera's recommendations, the same way | None |
-| `stasera-art` | Backdrops without text from Stasera: up to 5 per film or show. Needs the same | TMDB ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
+| `stasera-art` | Backdrops without text from Stasera: up to 5 per film or show. Needs the same | Stasera's ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
 
 **What fits:** only pictures close to 16:9 are used (from 3:2 to a little wider than 16:9), cropped to fill the
 screen. Pictures from the online sources must also be at least 1920 pixels wide. The rest are left out when the source
@@ -151,13 +151,13 @@ Stasera fetches it in the background, and the pictures come a minute or two late
 ```
 
 Official wallpapers and concept art
-aren't on TMDB; download them yourself and put them in a folder source in the same category:
+aren't in Stasera; download them yourself and put them in a folder source in the same category:
 
 ```yaml
 - {category: Pixar, name: Pixar wallpapers, type: folder, query: /media/frame-art/pixar}
 ```
 
-The film pictures from Stasera come from TMDB and aren't free, but are for use at home. Everything else is public
+The film pictures from Stasera aren't free, but are for use at home. Everything else is public
 domain or free to use.
 
 ### A service of your own

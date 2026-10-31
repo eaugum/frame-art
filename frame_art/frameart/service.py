@@ -433,7 +433,7 @@ class Rotation:
             events.add("saver", "nothing", "nothing in Stasera for the screensaver")
             return None
         # the next episode is in the key, so a new one makes a new picture
-        keys = ["saver:%s:%s%s" % (i.get("kind"), i.get("tmdbId"), ":%sx%s" % (i["seasonNumber"], i.get(
+        keys = ["saver:%s:%s%s" % (i.get("kind"), i.get("titleId"), ":%sx%s" % (i["seasonNumber"], i.get(
             "episodeNumber")) if i.get("kind") == "show" and i.get("seasonNumber") is not None else "") for i in items]
         recent = self.state["recent"][-(len(keys) - 1):] if len(keys) > 1 else []
         n = next((n for n, k in enumerate(keys) if k not in recent), 0)

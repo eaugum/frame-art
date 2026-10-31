@@ -1,5 +1,9 @@
 # Changes
 
+## 0.34.0
+
+- The add-on uses Stasera's own ids, `titleId` and `episodeId`, so it only knows Stasera.
+
 ## 0.33.0
 
 - The film pictures, tonight's show and the posters are fetched from `stasera_url`, so the add-on only knows Stasera.
