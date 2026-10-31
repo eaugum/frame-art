@@ -382,7 +382,7 @@ class Rotation:
                     self.state["made"][kind] = today  # not again today
                     self.state.save()
                     return None
-                img, label = made.poster(items[0]), "Tonight: %s" % (items[0].get("title") or "?")
+                img, label = made.poster(items[0], self.stasera), "Tonight: %s" % (items[0].get("title") or "?")
         except Unlinked:
             log.info("Stasera isn't linked: link it on the add-on's page")
             events.add(kind, "unlinked", "Stasera isn't linked")
@@ -438,7 +438,7 @@ class Rotation:
         recent = self.state["recent"][-(len(keys) - 1):] if len(keys) > 1 else []
         n = next((n for n, k in enumerate(keys) if k not in recent), 0)
         try:
-            img = made.poster(items[n], t(SAVER[items[n]["list"]]))
+            img = made.poster(items[n], self.stasera, t(SAVER[items[n]["list"]]))
         except Exception as e:
             log.warning("couldn't make the screensaver's picture (%s: %s)", type(e).__name__, e)
             events.add("saver", "failed", "couldn't make the picture (%s: %s)" % (type(e).__name__, e))
@@ -532,7 +532,7 @@ class Rotation:
         return last if kind not in MADE + OWN and self.source_of(last) else None
 
     async def never(self):
-        """What's on the wall is never drawn again (a backdrop with a logo TMDB didn't mark, a picture you don't
+        """What's on the wall is never drawn again (a backdrop with a logo that wasn't marked, a picture you don't
         like), and another one comes."""
         key = self.showing_key()
         if not key:

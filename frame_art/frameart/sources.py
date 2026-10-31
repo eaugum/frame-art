@@ -213,7 +213,7 @@ class Web(Source):
 
     def link(self, spec, context):
         """An absolute http(s) URL, or None: what an answer says isn't ours to open as a file."""
-        url = _fill(spec, context, True)
+        url = _fill(spec, dict(context, stasera=self.client.base) if self.stasera else context, True)
         return url if url and url.startswith(("http://", "https://")) else None
 
     def answer(self, url):

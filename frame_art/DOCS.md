@@ -117,7 +117,7 @@ A source whose service is gone is left out, and the log says so.
 | `wellcome` | Wellcome Collection, public domain and CC0: old illustrations | Search words (`botanical`) |
 | `stasera` | Backdrops of what you watch in Stasera. Needs `stasera_url` and the add-on linked to Stasera | The lists: `watching`, `wantToStart`, `movies` |
 | `stasera-recommendations` | Stasera's recommendations, the same way | None |
-| `tmdb` | Backdrops without text from TMDB, through Stasera: up to 5 per film or show. Needs the same | TMDB ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
+| `stasera-art` | Backdrops without text from Stasera: up to 5 per film or show. Needs the same | TMDB ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
 
 **What fits:** only pictures close to 16:9 are used (from 3:2 to a little wider than 16:9), cropped to fill the
 screen. Pictures from the online sources must also be at least 1920 pixels wide. The rest are left out when the source
@@ -136,18 +136,18 @@ Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel. On the add-on's 
 category, and the tick by a category turns all of its sources on or off.
 
 **Film and animation:** Pixar, Disney (Walt Disney Animation Studios and the classics), Star Wars (the saga, Rogue One,
-Solo and the shows), Studio Ghibli, DreamWorks Animation and Marvel Studios are `tmdb` sources: backdrops without text
-from TMDB, fetched through Stasera, so they need the add-on linked to Stasera. The first time a studio is asked for,
+Solo and the shows), Studio Ghibli, DreamWorks Animation and Marvel Studios are `stasera-art` sources: backdrops without text
+from Stasera, so they need the add-on linked to Stasera. The first time a studio is asked for,
 Stasera fetches it in the background, and the pictures come a minute or two later. Options saved before 0.22.0 don't have them; add these under `sources`:
 
 ```yaml
-- {name: Pixar, type: tmdb, query: company=3}
-- {name: Disney, type: tmdb, query: company=6125|company=3166&genre=16}
-- {name: Star Wars, type: tmdb,
+- {name: Pixar, type: stasera-art, query: company=3}
+- {name: Disney, type: stasera-art, query: company=6125|company=3166&genre=16}
+- {name: Star Wars, type: stasera-art,
    query: collection=10|movie=330459|movie=348350|tv=4194|tv=82856|tv=83867|tv=115036|tv=92830|tv=114461}
-- {name: Studio Ghibli, type: tmdb, query: company=10342}
-- {name: DreamWorks, type: tmdb, query: company=521}
-- {name: Marvel, type: tmdb, query: company=420}
+- {name: Studio Ghibli, type: stasera-art, query: company=10342}
+- {name: DreamWorks, type: stasera-art, query: company=521}
+- {name: Marvel, type: stasera-art, query: company=420}
 ```
 
 Official wallpapers and concept art
@@ -188,7 +188,7 @@ needs no service and has them all itself.
 
 | Field | | |
 |---|---|---|
-| `url` | Required | The search. `{query}` is each of the source's queries, and `{page}` (from 1) or `{offset}` (from 0) is the next page. A query with `=` in it is fields, which replace the url's own. `{stasera}` is `stasera_url`, asked as the linked add-on |
+| `url` | Required | The search. `{query}` is each of the source's queries, and `{page}` (from 1) or `{offset}` (from 0) is the next page. A query with `=` in it is fields, which replace the url's own. `{stasera}` is `stasera_url`, asked as the linked add-on; it can be used in `image` and `thumb` too |
 | `query` | | The query for a source that has none |
 | `accept` | | The `Accept` header, if the API wants something else than JSON |
 | `items` | | Where the list is in the answer; empty: the answer is the list. `items.*.backdrops` is every item's backdrops |

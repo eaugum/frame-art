@@ -11,7 +11,6 @@ from . import image, net
 from .i18n import lang, t
 
 FONT = os.path.join(os.path.dirname(__file__), "fonts", "InterVariable.ttf")
-TMDB = "https://image.tmdb.org/t/p/"
 ACCENT = (242, 201, 76)  # Frame TV's yellow
 
 # Calm colours for the weather: (top, bottom, text)
@@ -151,14 +150,14 @@ def _prices(d, power, x, right, y, ink, soft, gradient, now):
 
 # MARK: - Tonight's poster
 
-def poster(item, heading=None):
-    """item: one from Stasera's /tv/tonight or /tv/home; heading: "TONIGHT" when it's None. Raises when there's no
-    backdrop to make it from."""
+def poster(item, stasera, heading=None):
+    """item: one from Stasera's /tv/tonight or /tv/home, stasera the add-on's; heading: "TONIGHT" when it's None. Raises
+    when there's no backdrop to make it from."""
     heading = heading or t("tonight")
     path = item.get("textlessBackdropPath") or item.get("backdropPath")
     if not path:
         raise ValueError("no backdrop")
-    img = image.fill(image.open_image(net.get(TMDB + "original" + path, timeout=120)))
+    img = image.fill(image.open_image(net.get(stasera.image(path), timeout=120)))
     img = _shade(img)
     d = ImageDraw.Draw(img)
     x, bottom = 300, image.H - 300
@@ -177,7 +176,7 @@ def poster(item, heading=None):
     for i, text in enumerate(lines):
         d.text((x, y + i * 110), text, font=line_font, fill=(236, 236, 236))
 
-    logo = _logo(item.get("logoPath"))
+    logo = _logo(stasera, item.get("logoPath"))
     if logo:
         logo.thumbnail((1500, 520), Image.LANCZOS)
         top = y - 80 - logo.height
@@ -203,11 +202,11 @@ def _shade(img):
     return Image.composite(Image.new("RGB", img.size, (8, 8, 10)), img, mask)
 
 
-def _logo(path):
+def _logo(stasera, path):
     if not path:
         return None
     try:
-        return Image.open(io.BytesIO(net.get(TMDB + "original" + path))).convert("RGBA")
+        return Image.open(io.BytesIO(net.get(stasera.image(path)))).convert("RGBA")
     except Exception:
         return None
 

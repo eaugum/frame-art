@@ -130,6 +130,10 @@ class Stasera:
             raise RuntimeError("Stasera answered %s to %s" % (status, path))
         return j
 
+    def image(self, path, size="original"):
+        """The address of a picture, from a path in an answer."""
+        return "%s/tv/img/%s%s" % (self.base, size, path)
+
     def titles(self, lists):
         """Titles from Stasera's lists: watching, wantToStart and movies (/tv/home) and recommendations, each
         {kind, tmdbId, title, year, backdropPath, textlessBackdropPath?, logoPath?, list}. Raises Unlinked."""

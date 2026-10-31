@@ -1,5 +1,12 @@
 # Changes
 
+## 0.33.0
+
+- The film pictures, tonight's show and the posters are fetched from `stasera_url`, so the add-on only knows Stasera.
+- The service `tmdb` is now `stasera-art`. Sources with `type: tmdb` have to change to it, or they're left out; the log
+  says which. If `services` is saved in your options, change the name there too, or leave both as they are: the old
+  service still works.
+
 ## 0.32.0
 
 - No service is in the code any more. The new option `services` describes each of them, with its address, and a
