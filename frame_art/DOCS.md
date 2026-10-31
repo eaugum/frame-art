@@ -110,6 +110,7 @@ A source whose service is gone is left out, and the log says so.
 | `met` | The Met, public domain; paintings unless said otherwise | Search words, or fields: `medium=Prints&q=Hiroshige` |
 | `rijksmuseum` | The Rijksmuseum, public domain; paintings unless said otherwise | Words in the description (`zee`), or fields: `creator=Vermeer` |
 | `nasjonalmuseet` | Paintings from the Nasjonalmuseet in Oslo, through Wikimedia Commons | Artists (`Hans Gude`) |
+| `nasjonalbiblioteket` | The National Library of Norway, public domain photos, cropped a little to lose the edges of the negatives; mostly black and white | Search words in Norwegian (`landskap`) |
 | `cleveland` | The Cleveland Museum of Art, CC0; paintings unless said otherwise | Search words, or fields: `type=Print&q=Hokusai` |
 | `smk` | Statens Museum for Kunst, Copenhagen, public domain paintings | Search words (`landskab`), `*` for everything |
 | `commons` | Wikimedia Commons categories, with their subcategories | Category names without `Category:`, e.g. `Featured pictures of Norway` |
@@ -131,9 +132,18 @@ doesn't.
 before 200 others have been shown (or the whole source, if it's smaller). A source is read the first time it's drawn;
 sources that have never been read are read in the background when the add-on starts.
 
-**Categories:** the defaults have thirteen: My pictures, Paintings, Abstract, Japan, Posters, Nature and space, Film,
-Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel. On the add-on's page each source is under its
-category, and the tick by a category turns all of its sources on or off.
+**Categories:** the defaults have fourteen: My pictures, Paintings, Old Norway, Abstract, Japan, Posters, Nature and space, Film,
+Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel. On the add-on's page each category opens to show its sources,
+and the tick by a category turns all of its sources on or off.
+
+**Old Norway:** photos from the National Library of Norway, about 1900 to 1950. Options saved before 0.35.0 don't have
+them: copy the service `nasjonalbiblioteket` from the add-on's
+[config.yaml](https://github.com/eaugum/frame-art/blob/main/frame_art/config.yaml) into `services`, and add this under
+`sources`. About a third of what's found has the right shape, and the number on the add-on's page counts them all.
+
+```yaml
+- {category: Old Norway, name: Old Norway, type: nasjonalbiblioteket, query: landskap|fjord|panorama|by}
+```
 
 **Film and animation:** Pixar, Disney (Walt Disney Animation Studios and the classics), Star Wars (the saga, Rogue One,
 Solo and the shows), Studio Ghibli, DreamWorks Animation and Marvel Studios are `stasera-art` sources: backdrops without text
@@ -231,15 +241,14 @@ Open **Frame Art** in the sidebar. A line under the title says what's in charge 
 - turn the TV on: "Turn the TV on" is there while the TV is off (with `tv_entity` set). It turns the TV on through Home Assistant
   and opens `back_app` (Frame TV: `FrameTVapp.FrameTV`); without `back_app`, the TV stays where it comes up,
 - tick sources and categories,
-- **choose a picture**: "Choose picture" by a category shows what's been shown lately and 24 at random. The picture
+- **choose a picture**: "Choose picture" in an opened category shows what's been shown lately and 24 at random. The picture
   you press is shown at once and stays until the next morning picture. "New picture" or "Resume the rotation now" ends it
-  sooner,
-- set how often the picture changes, how many of Frame Art's pictures stay on the TV, and the times for the morning
-  picture and tonight's show,
-- turn the screensaver on or off,
+  sooner. The × in a picture's corner leaves it out for good, after a question,
 - leave out the picture on the wall for good: "Don't show again" in the picture's corner, then yes to the question
-  (a backdrop with a logo after all, or a picture you don't like). Another one comes at once,
-- link the add-on to Stasera.
+  (a backdrop with a logo after all, or a picture you don't like). Another one comes at once.
+
+The **Settings** tab sets how often the picture changes, how many of Frame Art's pictures stay on the TV, the times for
+the morning picture and tonight's show, and the screensaver, and links the add-on to Stasera.
 
 The **Debug** tab shows a day at a time; ‹ and › go between the days. At the top is a timeline: when the TV was on, in
 Art Mode, showing Frame TV, the screensaver and the music, and when the morning picture and tonight's show came (striped:
@@ -424,7 +433,7 @@ The answers wait for the TV.
 | `POST /tv/on` | The TV on through Home Assistant (`tv_entity`), then `back_app` opened. Doesn't wait for the TV's turn, so it answers while the add-on waits for a sleeping TV |
 | `POST /next` | A new picture now. `?art_mode=1` turns on Art Mode too, `?what=morning` or `?what=tonight` shows that picture, and `?wake=1` turns the TV on first when it's off. Ends a fixed picture |
 | `POST /artmode` | Art Mode on, with the picture it has |
-| `POST /never` | The picture on the wall is never shown again, and another comes; only for a picture from a source (`showing_key` in `/status`) |
+| `POST /never` | The picture on the wall is never shown again, and another comes; only for a picture from a source (`showing_key` in `/status`). `?picture=…` is a key from `/category` instead, and the wall only changes if that picture is on it |
 | `GET /category?name=Japan` | Recently shown and 24 at random from the category's ticked sources |
 | `GET /thumb?key=…` | A small copy of a picture from `/category` |
 | `POST /show?key=…` | That picture now, in Art Mode, fixed until the next morning picture |

@@ -47,10 +47,15 @@
   .group { border-top: 1px solid var(--line); padding: 10px 0 8px; }
   .group:first-of-type { border-top: 0; }
   .group-head { display: flex; align-items: center; gap: 10px; }
-  .group-head label { flex: 1; font-weight: 600; display: flex; align-items: center; gap: 10px; cursor: pointer; }
-  .group-head .n { color: var(--dim); font-size: 14px; }
+  .acc { flex: 1; min-width: 0; display: flex; align-items: center; gap: 10px; padding: 2px 0; border-radius: 0;
+         background: none; font-weight: 600; text-align: left; }
+  .acc:hover { background: none; color: var(--accent); }
+  .acc span:first-child { flex: 1; }
+  .acc i { flex: none; width: 12px; font-style: normal; color: var(--dim); }
+  .group-head .n { color: var(--dim); font-size: 14px; font-weight: 400; }
   .sources { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 0 20px;
-             margin: 4px 0 0 30px; }
+             margin: 4px 0 0 28px; }
+  .choose { display: inline-block; margin: 6px 0 2px 28px; font-size: 14px; }
   .source { display: flex; align-items: center; gap: 10px; padding: 3px 0; cursor: pointer; color: #ccc;
             font-size: 14px; }
   .source span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
@@ -61,6 +66,8 @@
             justify-content: center; z-index: 10; }
   .dialog > div { background: var(--card); border-radius: 12px; padding: 20px 22px; max-width: 360px; }
   .dialog p { margin: 0 0 4px; }
+  .dialog img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #222;
+                border-radius: 6px; margin-bottom: 12px; }
   button.yes { background: var(--accent); color: #111; font-weight: 600; }
   .gallery { margin: 10px 0 4px; padding: 12px; background: #141414; border-radius: 8px; }
   .gallery h3 { font-size: 13px; color: var(--dim); font-weight: 600; margin: 8px 0; }
@@ -68,6 +75,11 @@
   .grid img { display: block; width: 100%; aspect-ratio: 16 / 9; object-fit: cover; background: #222;
               border-radius: 4px; cursor: pointer; }
   .grid img:hover { outline: 2px solid var(--accent); }
+  .pic { position: relative; }
+  .pic button { display: none; position: absolute; top: 4px; right: 4px; width: 22px; height: 22px; padding: 0; border-radius: 50%;
+                font-size: 15px; line-height: 22px; color: #fff; background: rgba(0, 0, 0, .55); }
+  .pic button:hover { background: rgba(0, 0, 0, .85); }
+  .pic.ready button { display: block; }
   .gallery .actions { margin-top: 12px; }
 
   .row { display: flex; align-items: center; gap: 12px; padding: 10px 0; border-top: 1px solid var(--line); }
@@ -119,7 +131,7 @@
   .hours span { position: absolute; transform: translateX(-50%); }
 </style></head>
 <body><main>
-  <nav class="tabs"><a data-tab="art" class="on">Frame Art</a><a data-tab="debug" data-t="debug"></a></nav>
+  <nav class="tabs"><a data-tab="art" class="on">Frame Art</a><a data-tab="settings" data-t="settings"></a><a data-tab="debug" data-t="debug"></a></nav>
   <div id="tab-art">
   <div class="frame">
     <img id="pic" alt="" onerror="this.style.visibility = 'hidden'" onload="this.style.visibility = ''">
@@ -158,7 +170,9 @@
       <button id="close" class="small" data-t="close"></button>
     </div>
   </div>
+  </div>
 
+  <div id="tab-settings" hidden>
   <section>
     <header><h2 data-t="settings"></h2><span id="saved"></span></header>
     <div class="row"><span data-t="interval"></span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
@@ -205,13 +219,14 @@
   <div class="actions"><button id="ask-yes" class="yes" data-t="turn_on"></button><button id="ask-no" data-t="cancel"></button></div>
 </div></div>
 <div id="sure" class="dialog" hidden><div>
+  <img id="sure-img" alt="" hidden>
   <p id="sure-what"></p>
-  <p class="note" data-t="never_note"></p>
+  <p class="note" id="sure-note"></p>
   <div class="actions"><button id="sure-yes" class="yes" data-t="never_yes"></button><button id="sure-no" data-t="cancel"></button></div>
 </div></div>
 <script>
   var T = /*STRINGS*/{}, LOCALE = T.locale || "en-GB";
-  var last = {}, open = null, savedAt = 0;
+  var last = {}, open = null, expanded = null, savedAt = 0, leaving = null;
   function $(id) { return document.getElementById(id); }
   /** The text for key, with {name} filled in from values. */
   function tr(key, values) {
@@ -312,6 +327,12 @@
     });
   };
 
+  /** Opens one category (or none), and closes a gallery that was open in another. */
+  function expand(name) {
+    expanded = name;
+    if (open !== name) { open = null; gal.hidden = true; }
+    sources(last);
+  }
   function sources(s) {
     var o = off(), pools = s.pools || {}, on = 0, pictures = 0, unread = 0;
     var groups = $("groups");
@@ -321,19 +342,25 @@
       var all = el("input", {type: "checkbox", checked: ticked.length === names.length,
         indeterminate: ticked.length > 0 && ticked.length < names.length,
         onchange: function () { setOff(names, ticked.length < names.length); }});
-      var head = el("div", {className: "group-head"}, [
-        el("label", {}, [all, c.name]),
-        el("span", {className: "n", textContent: count(c.pictures)}),
-        el("a", {textContent: tr("choose"), onclick: function () { gallery(c.name); }})]);
+      var isOpen = expanded === c.name;
+      all.title = all.ariaLabel = c.name;
+      var head = el("div", {className: "group-head"}, [all,
+        el("button", {className: "acc", ariaExpanded: String(isOpen), onclick: function () { expand(isOpen ? null : c.name); }}, [
+          el("span", {textContent: c.name}),
+          el("span", {className: "n", textContent: count(c.pictures)}),
+          el("i", {textContent: isOpen ? "▾" : "▸"})])]);
       var group = el("div", {className: "group"}, [head]);
-      if (names.length > 1 || names[0] !== c.name) {
+      if (isOpen && (names.length > 1 || names[0] !== c.name)) {
         group.append(el("div", {className: "sources"}, names.map(function (n) {
           return el("label", {className: "source"}, [
             el("input", {type: "checkbox", checked: o.indexOf(n) < 0, onchange: function () { setOff([n], this.checked); }}),
             el("span", {textContent: n, title: n}), el("span", {className: "n", textContent: count(pools[n])})]);
         })));
       }
-      if (open === c.name) group.append(gal);
+      if (isOpen) {
+        if (open !== c.name) group.append(el("a", {className: "choose", textContent: tr("choose"), onclick: function () { gallery(c.name); }}));
+        else group.append(gal);
+      }
       groups.append(group);
       names.forEach(function (n) {
         if (pools[n] === null || pools[n] === undefined) unread++;
@@ -429,23 +456,52 @@
           $("saved").style.opacity = 1;
           var at = savedAt = Date.now();
           setTimeout(function () { if (at === savedAt) $("saved").style.opacity = 0; }, 2000);
-        } else $("msg").textContent = tr("not_saved", {error: s.error});
+        } else notSaved(tr("not_saved", {error: s.error}));
         if (document.activeElement.type !== "checkbox") document.activeElement.blur();
         show(s);
-      }).catch(function () { $("msg").textContent = tr("couldnt_save"); });
+      }).catch(function () { notSaved(tr("couldnt_save")); });
+  }
+  /** On both tabs: a setting is saved from one, a source or Follow the music from the other. */
+  function notSaved(text) {
+    $("msg").textContent = $("saved").textContent = text;
+    $("saved").style.opacity = 1;
+    savedAt = 0;
   }
 
   function thumbs(box, items) {
     box.innerHTML = "";
     items.forEach(function (it) {
-      box.append(el("img", {src: "thumb?key=" + encodeURIComponent(it.key), title: it.label || "", loading: "lazy",
-        onerror: function () { this.remove(); },
-        onclick: function () { act("show?key=" + encodeURIComponent(it.key), tr("showing_until")); }}));
+      var pic = el("div", {className: "pic"}, [
+        el("img", {src: "thumb?key=" + encodeURIComponent(it.key), title: it.label || "", loading: "lazy",
+          onload: function () { pic.classList.add("ready"); },
+          onerror: function () { pic.remove(); },
+          onclick: function () { act("show?key=" + encodeURIComponent(it.key), tr("showing_until")); }}),
+        el("button", {textContent: "×", title: tr("never"), ariaLabel: tr("never"),
+          onclick: function () { ask(it.key, pic.firstChild.src); }})]);
+      pic.dataset.key = it.key;
+      box.append(pic);
     });
+  }
+  /** "Don't show again?" for a picture in the gallery (key, and its thumbnail), or without them for what's on the wall. */
+  function ask(key, src) {
+    leaving = key;
+    $("sure-img").hidden = !key;
+    $("sure-img").src = src || "";
+    $("sure-what").textContent = key ? tr("never_picture_ask") : tr("never_ask", {title: $("title").textContent});
+    $("sure-note").textContent = tr(key ? "never_picture_note" : "never_note");
+    $("sure").hidden = false;
+  }
+  function leaveOut(key) {
+    gal.querySelectorAll(".pic").forEach(function (p) { if (p.dataset.key === key) p.remove(); });
+    fetch("never?picture=" + encodeURIComponent(key), {method: "POST"}).then(function (r) { return r.json(); })
+      .then(function (s) {
+        show(s);
+        if (!s.ok) $("msg").textContent = tr("failed", {error: s.error || tr("unknown_error")});
+      }).catch(function () { $("msg").textContent = tr("no_answer"); });
   }
   function gallery(name) {
     var first = open !== name;
-    open = name;
+    open = expanded = name;
     gal.hidden = false;
     if (first) {
       part("recent").innerHTML = "";
@@ -469,12 +525,10 @@
   $("next").onclick = function () { act("next?art_mode=1", tr("fetching_new")); };
   $("morning").onclick = function () { act("next?art_mode=1&what=morning", tr("making_morning")); };
   $("tonight").onclick = function () { act("next?art_mode=1&what=tonight", tr("making_tonight")); };
-  $("never").onclick = function () {
-    $("sure-what").textContent = tr("never_ask", {title: $("title").textContent});
-    $("sure").hidden = false;
-  };
+  $("never").onclick = function () { ask(); };
   $("sure-yes").onclick = function () {
     $("sure").hidden = true;
+    if (leaving) { leaveOut(leaving); return; }
     $("never").hidden = true;
     send("never", tr("leaving_out"));
   };
@@ -485,7 +539,7 @@
     send("tv/on", tr("waking"), function () { $("power").disabled = false; power(); });
   };
   $("more").onclick = function () { if (open) gallery(open); };
-  $("close").onclick = function () { open = null; gal.hidden = true; };
+  $("close").onclick = function () { open = null; gal.hidden = true; sources(last); };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
   $("keep").onchange = function () { save({keep: +this.value}); };
   $("morning_time").onchange = function () { if (this.value) save({morning_time: this.value}); };
@@ -657,6 +711,7 @@
   function tab(name) {
     document.querySelectorAll(".tabs a").forEach(function (a) { a.className = a.dataset.tab === name ? "on" : ""; });
     $("tab-art").hidden = name !== "art";
+    $("tab-settings").hidden = name !== "settings";
     $("tab-debug").hidden = name !== "debug";
     clearInterval(polling);
     polling = null;

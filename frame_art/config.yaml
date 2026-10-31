@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see DOCS.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.34.0"
+version: "0.35.0"
 slug: frame_art
 description: A living gallery in The Frame's Art Mode, from museums, NASA and your own photos, with a morning picture and Follow the music
 url: https://github.com/eaugum/frame-art
@@ -105,6 +105,21 @@ options:
       image: "{step1.query.pages.0.imageinfo.0.thumburl} | {step1.query.pages.0.imageinfo.0.url}"
       thumb: "https://commons.wikimedia.org/wiki/Special:FilePath/{id}?width=480"
       title: "{id|file|part:1}, {id|file|part:0} | {id|file}"
+    # Fields from the steps, not the list: after a restart a source with steps only has the list's keys
+    - name: nasjonalbiblioteket
+      query: landskap|fjord|panorama
+      url: "https://api.nb.no/catalog/v1/items?q={query}&filter=mediatype:bilder&filter=contentClasses:publicdomain&size=100"
+      items: _embedded.items
+      next: _links.next.href
+      steps:
+        - "https://api.nb.no/catalog/v1/iiif/{id}/manifest"
+      require:
+        - step1.license~public-domain
+      width: step1.sequences.0.canvases.0.width
+      height: step1.sequences.0.canvases.0.height
+      image: "{step1.sequences.0.canvases.0.images.0.resource.service.@id}/pct:7,7,86,86/!3840,3840/0/default.jpg"
+      thumb: "{step1.sequences.0.canvases.0.images.0.resource.service.@id}/pct:7,7,86,86/!480,480/0/default.jpg"
+      title: '{step1.label}, {step1.metadata.?"Sted".value} ({step1.metadata.?"Dato".value}) | {step1.label} ({step1.metadata.?"Dato".value}) | {step1.label}'
     - name: cleveland
       query: landscape
       url: "https://openaccess-api.clevelandart.org/api/artworks/?type=Painting&has_image=1&cc0=1&limit=100&fields=id,images&q={query}&skip={offset}"
@@ -202,6 +217,8 @@ options:
        query: Paintings by Caspar David Friedrich|Paintings by Joseph Mallord William Turner|Paintings by Ivan Aivazovsky|Paintings by Albert Bierstadt}
     - {category: Paintings, name: Nordic light, type: commons,
        query: Paintings by Peder Severin Krøyer|Paintings by Akseli Gallen-Kallela|Paintings by Anders Zorn|Paintings by Vilhelm Hammershøi}
+    # Old Norway: mostly negatives, so the service crops their black edges and numbers away
+    - {category: Old Norway, name: Old Norway, type: nasjonalbiblioteket, query: landskap|fjord|panorama|by}
     # Abstract
     - {category: Abstract, name: Abstract, type: commons,
        query: Paintings by Wassily Kandinsky|Paintings by Piet Mondrian|Paintings by Kazimir Malevich|Paintings by Paul Klee|Paintings by Robert Delaunay|Paintings by Hilma af Klint|Paintings by Sophie Taeuber-Arp|Paintings by Lyubov Popova}

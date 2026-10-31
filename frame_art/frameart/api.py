@@ -15,7 +15,8 @@ POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what
                /show) turns the TV on first through Home Assistant when it's off.
 POST /show?key=…  that picture now, in Art Mode, standing until the next morning picture (a fixed picture)
 POST /artmode  Art Mode on, with the picture it has
-POST /never    what's on the wall (from a source; showing_key in /status) is never drawn again, and another comes
+POST /never    what's on the wall (from a source; showing_key in /status) is never drawn again, and another comes;
+               ?picture=… is that picture instead (a key from /category), and the wall only changes if it's on it
 POST /settings JSON with what to change: sources_off (the sources not ticked), interval_minutes, keep,
                morning, morning_time, morning_tv_on, tonight, tonight_time, tonight_tv_on, screensaver,
                screensaver_stasera, music, music_home_only (the music and turning the TV on); mode shuffle ends a fixed picture, and mode category with category ticks only that
@@ -227,9 +228,10 @@ def app(rotation):
         return web.json_response(dict(rotation.status(), ok=True), headers=CORS)
 
     async def never(request):
-        log.info("asked never to show %s again", rotation.showing_key())
-        events.add("api", "never", rotation.showing_key())
-        return await act(request, rotation.never)
+        key = request.query.get("picture") or rotation.showing_key()  # not ?key=, which can be the API's key here
+        log.info("asked never to show %s again", key)
+        events.add("api", "never", key)
+        return await act(request, lambda: rotation.never(key))
 
     async def artmode(request):
         log.info("asked for Art Mode")

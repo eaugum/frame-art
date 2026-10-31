@@ -117,6 +117,8 @@ PAGE = {
     "never": "Don't show again",
     "never_ask": "Never show “{title}” again?",
     "never_note": "Another picture comes at once.",
+    "never_picture_ask": "Never show this picture again?",
+    "never_picture_note": "It won't be shown on the wall or offered here again.",
     "never_yes": "Don't show again",
     "leaving_out": "Leaving the picture out and fetching another …",
     "pictures": "Pictures",

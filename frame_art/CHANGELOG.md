@@ -1,5 +1,15 @@
 # Changes
 
+## 0.35.0
+
+- "Choose picture": the × in a thumbnail's corner leaves that picture out for good, after a question. `POST /never` takes
+  `?picture=…` for the same.
+- A picture that's left out while it's waiting to come next no longer comes.
+- The new service `nasjonalbiblioteket` and the category Old Norway: photos from the National Library of Norway, public
+  domain. Saved options don't get them by themselves; see "Sources" in the documentation.
+- The add-on's page: Settings and Stasera have their own tab, and each category in Pictures opens and closes, one at a
+  time, with its sources and "Choose picture".
+
 ## 0.34.0
 
 - The add-on uses Stasera's own ids, `titleId` and `episodeId`, so it only knows Stasera.

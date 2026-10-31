@@ -475,6 +475,8 @@ class Rotation:
             meta = None  # a picture from the rotation gives way
         if meta and not meta.get("made") and self.source_of(meta["key"]) not in self.in_play():
             meta = None  # from a source that's no longer ticked
+        if meta and meta["key"] in self.state["bad"]:
+            meta = None  # left out after it was made
         if meta and os.path.exists(self.next_path):
             with open(self.next_path, "rb") as f:
                 return f.read(), meta["label"], meta["key"]
@@ -531,11 +533,12 @@ class Rotation:
         kind = last.split(":", 1)[0]
         return last if kind not in MADE + OWN and self.source_of(last) else None
 
-    async def never(self):
-        """What's on the wall is never drawn again (a backdrop with a logo that wasn't marked, a picture you don't
-        like), and another one comes."""
-        key = self.showing_key()
-        if not key:
+    async def never(self, key=None):
+        """A picture is never drawn again (a backdrop with a logo that wasn't marked, a picture you don't like): what's
+        on the wall, or key, chosen on the add-on's page. If it's on the wall, another one comes."""
+        showing = self.showing_key()
+        key = key or showing
+        if not key or not self.source_of(key):
             raise ValueError("only a picture from the sources can be left out")
         if key not in self.state["bad"]:
             self.state["bad"].append(key)
@@ -547,7 +550,7 @@ class Rotation:
         self.state.save()
         log.info("never again: %s", key)
         events.add("rotation", "never", "never again: %s" % key)
-        return await self.change(join=True)
+        return await self.change(join=True) if key == showing else True
 
     async def _change(self, force, what=None):
         got = await asyncio.to_thread(self.prepared, what)
