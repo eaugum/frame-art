@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see DOCS.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.31.0"
+version: "0.32.0"
 slug: frame_art
 description: A living gallery in The Frame's Art Mode, from museums, NASA and your own photos, with a morning picture and Follow the music
 url: https://github.com/eaugum/frame-art
@@ -45,9 +45,147 @@ options:
   stasera_url: "https://www.stasera.app"
   # An app opened when Art Mode goes off while the TV is on (e.g. a home screen app); empty: none
   back_app: ""
+  # The services: how each is asked for pictures, with its address. A source below says which one with its type. Add
+  # your own, or delete any of them; "services: []" removes them all. Fields: DOCS.md.
+  services:
+    - name: met
+      query: landscape
+      url: "https://collectionapi.metmuseum.org/public/collection/v1.1/search?hasImages=true&isPublicDomain=true&medium=Paintings&limit=100&q={query}&offset={offset}"
+      items: objectIDs
+      steps:
+        - "https://collectionapi.metmuseum.org/public/collection/v1/objects/{id}"
+      require:
+        - step1.isPublicDomain=true
+        - step1.classification=Paintings
+      unless: medium
+      image: "{step1.primaryImage}"
+      thumb: "{step1.primaryImageSmall}"
+      title: "{step1.title}, {step1.artistDisplayName} ({step1.objectDate}) | {step1.title} ({step1.objectDate}) | {step1.title}"
+    - name: rijksmuseum
+      query: landschap
+      url: "https://data.rijksmuseum.nl/search/collection?description={query}&type=painting&imageAvailable=true"
+      accept: application/ld+json
+      items: orderedItems
+      next: next.id
+      steps:
+        - "{id}"
+        - "{step1.shows.0.id}"
+        - "{step2.digitally_shown_by.0.id}"
+        - "{step3.access_point.0.id|before:/full/}/info.json"
+      require:
+        - step1~creativecommons.org/publicdomain/
+      width: step4.width
+      height: step4.height
+      image: "{step3.access_point.0.id|before:/full/}/full/!4000,4000/0/default.jpg"
+      thumb: "{step3.access_point.0.id|before:/full/}/full/!480,480/0/default.jpg"
+      title: "{step1.identified_by.?300388277.content} ({step1.produced_by.timespan.begin_of_the_begin|year}) | {step1.identified_by.?300388277.content} | {step1.identified_by.1.content}"
+    - name: commons
+      url: "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrnamespace=6&gsrlimit=500&gsroffset={offset}&gsrsearch=deepcat:%22{query}%22&prop=imageinfo&iiprop=size"
+      items: query.pages
+      id: title
+      pages: 10
+      pause: 0.5
+      width: imageinfo.0.width
+      height: imageinfo.0.height
+      steps:
+        - "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&titles={id}&prop=imageinfo&iiprop=url|size|extmetadata&iiurlwidth=3840&iiextmetadatafilter=ObjectName|Artist|DateTimeOriginal"
+      image: "{step1.query.pages.0.imageinfo.0.thumburl} | {step1.query.pages.0.imageinfo.0.url}"
+      thumb: "https://commons.wikimedia.org/wiki/Special:FilePath/{id}?width=480"
+      title: "{step1.query.pages.0.imageinfo.0.extmetadata.ObjectName.value}, {step1.query.pages.0.imageinfo.0.extmetadata.Artist.value} ({step1.query.pages.0.imageinfo.0.extmetadata.DateTimeOriginal.value|year}) | {step1.query.pages.0.imageinfo.0.extmetadata.ObjectName.value}, {step1.query.pages.0.imageinfo.0.extmetadata.Artist.value} | {step1.query.pages.0.imageinfo.0.extmetadata.ObjectName.value} | {id|file|part:1}, {id|file|part:0} | {id|file}"
+    - name: nasjonalmuseet
+      query: Hans Gude|Harald Sohlberg|Edvard Munch|Nikolai Astrup|Theodor Kittelsen
+      url: "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&generator=search&gsrnamespace=6&gsrlimit=500&gsroffset={offset}&gsrsearch=incategory:%22Paintings%20by%20{query}%20in%20the%20Nasjonalmuseet%20for%20kunst,%20arkitektur%20og%20design%22&prop=imageinfo&iiprop=size"
+      items: query.pages
+      id: title
+      pause: 0.5
+      width: imageinfo.0.width
+      height: imageinfo.0.height
+      steps:
+        - "https://commons.wikimedia.org/w/api.php?action=query&format=json&formatversion=2&titles={id}&prop=imageinfo&iiprop=url|size&iiurlwidth=3840"
+      image: "{step1.query.pages.0.imageinfo.0.thumburl} | {step1.query.pages.0.imageinfo.0.url}"
+      thumb: "https://commons.wikimedia.org/wiki/Special:FilePath/{id}?width=480"
+      title: "{id|file|part:1}, {id|file|part:0} | {id|file}"
+    - name: cleveland
+      query: landscape
+      url: "https://openaccess-api.clevelandart.org/api/artworks/?type=Painting&has_image=1&cc0=1&limit=100&fields=id,images&q={query}&skip={offset}"
+      items: data
+      pages: 10
+      width: images.print.width
+      height: images.print.height
+      steps:
+        - "https://openaccess-api.clevelandart.org/api/artworks/{id}"
+      require:
+        - step1.data.share_license_status=CC0
+      image: "{step1.data.images.print.url}"
+      thumb: "{step1.data.images.web.url}"
+      title: "{step1.data.title}, {step1.data.creators.0.description|before: (} ({step1.data.creation_date}) | {step1.data.title} ({step1.data.creation_date}) | {step1.data.title}"
+    - name: smk
+      query: "*"
+      url: "https://api.smk.dk/api/v1/art/search/?keys={query}&rows=100&filters=%5Bhas_image:true%5D,%5Bpublic_domain:true%5D,%5Bobject_names:maleri%5D&fields=object_number,image_width,image_height,image_iiif_id&offset={offset}"
+      items: items
+      id: object_number
+      pages: 20
+      width: image_width
+      height: image_height
+      steps:
+        - "https://api.smk.dk/api/v1/art/?object_number={id}"
+      image: "{step1.items.0.image_iiif_id}/full/!3840,3840/0/default.jpg"
+      thumb: "{step1.items.0.image_iiif_id}/full/!480,480/0/default.jpg"
+      title: "{step1.items.0.titles.0.title}, {step1.items.0.artist.0} ({step1.items.0.production_date.0.period}) | {step1.items.0.titles.0.title}"
+    - name: nasa
+      query: nebula
+      url: "https://images-api.nasa.gov/search?media_type=image&page_size=100&q={query}&page={page}"
+      items: collection.items
+      id: data.0.nasa_id
+      steps:
+        - "https://images-api.nasa.gov/search?nasa_id={id}"
+      image: "https://images-assets.nasa.gov/image/{id}/{id}~orig.jpg | https://images-assets.nasa.gov/image/{id}/{id}~large.jpg"
+      thumb: "https://images-assets.nasa.gov/image/{id}/{id}~thumb.jpg"
+      title: "{step1.collection.items.0.data.0.title} ({step1.collection.items.0.data.0.date_created|year}) | {id}"
+    - name: wellcome
+      query: botanical
+      url: "https://api.wellcomecollection.org/catalogue/v2/images?locations.license=pdm,cc-0&pageSize=100&query={query}&page={page}"
+      items: results
+      ratio: aspectRatio
+      steps:
+        - "https://api.wellcomecollection.org/catalogue/v2/images/{id}"
+        - "{step1.locations.?iiif-image.url}"
+      width: step2.width
+      height: step2.height
+      image: "{step1.locations.?iiif-image.url|before:/info.json}/full/!3840,3840/0/default.jpg"
+      thumb: "{step1.locations.?iiif-image.url|before:/info.json}/full/!480,480/0/default.jpg"
+      title: "{step1.source.title}"
+    # These two ask Stasera (stasera_url, and linked on the add-on's page); the pictures are on TMDB's open image server
+    - name: stasera
+      query: watching|movies
+      url: "{stasera}/tv/home?parts={query}"
+      items: "{query}"
+      id: "{kind}:{tmdbId}"
+      hours: 6
+      image: "https://image.tmdb.org/t/p/original{textlessBackdropPath} | https://image.tmdb.org/t/p/original{backdropPath}"
+      thumb: "https://image.tmdb.org/t/p/w500{textlessBackdropPath} | https://image.tmdb.org/t/p/w500{backdropPath}"
+      title: "{title} ({year}) | {title}"
+    - name: stasera-recommendations
+      url: "{stasera}/tv/recommendations"
+      items: items
+      id: "{kind}:{tmdbId}"
+      hours: 6
+      image: "https://image.tmdb.org/t/p/original{textlessBackdropPath} | https://image.tmdb.org/t/p/original{backdropPath}"
+      thumb: "https://image.tmdb.org/t/p/w500{textlessBackdropPath} | https://image.tmdb.org/t/p/w500{backdropPath}"
+      title: "{title} ({year}) | {title}"
+    - name: tmdb
+      url: "{stasera}/tv/art?{query}"
+      items: items.*.backdrops
+      id: "{kind}:{tmdbId}:{path}"
+      wait: pending
+      width: width
+      height: height
+      image: "https://image.tmdb.org/t/p/original{path}"
+      thumb: "https://image.tmdb.org/t/p/w780{path}"
+      title: "{title} ({year}) | {title}"
   # A source: category (several sources can share one; without it, the name), name, type and query (several with
-  # |). Every source here is used; tick them on the add-on's page. Only pictures close to 16:9, cropped to fill the
-  # screen. Types and queries: DOCS.md.
+  # |). The type is a service above, or folder. Every source here is used; tick them on the add-on's page. Only
+  # pictures close to 16:9, cropped to fill the screen. Types and queries: DOCS.md.
   sources:
     # Your own
     - {category: My pictures, name: My pictures, type: folder, query: /media/frame-art}
@@ -86,7 +224,7 @@ options:
     - {category: Film, name: Film posters, type: commons, query: 1920s film posters|Film posters of the United States}
     - {category: Film, name: What we're watching, type: stasera, query: watching|wantToStart}
     - {category: Film, name: Our movies, type: stasera, query: movies}
-    - {category: Film, name: Recommended, type: stasera, query: recommendations}
+    - {category: Film, name: Recommended, type: stasera-recommendations}
     # Film and animation: backdrops without text from TMDB, through Stasera
     - {name: Pixar, type: tmdb, query: company=3}
     - {name: Disney, type: tmdb, query: company=6125|company=3166&genre=16}
@@ -107,16 +245,51 @@ schema:
   price_entity: match(^(sensor\..+)?$)?
   stasera_url: url?
   back_app: str?
+  services:
+    - name: str
+      query: str?
+      url: str?
+      accept: str?
+      items: str?
+      id: str?
+      next: str?
+      wait: str?
+      pages: int?
+      pause: float?
+      hours: float?
+      steps:
+        - str?
+      require:
+        - str?
+      unless: str?
+      image: str?
+      thumb: str?
+      title: str?
+      width: str?
+      height: str?
+      ratio: str?
   sources:
     - name: str
       category: str?
-      type: list(folder|met|rijksmuseum|nasjonalmuseet|cleveland|smk|commons|nasa|wellcome|stasera|tmdb|json)
+      type: str
       query: str?
-      # Only for type json: url isn't url?, since {query} and {page} are in it
       url: str?
+      accept: str?
       items: str?
+      id: str?
+      next: str?
+      wait: str?
+      pages: int?
+      pause: float?
+      hours: float?
+      steps:
+        - str?
+      require:
+        - str?
+      unless: str?
       image: str?
-      title: str?
       thumb: str?
+      title: str?
       width: str?
       height: str?
+      ratio: str?

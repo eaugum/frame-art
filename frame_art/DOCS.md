@@ -84,9 +84,14 @@ the language: øre and kroner for NOK, otherwise the number with its unit.
 
 ## Sources
 
-The sources are a list in the options. To add one: Settings → Add-ons → Frame Art → Configuration → ⋮ → Edit in YAML.
-After a restart the add-on's page shows how many pictures each source found; 0 usually means a wrong name, and the log
-says which.
+Everything about where the pictures come from is in the options, in two lists:
+
+- `services`: how a service is asked for pictures, with its address. The add-on comes with some, but none of them is in
+  its code.
+- `sources`: what you want from them. A source's `type` is the name of a service, or `folder`.
+
+To change them: Settings → Add-ons → Frame Art → Configuration → ⋮ → Edit in YAML. After a restart the add-on's page
+shows how many pictures each source found; 0 usually means a wrong name, and the log says which.
 
 ```yaml
 - name: Abstract                  # shown in front of the title; no colon
@@ -95,20 +100,24 @@ says which.
   query: Paintings by Hilma af Klint|Paintings by Piet Mondrian   # several with |
 ```
 
-| Type | What | `query` |
+**Removing them:** delete a source from `sources`, and a service from `services` when no source uses it. `sources: []`
+and `services: []` remove them all. Leave the lists there, empty: a list that's deleted comes back with the defaults.
+A source whose service is gone is left out, and the log says so.
+
+| `type` | What | `query` |
 |---|---|---|
-| `folder` | The pictures in a folder and its subfolders | The folder, e.g. `/media/frame-art` |
-| `met` | The Met, public domain; paintings unless said otherwise | Search words, or the search's fields: `medium=Prints&q=Hiroshige` |
+| `folder` | The pictures in a folder and its subfolders; the add-on only sees `/media` | The folder, e.g. `/media/frame-art` |
+| `met` | The Met, public domain; paintings unless said otherwise | Search words, or fields: `medium=Prints&q=Hiroshige` |
 | `rijksmuseum` | The Rijksmuseum, public domain; paintings unless said otherwise | Words in the description (`zee`), or fields: `creator=Vermeer` |
 | `nasjonalmuseet` | Paintings from the Nasjonalmuseet in Oslo, through Wikimedia Commons | Artists (`Hans Gude`) |
 | `cleveland` | The Cleveland Museum of Art, CC0; paintings unless said otherwise | Search words, or fields: `type=Print&q=Hokusai` |
-| `smk` | Statens Museum for Kunst, Copenhagen, public domain; paintings unless said otherwise | Search words (`landskab`), `*` for everything, or fields: `keys=*&object_names=tegning` |
-| `commons` | Wikimedia Commons categories, with subcategories two levels down | Category names without `Category:`, e.g. `Featured pictures of Norway` |
+| `smk` | Statens Museum for Kunst, Copenhagen, public domain paintings | Search words (`landskab`), `*` for everything |
+| `commons` | Wikimedia Commons categories, with their subcategories | Category names without `Category:`, e.g. `Featured pictures of Norway` |
 | `nasa` | NASA's image library | Search words (`nebula`) |
 | `wellcome` | Wellcome Collection, public domain and CC0: old illustrations | Search words (`botanical`) |
-| `stasera` | Backdrops of what you watch in Stasera, without text where there is a version without. Needs `stasera_url` and the add-on linked to Stasera | The lists: `watching`, `wantToStart`, `movies`, `recommendations` |
-| `tmdb` | Backdrops without text from TMDB, through Stasera: up to 5 per film or show, 4K where there is, short films left out. Needs `stasera_url` and the add-on linked to Stasera | TMDB ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
-| `json` | Any open JSON API, described in the options. See [A new service](#a-new-service) | What goes in `{query}` in `url`; can be left out |
+| `stasera` | Backdrops of what you watch in Stasera. Needs `stasera_url` and the add-on linked to Stasera | The lists: `watching`, `wantToStart`, `movies` |
+| `stasera-recommendations` | Stasera's recommendations, the same way | None |
+| `tmdb` | Backdrops without text from TMDB, through Stasera: up to 5 per film or show. Needs the same | TMDB ids: `company=3` (a studio's films), `collection=10` (a film series), `tv=82856` (a show), `movie=330459`, `keyword=…`; `&genre=16` narrows a studio down to animation, e.g. `company=3166&genre=16` |
 
 **What fits:** only pictures close to 16:9 are used (from 3:2 to a little wider than 16:9), cropped to fill the
 screen. Pictures from the online sources must also be at least 1920 pixels wide. The rest are left out when the source
@@ -151,41 +160,67 @@ aren't on TMDB; download them yourself and put them in a folder source in the sa
 The film pictures from Stasera come from TMDB and aren't free, but are for use at home. Everything else is public
 domain or free to use.
 
-### A new service
+### A service of your own
 
-A service that isn't in the table takes no code if it has an open JSON API and the list it answers with has the
-picture's address, or an id to build the address from. Describe it with `type: json`:
+A service needs an open JSON API that can list pictures, and nothing in the add-on has to change. Add it to `services`
+and point a source at it:
 
 ```yaml
-- name: Cleveland landscapes
-  category: Paintings
-  type: json
-  query: landscape|seascape
-  url: "https://openaccess-api.clevelandart.org/api/artworks/?q={query}&type=Painting&has_image=1&cc0=1&limit=100&skip={offset}"
-  items: data
-  image: images.print.url
-  title: "{title}, {creators.0.description}"
-  thumb: images.web.url
-  width: images.print.width
-  height: images.print.height
+services:
+  - name: cleveland
+    url: "https://openaccess-api.clevelandart.org/api/artworks/?type=Painting&has_image=1&cc0=1&limit=100&fields=id,images&q={query}&skip={offset}"
+    items: data
+    width: images.print.width
+    height: images.print.height
+    steps:
+      - "https://openaccess-api.clevelandart.org/api/artworks/{id}"
+    require:
+      - step1.data.share_license_status=CC0
+    image: "{step1.data.images.print.url}"
+    thumb: "{step1.data.images.web.url}"
+    title: "{step1.data.title} ({step1.data.creation_date}) | {step1.data.title}"
+sources:
+  - {name: Cleveland landscapes, category: Paintings, type: cleveland, query: landscape|seascape}
 ```
+
+A source may also set any of these fields itself, and then they go before the service's. With `type: json` a source
+needs no service and has them all itself.
 
 | Field | | |
 |---|---|---|
-| `url` | Required | The search. `{query}` is each of the source's queries, and `{page}` (from 1) or `{offset}` (from 0) gives up to 5 pages per query; without them, one |
-| `items` | | Where the list is in the answer, as a path. Empty: the answer is the list |
-| `image` | Required | The picture's address in an item: a path (`images.0.url`, numbers for lists), or a text with paths in braces, like `https://example.org/iiif/{id}/full/max/0/default.jpg` |
-| `title` | | The text for the picture, written like `image`. If a field is missing, the source's name |
-| `thumb` | | A small copy for the add-on's page, written like `image`. Without it the page downloads the whole picture |
-| `width`, `height` | | Paths to the picture's size in the list, so the wrong shapes are left out before they're downloaded. Without them, a wrong shape is found out when it's drawn, after the download |
+| `url` | Required | The search. `{query}` is each of the source's queries, and `{page}` (from 1) or `{offset}` (from 0) is the next page. A query with `=` in it is fields, which replace the url's own. `{stasera}` is `stasera_url`, asked as the linked add-on |
+| `query` | | The query for a source that has none |
+| `accept` | | The `Accept` header, if the API wants something else than JSON |
+| `items` | | Where the list is in the answer; empty: the answer is the list. `items.*.backdrops` is every item's backdrops |
+| `next` | | The next page's address in the answer, for an API that gives one |
+| `pages` | | How many pages per query; 5 if it's left out |
+| `pause` | | Seconds between the pages |
+| `hours` | | How long the list is kept; 24 if it's left out |
+| `wait` | | A field in the answer that means "not ready": it's asked again for up to 90 seconds |
+| `id` | | What's kept for a picture: a path, or a text with paths in braces. Without it, the field `id` with `steps`, and otherwise the picture's address |
+| `steps` | | Calls per picture, in order. Their answers are `step1`, `step2`... |
+| `require` | | What has to be true before a picture is used: `path=value`, or `path~text` for text somewhere in it. This is where a license is checked |
+| `unless` | | A field in the query that turns `require` off, like `medium` for a source that isn't paintings |
+| `image` | Required | The picture's address |
+| `thumb` | | A small copy for the add-on's page. Without `width`, `height` or `ratio` the picture's shape is checked on it before the download |
+| `title` | | The text for the picture; without it, the source's name |
+| `width`, `height` | | The picture's size, in the list or in `steps`, so the wrong shapes are left out early |
+| `ratio` | | The same for an API that gives the shape instead of the size |
+
+`image`, `thumb` and `title` are paths in the list's item and the steps' answers (`images.0.url`, numbers for lists), or
+texts with paths in braces. Alternatives are separated with ` | `, and the first that has all its fields counts; for
+`image`, the next is also tried if the first isn't there.
+
+In braces, a path can end in `|before:text` (what's before the text), `|year` (the first year), `|file` (a file name
+without `File:` and the extension) or `|part:1` (the parts between ` - `, from 0). `?text` in a path is the first in a
+list with that text in it: `locations.?iiif-image.url`.
 
 Three things are up to you:
 
-- **The license:** the add-on can't see it, so let `url` ask for free pictures only, as `cc0=1` does above.
-- **Two steps:** if the service needs another call per picture to find the address, as The Met does, it takes a type of
-  its own in `sources.py`.
+- **The license:** the add-on can't know what's free to use. Ask for it in `url`, check it with `require`, or both.
+- **Keys:** an API that needs a key only works with the key in `url`. Then the key is in the add-on's options.
 - **Downloads:** a service can answer the search and still refuse to let the add-on download its pictures; the Art
-  Institute of Chicago answers 403. The log says `couldn't fetch`, and the Debug tab shows it.
+  Institute of Chicago answers 403. The picture is then left out.
 
 ## The add-on's page
 

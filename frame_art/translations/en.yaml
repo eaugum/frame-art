@@ -39,10 +39,15 @@ configuration:
     name: App after Art Mode
     description: >-
       The id of a TV app to open when Art Mode is turned off while the TV is on, e.g. a home screen app. Empty: none.
+  services:
+    name: Services
+    description: >-
+      How each service is asked for pictures, with its address. Add your own or delete any; an empty list removes them
+      all. See the Documentation tab.
   sources:
     name: Sources
     description: >-
-      Each with a category, a name, a type and a query (several with |). Every source here is used; tick them on the
-      add-on's page. See the Documentation tab for the types.
+      Each with a category, a name, a type and a query (several with |). The type is a service above, or folder. Every
+      source here is used; tick them on the add-on's page. See the Documentation tab.
 network:
   8099/tcp: API for scripts and apps (change the picture, Art Mode)

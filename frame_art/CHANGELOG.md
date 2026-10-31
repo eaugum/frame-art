@@ -1,5 +1,16 @@
 # Changes
 
+## 0.32.0
+
+- No service is in the code any more. The new option `services` describes each of them, with its address, and a
+  source's type is the name of one, so they can all be seen, changed, replaced or removed in the options. It comes by
+  itself with this update. See "Sources" in the documentation.
+- A source with `type: stasera, query: recommendations` has to change to `type: stasera-recommendations`, or it finds
+  nothing.
+- `commons` searches the whole category tree in one go, which finds more; some titles read a little differently.
+- A `tmdb` source makes one call per query, and `smk` no longer takes filters like `object_names` in its query: copy
+  the service and change its `url` instead.
+
 ## 0.31.0
 
 - A new service no longer takes code: the source type `json` describes any open JSON API in the options, with its

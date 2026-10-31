@@ -1,7 +1,7 @@
 """Where the pictures come from. Each source lists keys (cheap to keep) and fetches one key as a picture.
 
-The sources are a list in the options, each with a type and a query (see TYPES and DOCS.md), so a new one is a few
-lines in Home Assistant. keys() may be slow (it searches); the service keeps the list for a day. fetch() returns
+The sources are a list in the options, each with a type and a query. The type is a folder, or a service described in
+the options too (see DOCS.md): no service is in the code, so everything can be replaced or removed there. keys() may be slow (it searches); the service keeps the list for a day. fetch() returns
 (PIL image, label), or raises Skip when that key can never be used (not free, no image, the wrong shape), so it's not
 tried again. thumb() is a small copy for the add-on's page, as a URL to fetch or the picture itself.
 
@@ -13,6 +13,7 @@ import os
 import random
 import re
 import time
+import urllib.error
 import urllib.parse
 
 from . import image, net
@@ -99,482 +100,13 @@ class Folder(Source):
         return img
 
 
-class Met(Source):
-    """The Metropolitan Museum of Art, public domain. The query is search words, or the search's fields
-    ("medium=Prints&q=Hiroshige"); without a medium, paintings."""
-    type = "met"
-    default = ["landscape"]
-    API = "https://collectionapi.metmuseum.org/public/collection/"  # search is v1.1 since 1.10.2026, objects still v1
-
-    def keys(self):
-        ids = []
-        for q in self.queries:
-            params = {"hasImages": "true", "isPublicDomain": "true", "medium": "Paintings", "limit": 100}
-            params.update(_fields(q, "q"))
-            for offset in range(0, 500, 100):
-                r = net.get_json(self.API + "v1.1/search", dict(params, offset=offset))
-                ids += r.get("objectIDs") or []
-                if offset + 100 >= (r.get("total") or 0):
-                    break
-        return [str(i) for i in dict.fromkeys(ids)]
-
-    def paintings_only(self):
-        return all(_fields(q, "q").get("medium", "Paintings") == "Paintings" for q in self.queries)
-
-    def fetch(self, key):
-        o = net.get_json(self.API + "v1/objects/" + key)
-        if not o.get("isPublicDomain") or not o.get("primaryImage"):
-            raise Skip("not public domain or no image")
-        if self.paintings_only() and o.get("classification") != "Paintings":
-            raise Skip("a %s, not a painting" % (o.get("classification") or "something"))
-        if o.get("primaryImageSmall"):  # the shape from the small copy; the original can be 50 MB
-            small = image.open_image(net.get(o["primaryImageSmall"]))
-            if not image.croppable(*small.size):
-                raise Skip("%dx%d isn't close to 16:9" % small.size)
-        img = image.open_image(net.get(o["primaryImage"], timeout=180))
-        self.check(*img.size)
-        return img, "%s, %s (%s)" % (o.get("title"), o.get("artistDisplayName") or "unknown", o.get("objectDate"))
-
-    def thumb(self, key):
-        o = net.get_json(self.API + "v1/objects/" + key)
-        if not o.get("primaryImageSmall"):
-            raise Skip("no image")
-        return o["primaryImageSmall"]
-
-
-class Rijksmuseum(Source):
-    """Rijksmuseum: works with an image (they're public domain), through its Linked Art search and IIIF.
-
-    A query is free text for the description ("zee"), or the search's own fields ("creator=Vermeer"); without a
-    type, paintings.
-    """
-    type = "rijksmuseum"
-    default = ["landschap"]
-    SEARCH = "https://data.rijksmuseum.nl/search/collection"
-    LD = "application/ld+json"
-
-    def keys(self):
-        ids = []
-        for q in self.queries:
-            params = _fields(q, "description")
-            params.setdefault("type", "painting")
-            params["imageAvailable"] = "true"
-            url = self.SEARCH
-            for _ in range(5):  # 100 a page
-                r = net.get_json(url, params, self.LD)
-                ids += [i["id"] for i in r.get("orderedItems", [])]
-                url, params = (r.get("next") or {}).get("id"), None
-                if not url:
-                    break
-        return list(dict.fromkeys(ids))
-
-    def fetch(self, key):
-        raw = net.get(key, accept=self.LD)
-        if b"creativecommons.org/publicdomain/" not in raw:
-            raise Skip("not marked public domain")
-        o = json.loads(raw)
-        span = (o.get("produced_by") or {}).get("timespan") or {}
-        year = (span.get("begin_of_the_begin") or "")[:4].lstrip("0")
-        iiif = self.iiif(o)
-        info = net.get_json(iiif + "/info.json")
-        self.check(info["width"], info["height"])
-        img = image.open_image(net.get(iiif + "/full/!4000,4000/0/default.jpg", timeout=180))
-        title = _rijks_title(o)
-        return img, "%s (%s)" % (title, year) if year else title
-
-    def iiif(self, o):
-        try:
-            visual = net.get_json(o["shows"][0]["id"], accept=self.LD)
-            digital = net.get_json(visual["digitally_shown_by"][0]["id"], accept=self.LD)
-            return digital["access_point"][0]["id"].split("/full/")[0]
-        except (KeyError, IndexError):
-            raise Skip("no image")
-
-    def thumb(self, key):
-        return self.iiif(net.get_json(key, accept=self.LD)) + "/full/!%d,%d/0/default.jpg" % (image.THUMB, image.THUMB)
-
-
-def _rijks_title(o):
-    names = [n for n in o.get("identified_by", []) if n.get("type") == "Name"]
-    english = [n for n in names if "300388277" in str(n.get("language"))]  # AAT: English
-    return (english or names or [{"content": "?"}])[0]["content"]
-
-
-class Commons(Source):
-    """Wikimedia Commons categories ("Paintings by Hilma af Klint", "Category:" may be left out), with their
-    subcategories two levels down. Everything on Commons is free to use."""
-    type = "commons"
-    API = "https://commons.wikimedia.org/w/api.php"
-    SUBCATEGORIES = 2  # "Paintings by Claude Monet" has hardly a file of its own, all by year and museum
-    MAX_CATEGORIES = 150  # per query, so a huge tree doesn't take an hour
-    PAUSE = 0.5  # seconds between requests: Wikimedia answers 429 to a bot in a hurry
-
-    def top(self, query):
-        return query if query.startswith("Category:") else "Category:" + query
-
-    def keys(self):
-        keys = []
-        for q in self.queries:
-            found, seen, level = 0, set(), [self.top(q)]
-            for depth in range(self.SUBCATEGORIES + 1):
-                below = []
-                for cat in level:
-                    if len(seen) >= self.MAX_CATEGORIES:
-                        break
-                    seen.add(cat)
-                    params = {"action": "query", "format": "json", "generator": "categorymembers", "gcmtitle": cat,
-                              "gcmtype": "file|subcat" if depth < self.SUBCATEGORIES else "file", "gcmlimit": 500,
-                              "prop": "imageinfo", "iiprop": "size"}
-                    while True:  # files and subcategories in one go
-                        time.sleep(self.PAUSE)
-                        r = net.get_json(self.API, params)
-                        for p in (r.get("query") or {}).get("pages", {}).values():
-                            if p.get("ns") == 14:
-                                below.append(p["title"])
-                                continue
-                            info = (p.get("imageinfo") or [{}])[0]
-                            found += 1
-                            if self.usable(info.get("width", 0), info.get("height", 0)):
-                                keys.append(p["title"])
-                        if "continue" not in r:
-                            break
-                        params.update(r["continue"])
-                level = [c for c in dict.fromkeys(below) if c not in seen]
-            if not found:
-                log.warning("%s: nothing in %s (is the name right?)", self.name, q)
-        return list(dict.fromkeys(keys))
-
-    def fetch(self, key):
-        r = net.get_json(self.API, {"action": "query", "format": "json", "titles": key, "prop": "imageinfo",
-                                    "iiprop": "url|size|extmetadata", "iiurlwidth": 3840,
-                                    "iiextmetadatafilter": "ObjectName|Artist|DateTimeOriginal"})
-        page = list(r["query"]["pages"].values())[0]
-        info = (page.get("imageinfo") or [None])[0]
-        if not info:
-            raise Skip("gone")
-        # thumburl is the 3840-wide copy, or the original when that's smaller
-        img = image.open_image(net.get(info.get("thumburl") or info["url"], timeout=180))
-        return img, self.label(key, info.get("extmetadata") or {})
-
-    def thumb(self, key):
-        r = net.get_json(self.API, {"action": "query", "format": "json", "titles": key, "prop": "imageinfo",
-                                    "iiprop": "url", "iiurlwidth": image.THUMB})
-        info = (list(r["query"]["pages"].values())[0].get("imageinfo") or [None])[0]
-        if not info:
-            raise Skip("gone")
-        return info.get("thumburl") or info["url"]
-
-    def label(self, key, meta):
-        title, artist, date = (_text((meta.get(k) or {}).get("value")) for k in ("ObjectName", "Artist",
-                                                                                   "DateTimeOriginal"))
-        if not title:
-            return _commons_label(key)
-        year = re.search(r"\d{4}", date)  # often a Wikidata template ("1933 date QS:P571,+1")
-        return title + (", " + artist if artist else "") + (" (%s)" % year.group() if year else "")
-
-
-class Nasjonalmuseet(Commons):
-    """Nasjonalmuseet's paintings on Commons, a category per artist ("Hans Gude")."""
-    type = "nasjonalmuseet"
-    default = ["Hans Gude", "Harald Sohlberg", "Edvard Munch", "Nikolai Astrup", "Theodor Kittelsen"]
-    NM = "Category:Paintings by %s in the Nasjonalmuseet for kunst, arkitektur og design"
-
-    SUBCATEGORIES = 0
-
-    def top(self, query):
-        return query if query.startswith("Category:") else self.NM % query
-
-    def label(self, key, meta):
-        return _commons_label(key)
-
-
-def _commons_label(title):
-    # "File:Hans Gude - Fra Hardanger - NG.M.00170 - National Museum of Art, Architecture and Design.jpg"
-    parts = os.path.splitext(title[5:])[0].split(" - ")
-    return "%s, %s" % (parts[1], parts[0]) if len(parts) > 2 else parts[0]
-
-
-class Cleveland(Source):
-    """The Cleveland Museum of Art, CC0. The query is search words, or the API's fields ("type=Print&q=Hokusai");
-    without a type, paintings."""
-    type = "cleveland"
-    default = ["landscape"]
-    API = "https://openaccess-api.clevelandart.org/api/artworks/"
-
-    def keys(self):
-        keys = []
-        for q in self.queries:
-            params = {"type": "Painting", "has_image": 1, "cc0": 1, "limit": 100, "fields": "id,images"}
-            params.update(_fields(q, "q"))
-            for skip in range(0, 1000, 100):
-                r = net.get_json(self.API, dict(params, skip=skip))
-                for o in r.get("data") or []:
-                    im = (o.get("images") or {}).get("print") or {}
-                    if self.usable(int(im.get("width") or 0), int(im.get("height") or 0)):
-                        keys.append(str(o["id"]))
-                if skip + 100 >= ((r.get("info") or {}).get("total") or 0):
-                    break
-        return list(dict.fromkeys(keys))
-
-    def fetch(self, key):
-        o = net.get_json(self.API + key)["data"]
-        im = ((o.get("images") or {}).get("print") or {})
-        if o.get("share_license_status") != "CC0" or not im.get("url"):
-            raise Skip("not CC0 or no image")
-        img = image.open_image(net.get(im["url"], timeout=180))
-        self.check(*img.size)
-        artist = ((o.get("creators") or [{}])[0].get("description") or "unknown").split(" (")[0]
-        return img, "%s, %s (%s)" % (o.get("title"), artist, o.get("creation_date"))
-
-    def thumb(self, key):
-        url = ((net.get_json(self.API + key)["data"].get("images") or {}).get("web") or {}).get("url")
-        if not url:
-            raise Skip("no image")
-        return url
-
-
-class SMK(Source):
-    """Statens Museum for Kunst in Copenhagen, public domain. The query is search words ("landskab"), or "*" for
-    everything; its filters go in as fields ("keys=*&object_names=tegning"). Without object_names, paintings."""
-    type = "smk"
-    default = ["*"]
-    API = "https://api.smk.dk/api/v1/art/"
-
-    def keys(self):
-        keys = []
-        for q in self.queries:
-            fields = _fields(q, "keys")
-            filters = {"has_image": "true", "public_domain": "true", "object_names": "maleri"}
-            filters.update((k, v) for k, v in fields.items() if k != "keys")
-            params = {"keys": fields.get("keys", "*"), "rows": 100,
-                      "filters": ",".join("[%s:%s]" % kv for kv in filters.items()),
-                      "fields": "object_number,image_width,image_height,image_iiif_id,production_date"}
-            for offset in range(0, 2000, 100):
-                r = net.get_json(self.API + "search/", dict(params, offset=offset))
-                for o in r.get("items") or []:
-                    if o.get("image_iiif_id") and \
-                            self.usable(o.get("image_width") or 0, o.get("image_height") or 0):
-                        keys.append(o["object_number"])
-                if offset + 100 >= (r.get("found") or 0):
-                    break
-        return list(dict.fromkeys(keys))
-
-    def fetch(self, key):
-        items = net.get_json(self.API, {"object_number": key}).get("items") or []
-        if not items or not items[0].get("image_iiif_id") or not items[0].get("public_domain", True):
-            raise Skip("gone or not public domain")
-        o = items[0]
-        img = image.open_image(net.get(o["image_iiif_id"] + "/full/!3840,3840/0/default.jpg", timeout=180))
-        title = ((o.get("titles") or [{}])[0].get("title")) or "?"
-        period = ((o.get("production_date") or [{}])[0].get("period")) or ""
-        return img, "%s, %s (%s)" % (title, ", ".join(o.get("artist") or ["unknown"]), period)
-
-    def thumb(self, key):
-        items = net.get_json(self.API, {"object_number": key}).get("items") or []
-        if not items or not items[0].get("image_iiif_id"):
-            raise Skip("gone")
-        return items[0]["image_iiif_id"] + "/full/!%d,%d/0/default.jpg" % (image.THUMB, image.THUMB)
-
-
-class NASA(Source):
-    """NASA's Image and Video Library: search words ("nebula", "earth from space"). NASA's own pictures are free.
-    Many are square, and only the wide ones are used."""
-    type = "nasa"
-    default = ["nebula"]
-    API = "https://images-api.nasa.gov/"
-
-    def keys(self):
-        ids = []
-        for q in self.queries:
-            params = {"media_type": "image", "page_size": 100}
-            params.update(_fields(q, "q"))
-            for page in range(1, 6):
-                items = net.get_json(self.API + "search", dict(params, page=page))["collection"]["items"]
-                ids += [i["data"][0]["nasa_id"] for i in items if i.get("data")]
-                if len(items) < 100:
-                    break
-        return list(dict.fromkeys(ids))
-
-    def fetch(self, key):
-        files = net.get_json(self.API + "asset/" + key)["collection"]["items"]
-        urls = [f["href"].replace("http://", "https://") for f in files]
-        url = next((u for u in urls if u.endswith("~orig.jpg")), None) or \
-            next((u for u in urls if u.endswith("~large.jpg")), None)
-        if not url:
-            raise Skip("no JPEG")
-        img = image.open_image(net.get(url, timeout=180))
-        self.check(*img.size)
-        data = (net.get_json(self.API + "search", {"nasa_id": key})["collection"]["items"] or [{"data": [{}]}])
-        d = data[0]["data"][0]
-        return img, "%s (%s)" % (d.get("title") or key, (d.get("date_created") or "")[:4])
-
-    def thumb(self, key):
-        return "https://images-assets.nasa.gov/image/%s/%s~thumb.jpg" % (urllib.parse.quote(key), urllib.parse.quote(key))
-
-
-class Wellcome(Source):
-    """Wellcome Collection: search words ("botanical", "anatomy", "astronomy"), public domain and CC0 only. Mostly
-    old illustrations of every shape, and only the wide ones are used."""
-    type = "wellcome"
-    default = ["botanical"]
-    API = "https://api.wellcomecollection.org/catalogue/v2/images"
-
-    def keys(self):
-        ids = []
-        for q in self.queries:
-            params = {"locations.license": "pdm,cc-0", "pageSize": 100}
-            params.update(_fields(q, "query"))
-            for page in range(1, 6):
-                r = net.get_json(self.API, dict(params, page=page))
-                for o in r.get("results") or []:
-                    ratio = o.get("aspectRatio") or 0
-                    if image.croppable(ratio, 1):
-                        ids.append(o["id"])
-                if page >= (r.get("totalPages") or 0):
-                    break
-        return list(dict.fromkeys(ids))
-
-    def fetch(self, key):
-        o = net.get_json(self.API + "/" + key)
-        iiif = next((l["url"] for l in o.get("locations") or [] if l.get("url", "").endswith("/info.json")), None)
-        if not iiif:
-            raise Skip("no IIIF image")
-        info = net.get_json(iiif)
-        self.check(info["width"], info["height"])
-        img = image.open_image(net.get(iiif[:-len("/info.json")] + "/full/!3840,3840/0/default.jpg", timeout=180))
-        return img, (o.get("source") or {}).get("title") or key
-
-    def thumb(self, key):
-        o = net.get_json(self.API + "/" + key)
-        iiif = next((l["url"] for l in o.get("locations") or [] if l.get("url", "").endswith("/info.json")), None)
-        if not iiif:
-            raise Skip("no IIIF image")
-        return iiif[:-len("/info.json")] + "/full/!%d,%d/0/default.jpg" % (image.THUMB, image.THUMB)
-
-
-class Stasera(Source):
-    """Backdrops of what we watch, from Stasera: watching, wantToStart, movies, recommendations. The add-on has to be
-    linked to Stasera; no TMDB key, since the pictures are on TMDB's open image server."""
-    type = "stasera"
-    pool_hours = 6  # the lists change as we watch
-    default = ["watching", "movies"]
-    LISTS = ("watching", "wantToStart", "movies", "recommendations")
-    IMAGES = "https://image.tmdb.org/t/p/"
-
-    def __init__(self, entry, cfg):
-        Source.__init__(self, entry, cfg)
-        self.client = None  # the add-on's Stasera, set by from_config
-        self.titles = {}
-
-    def keys(self):
-        lists = [q for q in self.queries if q in self.LISTS]
-        for q in self.queries:
-            if q not in self.LISTS:
-                log.warning("%s: Stasera has no list called %s (%s)", self.name, q, ", ".join(self.LISTS))
-        if not self.client or not self.client.on:
-            log.warning("%s: no stasera_url in the options", self.name)
-            return []
-        self.titles = {}
-        for t in self.client.titles(lists):
-            path = t.get("textlessBackdropPath") or t.get("backdropPath")
-            if path:
-                self.titles.setdefault("%s:%s" % (t.get("kind"), t.get("tmdbId")), dict(t, path=path))
-        return list(self.titles)
-
-    def title(self, key):
-        if key not in self.titles:
-            self.keys()  # after a restart, or it's new
-        t = self.titles.get(key)
-        if not t:
-            raise RuntimeError("%s isn't in Stasera's lists now" % key)  # not Skip: it may come back
-        return t
-
-    def fetch(self, key):
-        t = self.title(key)
-        img = image.open_image(net.get(self.IMAGES + "original" + t["path"], timeout=180))
-        self.check(*img.size)
-        return img, "%s (%s)" % (t.get("title") or "?", t.get("year") or "")
-
-    def thumb(self, key):
-        return self.IMAGES + "w500" + self.title(key)["path"]
-
-
-class Tmdb(Source):
-    """Backdrops without text from TMDB, through Stasera's /tv/art: a studio's films, a film series, a show. The query
-    is Stasera's parameters, several with |: company=3 (Pixar), collection=10 (Star Wars), tv=82856, movie=330459,
-    keyword=…, and genre to narrow a studio down (company=3166&genre=16). Up to 5 backdrops a title, each its own key.
-    Like the stasera type, the add-on has to be linked to Stasera, and there's no TMDB key."""
-    type = "tmdb"
-    PARAM = re.compile(r"^(company|collection|tv|movie|keyword|genre)=\d+$")
-    MAX_SOURCES = 20  # Stasera's limit for one call
-    WAIT = 90  # seconds to wait for Stasera to fetch a source it hasn't had before
-    IMAGES = Stasera.IMAGES
-
-    def __init__(self, entry, cfg):
-        Source.__init__(self, entry, cfg)
-        self.client = None  # the add-on's Stasera, set by from_config
-        self.items = {}
-
-    def calls(self):
-        """The queries as few /tv/art calls: genre counts for the whole call, so each genre gets its own."""
-        groups = {}
-        for q in self.queries:
-            parts = q.replace(" ", "").split("&")
-            ids = [p for p in parts if not p.startswith("genre=")]
-            if not ids or not all(self.PARAM.match(p) for p in parts):
-                log.warning("%s: %s isn't like company=3, collection=10 or tv=82856", self.name, q)
-                continue
-            groups.setdefault("&".join(sorted(set(parts) - set(ids))), []).extend(ids)
-        out = []
-        for genre, ids in groups.items():
-            ids = list(dict.fromkeys(ids))
-            for i in range(0, len(ids), self.MAX_SOURCES):
-                out.append("&".join(ids[i:i + self.MAX_SOURCES] + ([genre] if genre else [])))
-        return out
-
-    def keys(self):
-        if not self.client or not self.client.on:
-            log.warning("%s: no stasera_url in the options", self.name)
-            return []
-        items = {}
-        try:
-            for call in self.calls():
-                deadline = time.time() + self.WAIT
-                j = self.client.art(call)
-                while j.get("pending") and time.time() < deadline:
-                    time.sleep(10)
-                    j = self.client.art(call)
-                if j.get("pending"):  # not Skip, and no short list kept for a day: asked again when it's drawn
-                    raise RuntimeError("Stasera is still fetching %s" % ", ".join(j["pending"]))
-                for it in j.get("items") or []:
-                    for b in it.get("backdrops") or []:
-                        if self.usable(b.get("width") or 0, b.get("height") or 0):
-                            items.setdefault("%s:%s:%s" % (it.get("kind"), it.get("tmdbId"), b["path"]), it)
-        except Unlinked:
-            log.warning("%s: the add-on isn't linked to Stasera; link it on the add-on's page", self.name)
-            return []
-        self.items = items
-        return list(items)
-
-    def fetch(self, key):
-        if key not in self.items:
-            self.keys()  # after a restart
-        it = self.items.get(key)
-        if not it:
-            raise RuntimeError("%s isn't in Stasera's answer now" % key)  # not Skip: it may come back
-        img = image.open_image(net.get(self.IMAGES + "original" + key.split(":", 2)[2], timeout=180))
-        self.check(*img.size)
-        title = it.get("title") or "?"
-        return img, "%s (%s)" % (title, it["year"]) if it.get("year") else title
-
-    def thumb(self, key):
-        return self.IMAGES + "w780" + key.split(":", 2)[2]
-
-
 def _at(o, path):
-    """'images.0.url' in a JSON answer, None when it isn't there; an empty path is the answer itself."""
+    """'images.0.url' in an answer, None when it isn't there; an empty path is the answer itself. '?text' in a path is
+    the first in a list with that text in it."""
     for part in path.split(".") if path else []:
-        if isinstance(o, list) and part.isdigit() and int(part) < len(o):
+        if isinstance(o, list) and part.startswith("?"):
+            o = next((x for x in o if part[1:] in json.dumps(x)), None)
+        elif isinstance(o, list) and part.isdigit() and int(part) < len(o):
             o = o[int(part)]
         elif isinstance(o, dict) and part in o:
             o = o[part]
@@ -583,105 +115,277 @@ def _at(o, path):
     return o
 
 
-def _filled(spec, o):
-    """A path, or a text with paths in braces ("{image_id}/full/max/0/default.jpg"); None when one is missing."""
-    fields = re.findall(r"\{([^{}]+)\}", spec) if "{" in spec else [spec]
-    values = [_at(o, f) for f in fields]
-    if not spec or any(isinstance(v, (dict, list, type(None))) or v == "" for v in values):
+def _each(o, path):
+    """The list at a path; 'items.*.backdrops' is every item's backdrops, each with its item's fields."""
+    head, star, rest = path.partition(".*")
+    if not star:
+        return _at(o, path)
+    out = []
+    for parent in _at(o, head) or []:
+        for child in _each(parent, rest.lstrip(".")) or []:
+            out.append(dict(parent, **child) if isinstance(child, dict) else child)
+    return out
+
+
+def _filter(value, name):
+    """One step after | in braces: {date|year}, {url|before:/full/}, {id|file|part:1}. None: there's no such part."""
+    name, _, arg = name.partition(":")
+    if name == "before":
+        return value.split(arg)[0]
+    if name == "year":
+        year = re.search(r"\d{4}", value)
+        return year.group() if year else None
+    if name == "file":
+        return os.path.splitext(value.split(":", 1)[-1])[0]
+    if name == "part":
+        parts = value.split(" - ")
+        return parts[int(arg)] if int(arg) < len(parts) else None
+    raise ValueError("no filter called %s" % name)
+
+
+def _value(expression, context):
+    path, *filters = expression.split("|")
+    value = _at(context, path)
+    if isinstance(value, (dict, list, type(None))) or value == "":
         return None
-    return str(values[0]) if "{" not in spec else re.sub(r"\{[^{}]+\}", lambda _: str(values.pop(0)), spec)
+    value = str(value)
+    for f in filters:
+        value = _filter(value, f) if value else None
+    return value
 
 
-class Json(Source):
-    """Any open JSON API, described in the options, so a new service takes no code. url is the search, with {query}
-    (each of the query's), and {page} or {offset} for the next pages; items is where the list is in the answer; image,
-    title and thumb are paths in an item, or texts with paths in braces; width and height, if the list has them, leave
-    out the wrong shapes before they're downloaded. We can't see the license, so url has to ask for free pictures."""
+def _fill(spec, context, url=False):
+    """A path, or a text with paths in braces; alternatives with " | ", and the first that has all it needs counts.
+    In a URL a value is encoded, except one that starts the URL: that's an address itself."""
+    for text in re.split(r"\s+\|\s+", spec or ""):
+        if "{" not in text:
+            value = _value(text, context)
+            if value:
+                return value
+            continue
+        missing = []
+
+        def field(m):
+            value = _value(m.group(1), context)
+            if value is None:
+                missing.append(m.group(1))
+                return ""
+            return urllib.parse.quote(value, safe="/:") if url and m.start() else value
+
+        out = re.sub(r"\{([^{}]+)\}", field, text)
+        if not missing:
+            return out
+    return None
+
+
+def _search(url, query):
+    """The search for one query: words go in {query}; fields ("medium=Prints&q=Hokusai") replace the url's own."""
+    if "=" not in query:
+        return url.replace("{query}", urllib.parse.quote(query, safe=""))
+    fields = dict(p.split("=", 1) for p in query.split("&") if "=" in p)
+    base, _, params = url.partition("?")
+    kept = [p for p in params.split("&") if p and "{query}" not in p and p.split("=")[0] not in fields]
+    return base + "?" + "&".join(kept + ["%s=%s" % (k, urllib.parse.quote(v, safe="")) for k, v in fields.items()])
+
+
+class Web(Source):
+    """A service described in the options, so no service is in the code. Fields are in DOCS.md: url, items and id
+    list the keys; steps are the calls per picture, and their answers are {step1}, {step2}...; image, title, thumb,
+    width, height and ratio are read from the list's item and the steps. A key is all that's kept, so what's needed
+    after a restart comes from steps, or from reading the list again."""
     type = "json"
     PAGES = 5
+    WAIT = 90  # seconds for a service to finish what it says is pending
+    MISSING = (403, 404, 410)  # this picture isn't there for us, and won't be
 
     def __init__(self, entry, cfg):
         Source.__init__(self, entry, cfg)
         self.spec = entry
-        self.items = {}  # image URL -> (label, thumbnail URL)
+        self.pool_hours = entry.get("hours", 24)
+        self.stasera = "{stasera}" in entry.get("url", "")
+        self.client = None  # the add-on's Stasera, set by from_config
+        self.items = {}
 
-    def link(self, spec, o, base):
-        """An absolute http(s) URL from the answer, or None: what it says isn't ours to open as a file."""
-        url = _filled(spec, o) if spec else None
-        url = urllib.parse.urljoin(base, url) if url else None
+    def ask(self, url):
+        if self.stasera:
+            return self.client.ask(url)
+        return net.get_json(url, accept=self.spec.get("accept") or "application/json")
+
+    def link(self, spec, context):
+        """An absolute http(s) URL, or None: what an answer says isn't ours to open as a file."""
+        url = _fill(spec, context, True)
         return url if url and url.startswith(("http://", "https://")) else None
+
+    def answer(self, url):
+        """The answer to a search, when the service has finished with it."""
+        got, deadline = self.ask(url), time.time() + self.WAIT
+        while self.spec.get("wait") and _at(got, self.spec["wait"]) and time.time() < deadline:
+            time.sleep(10)
+            got = self.ask(url)
+        if self.spec.get("wait") and _at(got, self.spec["wait"]):  # not Skip: asked again when it's drawn
+            raise RuntimeError("%s isn't ready" % self.name)
+        return got
+
+    def shape_ok(self, context):
+        """False for the wrong shape, None when the fields say nothing (yet)."""
+        ratio = _fill(self.spec.get("ratio"), context)
+        if ratio:
+            return image.croppable(float(ratio), 1)
+        width, height = _fill(self.spec.get("width"), context), _fill(self.spec.get("height"), context)
+        if width and height:
+            return self.usable(int(float(width)), int(float(height)))
+        return None
 
     def keys(self):
         spec = self.spec
         if not spec.get("url") or not spec.get("image"):
-            log.warning("%s: a json source needs url and image", self.name)
+            log.warning("%s: a service needs url and image", self.name)
+            return []
+        if self.stasera and not (self.client and self.client.on):
+            log.warning("%s: no stasera_url in the options", self.name)
             return []
         items, seen = {}, 0
-        for q in self.queries or [""]:
-            search = spec["url"].replace("{query}", urllib.parse.quote(q))
-            offset = 0
-            for page in range(1, self.PAGES + 1):
-                url = search.replace("{page}", str(page)).replace("{offset}", str(offset))
-                found = _at(net.get_json(url), spec.get("items") or "")
-                if not isinstance(found, list):
-                    log.warning("%s: no list at %r in the answer", self.name, spec.get("items") or "")
-                    break
-                for o in found:
-                    wide = spec.get("width") and spec.get("height")
-                    if wide and not self.usable(int(_at(o, spec["width"]) or 0), int(_at(o, spec["height"]) or 0)):
-                        continue
-                    image_url = self.link(spec["image"], o, url)
-                    if image_url:
-                        label = _filled(spec.get("title") or "", o) or self.name
-                        items.setdefault(image_url, (label, self.link(spec.get("thumb"), o, url)))
-                seen += len(found)
-                offset += len(found)
-                if not found or url == search:  # the end, or a url that doesn't page
-                    break
+        try:
+            for q in self.queries or [""]:
+                seen += self.search(q, items)
+        except Unlinked:
+            log.warning("%s: the add-on isn't linked to Stasera; link it on the add-on's page", self.name)
+            return []
         if seen and not items:
-            log.warning("%s: %d found, but none with a usable %r", self.name, seen, spec["image"])
+            log.warning("%s: %d found, but none that can be used (id, image, width and height?)", self.name, seen)
         self.items = items
         return list(items)
 
-    def item(self, key):
-        if key not in self.items:
+    def search(self, query, items):
+        """Adds what one query finds to items; the number found."""
+        spec = self.spec
+        start = _search(spec["url"].replace("{stasera}", self.client.base if self.stasera else ""), query)
+        where = (spec.get("items") or "").replace("{query}", query)
+        url, seen = start, 0
+        for page in range(1, int(spec.get("pages") or self.PAGES) + 1):
+            current = url.replace("{page}", str(page)).replace("{offset}", str(seen))
+            try:
+                got = self.answer(current)
+            except urllib.error.HTTPError as e:
+                if page == 1:
+                    raise
+                log.info("%s: page %d answered %s, that's the end", self.name, page, e.code)
+                break
+            found = _each(got, where)
+            if not isinstance(found, list):
+                if page == 1:
+                    log.warning("%s: no list at %r in the answer", self.name, where)
+                break
+            for o in found:
+                item = o if isinstance(o, dict) else {"id": o}
+                if self.shape_ok(item) is False:
+                    continue
+                id_spec = spec.get("id") or ("id" if spec.get("steps") else None)
+                key = _fill(id_spec, item) if id_spec else self.link(spec["image"], item)
+                if key:
+                    items.setdefault(key, item)
+            seen += len(found)
+            following = _fill(spec.get("next"), got)
+            if not found or (not following and current == start):  # the end, or a url that doesn't page
+                break
+            if following:
+                url = following
+            time.sleep(float(spec.get("pause") or 0))
+        return seen
+
+    def context(self, key, steps=True):
+        """All that's known about a key: the list's item, and the steps' answers."""
+        spec = self.spec
+        if key not in self.items and not spec.get("steps"):
             self.keys()  # after a restart
-        if key not in self.items:
-            raise RuntimeError("%s isn't in the answer now" % key)  # not Skip: it may come back
-        return self.items[key]
+            if key not in self.items:
+                raise RuntimeError("%s isn't in the answer now" % key)  # not Skip: it may come back
+        context = dict(self.items.get(key) or {})
+        if spec.get("id") or spec.get("steps"):
+            context["id"] = key
+        for n, step in enumerate((spec.get("steps") or []) if steps else [], 1):
+            url = self.link(step, context)
+            if not url:
+                raise Skip("nothing for step %d" % n)
+            try:
+                context["step%d" % n] = self.ask(url)
+            except urllib.error.HTTPError as e:
+                if e.code in self.MISSING:
+                    raise Skip("step %d answered %s" % (n, e.code))
+                raise
+        return context
+
+    def allowed(self, context):
+        """What the service has to say about each picture, like its license; unless is a field in the query that
+        means the first isn't wanted ("medium", for a source that isn't paintings)."""
+        unless = self.spec.get("unless")
+        if unless and any(unless + "=" in q for q in self.queries):
+            return
+        for need in self.spec.get("require") or []:  # path=value, or path~text somewhere in it
+            path, sign, wanted = re.split(r"([=~])", need, 1)
+            found = _at(context, path)
+            if (wanted not in json.dumps(found)) if sign == "~" else str(found).lower() != wanted.lower():
+                raise Skip("%s isn't %s" % (path, wanted))
+
+    def download(self, urls):
+        """The first of the addresses that's there."""
+        for url in urls:
+            try:
+                return net.get(url, timeout=180)
+            except urllib.error.HTTPError as e:
+                if e.code not in self.MISSING:
+                    raise
+        raise Skip("no picture at %s" % urls[0])
 
     def fetch(self, key):
-        label = self.item(key)[0]
-        raw = net.get(key, timeout=180)
+        context = self.context(key)
+        self.allowed(context)
+        shape = self.shape_ok(context)
+        if shape is False:
+            raise Skip("not close to 16:9")
+        small = self.link(self.spec.get("thumb"), context)
+        if shape is None and small:  # the shape from the small copy; the original can be 50 MB
+            if not image.croppable(*image.open_image(self.download([small])).size):
+                raise Skip("not close to 16:9")
+        urls = [u for u in (self.link(t, context) for t in re.split(r"\s+\|\s+", self.spec["image"])) if u]
+        if not urls:
+            raise Skip("no image")
+        raw = self.download(urls)
         try:
             img = image.open_image(raw)
         except Exception as e:
             raise Skip("not a picture Pillow reads: %s" % e)
         self.check(*img.size)
-        return img, label
+        last = self.name
+        for text in re.split(r"\s+\|\s+", self.spec.get("title") or ""):
+            label = _fill(text, context)
+            if label and _text(label):  # one too long or with a field missing gives way to the next
+                return img, _text(label)
+            last = _text(label, 1000) or last
+        return img, last
 
     def thumb(self, key):
-        return self.item(key)[1] or Source.thumb(self, key)
-
-
-TYPES = {c.type: c for c in (Folder, Met, Rijksmuseum, Commons, Nasjonalmuseet, Cleveland, SMK, NASA, Wellcome,
-                             Stasera, Tmdb, Json)}
+        spec = self.spec.get("thumb") or ""
+        url = self.link(spec, self.context(key, "step" in spec))
+        return url or Source.thumb(self, key)
 
 
 def from_config(cfg, stasera=None):
+    """The sources; a source's type is a service in the options, and what it sets itself goes before the service's."""
     entries = cfg["sources"] if "sources" in cfg else _old_options(cfg)
+    services = {s["name"]: s for s in cfg.get("services") or []}
     out = []
     for e in entries:
-        cls = TYPES.get(e.get("type"))
-        if not cls:
-            log.warning("unknown source type %r (one of %s)", e.get("type"), ", ".join(TYPES))
+        kind = e.get("type")
+        if kind not in services and kind not in ("folder", "json"):
+            log.warning("no service called %r (one of %s)", kind, ", ".join(services) or "none")
             continue
-        name = re.sub(r"\s+", " ", (e.get("name") or e["type"]).replace(":", " ")).strip()  # ": " ends the name
+        name = re.sub(r"\s+", " ", (e.get("name") or kind).replace(":", " ")).strip()  # ": " ends the name
         if name in [s.name for s in out]:
             name += " %d" % (len(out) + 1)
-        src = cls(dict(e, name=name), cfg)
-        if cls in (Stasera, Tmdb):
-            src.client = stasera
+        spec = dict(services.get(kind) or {}, **{k: v for k, v in e.items() if v not in (None, "")})
+        src = (Folder if kind == "folder" else Web)(dict(spec, name=name), cfg)
+        src.client = stasera
         out.append(src)
     return out
 

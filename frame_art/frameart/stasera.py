@@ -122,6 +122,14 @@ class Stasera:
 
     # MARK: - What we watch
 
+    def ask(self, url):
+        """An address on Stasera, as the linked add-on. Raises Unlinked."""
+        path = url[len(self.base):]
+        status, j = self._request("GET", path)
+        if status != 200:
+            raise RuntimeError("Stasera answered %s to %s" % (status, path))
+        return j
+
     def titles(self, lists):
         """Titles from Stasera's lists: watching, wantToStart and movies (/tv/home) and recommendations, each
         {kind, tmdbId, title, year, backdropPath, textlessBackdropPath?, logoPath?, list}. Raises Unlinked."""
@@ -139,15 +147,6 @@ class Stasera:
                 raise RuntimeError("Stasera answered %s" % status)
             out += [dict(t, list="recommendations") for t in j.get("items") or []]
         return out
-
-    def art(self, query):
-        """Backdrops without text for studios, film series and shows (/tv/art), query being its parameters
-        ("company=3166&genre=16"): {items: [{kind, tmdbId, title, year, backdrops: [{path, width, height}]}], pending}.
-        A source Stasera hasn't fetched yet is in pending, not in items. Raises Unlinked."""
-        status, j = self._request("GET", "/tv/art?" + query)
-        if status != 200 or not isinstance(j, dict):
-            raise RuntimeError("Stasera answered %s to /tv/art?%s" % (status, query))
-        return j
 
     def upcoming(self, today, days=1):
         """What's coming from `today` (the TV's date, YYYY-MM-DD) and `days` on: episodes and films, each with its
