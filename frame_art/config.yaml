@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see DOCS.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.29.1"
+version: "0.30.0"
 slug: frame_art
 description: A living gallery in The Frame's Art Mode, from museums, NASA and your own photos, with a morning picture and Follow the music
 url: https://github.com/eaugum/frame-art
@@ -74,7 +74,6 @@ options:
     - {category: Japan, name: Kawase Hasui, type: commons, query: Kawase Hasui}
     # Posters
     - {category: Posters, name: Art Nouveau posters, type: commons, query: Art Nouveau posters|Posters by Alfons Mucha}
-    - {category: Posters, name: Art Deco posters, type: commons, query: Art Deco posters}
     - {category: Posters, name: National park posters, type: commons, query: "WPA posters, National Park Service"}
     # Nature and space
     - {category: Nature and space, name: Botany, type: wellcome, query: botanical}

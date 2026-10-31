@@ -27,6 +27,7 @@ import logging
 import os
 import random
 import shutil
+import threading
 import time
 from zoneinfo import ZoneInfo
 
@@ -38,6 +39,7 @@ from .tv import TV
 
 log = logging.getLogger(__name__)
 
+PICK_TRIES = 12  # pictures tried for one change before giving up until the next
 RECENT = 200  # not the same picture again within this many changes (or the whole pool, if it's smaller)
 RETRY_MINUTES = 5  # TV off or away
 MADE_RETRY_MINUTES = 15  # Stasera didn't answer
@@ -130,6 +132,9 @@ class Rotation:
         self.next_path = os.path.join(data_dir, "next.jpg")
         self.showing_path = os.path.join(data_dir, "showing.jpg")
         self.lock = asyncio.Lock()  # one conversation with the TV at a time: the timer, Home Assistant, Frame TV
+        self.making = asyncio.Lock()  # one change at a time, fetching included; held longer than the TV's lock
+        self.nothing = ""  # why pick() found no picture
+        self.relisting = set()  # the sources being listed again in the background
         self.zone = ZoneInfo(cfg.get("timezone") or os.environ.get("TZ") or "Europe/Oslo")
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
         self.saver_minutes = None  # how often the picture changes meanwhile, from Frame TV
@@ -143,6 +148,7 @@ class Rotation:
         self.retry_at = 0  # the TV didn't answer: a new song doesn't try again before this
         self.listened = asyncio.Event()  # the player has been looked at once since the start
         self.seen = {"power": None, "art_mode": None}  # what the TV was last seen doing; None: not known
+        self.art_while_off = None  # Art Mode as heard while the TV counts as off; used if it turns out to be on
         self.waiting = False  # the rotation waits for Art Mode (AUG-1526)
         self._from_categories()
 
@@ -263,8 +269,21 @@ class Rotation:
 
     def pool(self, src):
         p = self.state["pools"].get(src.name)
-        if p and p.get("wide") and src.pool_hours and time.time() - p["at"] < src.pool_hours * 3600 and p["keys"]:
-            return p["keys"]  # wide: listed since only 16:9 is used (0.14.0)
+        if p and p.get("wide") and src.pool_hours and p["keys"]:  # wide: listed since only 16:9 is used (0.14.0)
+            if time.time() - p["at"] >= src.pool_hours * 3600 and src.name not in self.relisting:
+                self.relisting.add(src.name)  # a big tree on Commons takes minutes: not while someone waits
+                threading.Thread(target=self._relist, args=(src,), daemon=True).start()
+            return p["keys"]
+        return self._list(src)
+
+    def _relist(self, src):
+        try:
+            self._list(src)
+        finally:
+            self.relisting.discard(src.name)
+
+    def _list(self, src):
+        p = self.state["pools"].get(src.name)
         try:
             keys = src.keys()
             if not p or len(p["keys"]) != len(keys):
@@ -292,12 +311,13 @@ class Rotation:
         return image.to_jpeg(img), "%s: %s" % (src.name, label), src.name + ":" + key
 
     def pick(self):
-        """(jpeg, label, key) for a new picture, or None."""
+        """(jpeg, label, key) for a new picture, or None, and self.nothing says why."""
         bad, recent, empty = set(self.state["bad"]), self.state["recent"], set()
-        for _ in range(12):
+        for _ in range(PICK_TRIES):
             # a source is listed only when it's drawn, so a big new one doesn't hold up the others
             choices = [s for s in self.in_play() if s.name not in empty]
             if not choices:
+                self.nothing = "none of the sources that are on has pictures" if self.in_play() else "no source is on"
                 return None
             src = random.choice(choices)
             keys = [k for k in self.pool(src) if src.name + ":" + k not in bad]
@@ -316,6 +336,7 @@ class Rotation:
             except Exception as e:
                 log.warning("couldn't fetch %s: %s", full, e)
                 events.add("rotation", "fetch_failed", "couldn't fetch %s: %s" % (full, e))
+        self.nothing = "tried %d pictures, and none of them could be used" % PICK_TRIES
         return None
 
     # MARK: - The pictures we make
@@ -471,10 +492,15 @@ class Rotation:
 
     # MARK: - The TV
 
-    async def change(self, art_mode=False, what=None):
+    async def change(self, art_mode=False, what=None, join=False):
         """A new picture. With art_mode, the TV goes to Art Mode too (Home Assistant, Frame TV); the timer never does.
-        what: 'morning' or 'tonight' for that one now. It ends a fixed picture (the timer doesn't change one)."""
-        async with self.lock:
+        what: 'morning' or 'tonight' for that one now. It ends a fixed picture (the timer doesn't change one).
+        join: someone asked, and a new picture on its way is what they want: clicks don't queue up a picture each."""
+        if join and self.making.locked():
+            async with self.making:
+                pass
+            return await self.art_mode() if art_mode else True
+        async with self.making:
             ok = await self._change(art_mode, what)
             if ok and self.cfg.get("fixed") and what != "music":
                 self._keep({"fixed": None})
@@ -485,14 +511,15 @@ class Rotation:
         src = self.source_of(full)
         if not src:
             raise ValueError("no source called %s" % full.split(":", 1)[0])
-        async with self.lock:
+        async with self.making:
             try:
                 got = await asyncio.to_thread(self.render, src, full.split(":", 1)[1])
             except sources.Skip as e:
                 self.state["bad"].append(full)
                 self.state.save()
                 raise ValueError("that picture can't be used (%s)" % e)
-            await self._put(*got, force=True)
+            async with self.lock:
+                await self._put(*got, force=True)
             self._keep({"fixed": {"key": full, "label": got[1], "until": self._next_morning()}})
             log.info("fixed until %s", datetime.datetime.fromtimestamp(self.cfg["fixed"]["until"], self.zone))
             events.add("rotation", "fixed", "%s, until the next morning picture" % got[1])
@@ -520,17 +547,17 @@ class Rotation:
         self.state.save()
         log.info("never again: %s", key)
         events.add("rotation", "never", "never again: %s" % key)
-        return await self.change()
+        return await self.change(join=True)
 
     async def _change(self, force, what=None):
         got = await asyncio.to_thread(self.prepared, what)
         if not got:
-            log.warning("nothing to show: %s", "couldn't make %s" % what if what else
-                        "no source is on, or none has pictures")
+            log.warning("nothing to show: %s", "couldn't make %s" % what if what else self.nothing)
             events.add(what if what in EVENT_SOURCES else "rotation", "nothing", "nothing to show: %s" % (
-                "couldn't make it" if what else "no source is on, or none has pictures"))
+                "couldn't make it" if what else self.nothing))
             return False
-        await self._put(*got, force=force, prepared=got[2].split(":")[0] not in OWN)
+        async with self.lock:
+            await self._put(*got, force=force, prepared=got[2].split(":")[0] not in OWN)
         return True
 
     async def _put(self, jpeg, label, key, force, prepared=False):
@@ -649,7 +676,11 @@ class Rotation:
 
     def _seen(self, name, on):
         """The TV's power or Art Mode, as watched (AUG-1523): only a change is logged, with the command that caused
-        it, or "from outside" (the remote, the motion sensor, the TV's own sleep)."""
+        it, or "from outside" (the remote, the motion sensor, the TV's own sleep). A TV in standby wakes for a minute
+        now and then and says it's in Art Mode, so what's heard while it's off waits until it's seen to be on."""
+        if name == "art_mode" and self.seen["power"] is False:
+            self.art_while_off = on
+            return
         was = self.seen[name]
         if was == on:
             return
@@ -661,8 +692,19 @@ class Rotation:
         events.add("tv", what, SEEN[what], why=cause or ("first look" if was is None else "from outside"))
         if on is False and was is not None:
             self._went_away("the TV went off" if name == "power" else "Art Mode went off")
+            if name == "power":
+                self._saver_over("the TV went off")
         elif on:
             self._seen_again(name)
+        if name == "power" and on and self.art_while_off is not None:
+            art, self.art_while_off = self.art_while_off, None
+            self._seen("art_mode", art)
+
+    def _saver_over(self, why):
+        if self.saver:
+            self.saver = False
+            log.info("the screensaver is over")
+            events.add("saver", "over", "the screensaver is over", why=why)
 
     def _went_away(self, why):
         """Morgenbildet or tonight's show, with the TV off or out of Art Mode right after it (AUG-1527)."""
@@ -742,15 +784,11 @@ class Rotation:
                        why=events.cause("power_off") or "from outside")
             if self.seen["power"]:
                 self._went_away("the TV went to standby")
-            self.seen["art_mode"] = None
+            self.seen["art_mode"], self.art_while_off = None, None  # the screensaver goes on: the TV can stay on
         elif event == "channel_closed":
-            self.seen["art_mode"] = None  # not heard any more, so not known
-        if (off or event == "go_to_standby") and self.saver:
-            self.saver = False
-            log.info("the screensaver is over")
-            events.add("saver", "over", "the screensaver is over",
-                       why="Art Mode went off" if off else "the TV went to standby")
+            self.seen["art_mode"], self.art_while_off = None, None  # not heard any more, so not known
         if off:
+            self._saver_over("Art Mode went off")
             with events.because("Art Mode went off"):
                 await self._back()
 
@@ -962,7 +1000,8 @@ class Rotation:
                 "mode": "fixed" if fixed else "shuffle", "category": self._one_category(),
                 "reading": bool(self.reading),
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
-                "stasera": self.stasera.state(), "pairing": self.stasera.pairing, "busy": self.lock.locked(),
+                "stasera": self.stasera.state(), "pairing": self.stasera.pairing,
+                "busy": self.making.locked() or self.lock.locked(),
                 "saver": self.saver, "showing_key": self.showing_key(), "tv_entity": bool(self.cfg.get("tv_entity")),
                 "home_entity": self.home_entity(),
                 "tv": {"power": self.seen["power"], "activity": self.activity(),

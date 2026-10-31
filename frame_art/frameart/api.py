@@ -36,6 +36,7 @@ api_key in the add-on's options (made and written there when it's empty). The pa
 need it. The answers wait for the TV (up to a minute or two).
 """
 import asyncio
+import collections
 import hmac
 import json
 import logging
@@ -117,11 +118,11 @@ def app(rotation):
 
     @web.middleware
     async def keyed(request, handler):
-        if request.method == "OPTIONS" or (request.method == "GET" and request.path == "/") or ingress(request):
+        if request.method == "OPTIONS" or (request.method == "GET" and request.path == "/"):
             return await handler(request)
         given = request.headers.get("Authorization", "")
         given = given[7:] if given.startswith("Bearer ") else request.query.get("key", "")
-        if not hmac.compare_digest(given.encode(), key.encode()):
+        if not ingress(request) and not hmac.compare_digest(given.encode(), key.encode()):
             return web.json_response({"ok": False, "error": "wrong or no key (api_key in the add-on's options)"}, status=401,
                                      headers=CORS)
         if request.method != "POST":
@@ -151,7 +152,7 @@ def app(rotation):
 
         async def go():
             await wake(request)
-            return await rotation.change(art_mode=art_mode, what=what)
+            return await rotation.change(art_mode=art_mode, what=what, join=not what)
         return await act(request, go)
 
     async def wake(request):
@@ -245,6 +246,8 @@ def app(rotation):
                                                                     if minutes else ""))
         return await act(request, lambda: rotation.start_saver(minutes))
 
+    heard = collections.deque(maxlen=1000)  # Frame TV sends an event again when the answer didn't reach it
+
     async def app_event(request):
         """Frame TV's events, sent when they happened or later from its queue: the time is Frame TV's."""
         try:
@@ -256,8 +259,9 @@ def app(rotation):
             return web.json_response({"ok": False, "error": 'send {"events": [...]}'}, status=400, headers=CORS)
         now = time.time()
         for e in got[:APP_EVENTS]:
-            if not isinstance(e, dict) or not e.get("kind"):
+            if not isinstance(e, dict) or not e.get("kind") or (e.get("n") and e["n"] in heard):
                 continue
+            heard.append(e.get("n"))
             try:
                 at = float(e.get("at")) / 1000
             except (TypeError, ValueError):

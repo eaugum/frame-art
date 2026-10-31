@@ -473,7 +473,11 @@
     $("sure-what").textContent = tr("never_ask", {title: $("title").textContent});
     $("sure").hidden = false;
   };
-  $("sure-yes").onclick = function () { $("sure").hidden = true; send("never", tr("leaving_out")); };
+  $("sure-yes").onclick = function () {
+    $("sure").hidden = true;
+    $("never").hidden = true;
+    send("never", tr("leaving_out"));
+  };
   $("sure-no").onclick = function () { $("sure").hidden = true; };
   $("music").onclick = function () { save({music: !(last.settings || {}).music}); };
   $("power").onclick = function () {

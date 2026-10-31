@@ -1,5 +1,18 @@
 # Changes
 
+## 0.30.0
+
+- A TV in standby wakes for a minute now and then and says it's in Art Mode. That no longer counts until the TV is seen
+  to be on, so it doesn't end "the morning picture stays", and it isn't in the Debug tab as Art Mode.
+- "New picture" and "Don't show again" no longer take minutes: a source's list is read again in the background while
+  the old one is used, and the picture is fetched without holding up Art Mode. Clicks while a new picture is on its way
+  join it, instead of queuing up a picture each. "Don't show again" hides at once.
+- The screensaver ends when the TV is off, not when it says it's going to standby: sometimes it stays on.
+- The Debug tab: "nothing to show" says why, "Art Mode on" is listed once, what's done on the add-on's page says so,
+  and an event Frame TV sends again counts once.
+- The "Art Deco posters" source is gone from the defaults: Commons has no picture there that fits the screen. A list
+  already in the options keeps it until it's deleted there.
+
 ## 0.29.1
 
 - The documentation says what the add-on needs from Home Assistant and which integrations give what, has examples of

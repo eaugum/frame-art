@@ -96,8 +96,7 @@ class TV:
         events.expect("art_mode_on")
         await asyncio.wait_for(self.art.set_artmode("on"), 30)
         if await self._settled():
-            events.add("tv", "art_mode_on", "Art Mode on")
-            return
+            return  # the event log has it from the art channel
         log.info("set_artmode didn't take; pressing power once")
         events.add("tv", "power_key", "set_artmode didn't take; pressing power once")
         remote = SamsungTVWSAsyncRemote(host=self.host, port=8002, token_file=self.token_file, name=self.name,
