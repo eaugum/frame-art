@@ -170,6 +170,8 @@ class Rotation:
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
         self.saver_minutes = None  # how often the picture changes meanwhile, from Frame TV
         self.back_at = 0  # when Frame TV was last opened; the TV says "off" twice
+        self.selecting = (None, 0)  # the picture we last asked the TV to show, and when: its image_selected is ours
+        self.picked_at = 0  # when OK in the TV's Art Mode menu last asked for a new picture
         self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
         self.ha = music.HomeAssistant(cfg)
         i18n.setup(cfg)
@@ -655,6 +657,7 @@ class Rotation:
             if force and not art_mode:
                 await tv.art_mode_on()
                 art_mode = True
+            self.selecting = (content_id, time.time())
             await tv.show(content_id, now=art_mode)
             log.info("%s %s (%s)", "showing" if art_mode else "ready for Art Mode:", label, content_id)
             kind, _, day = key.partition(":")
@@ -883,10 +886,29 @@ class Rotation:
             self.seen["art_mode"], self.art_while_off = None, None  # the screensaver goes on: the TV can stay on
         elif event == "channel_closed":
             self.seen["art_mode"], self.art_while_off = None, None  # not heard any more, so not known
+        elif event == "image_selected":
+            self._picked(data)
         if off:
             self._saver_over("Art Mode went off")
             with events.because("Art Mode went off"):
                 await self._back()
+
+    def _picked(self, data):
+        """A picture was chosen on the TV. The remote's keys in Art Mode only open the TV's own menu and say nothing;
+        OK on a picture there is the one thing we hear, so it means "New picture". Our own choices are left alone."""
+        content_id, at = self.selecting
+        if time.time() - at < 10 or (data.get("content_id") == content_id and time.time() - at < 60):
+            return
+        if data.get("is_shown") == "No" or time.time() - self.picked_at < 5 or self.making.locked():
+            return
+        self.picked_at = time.time()
+        log.info("OK in the TV's Art Mode menu: a new picture")
+        with events.because("OK in the TV's Art Mode menu"):
+            events.add("tv", "picked", "a picture chosen in the TV's Art Mode menu: a new picture instead")
+            task = asyncio.create_task(self.change(join=True))
+        task.add_done_callback(lambda t: t.cancelled() or not t.exception() or log.warning(
+            "the new picture after OK failed (%s)", t.exception()))
+        self.picking = task  # kept, so it isn't collected while it runs
 
     async def _back(self):
         """Art Mode went off: a key on the remote opens the TV's own Art Mode menu, which has no way back but Home

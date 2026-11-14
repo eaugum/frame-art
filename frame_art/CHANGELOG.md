@@ -1,5 +1,10 @@
 # Changes
 
+## 0.37.0
+
+- New picture from the remote: in Art Mode, right and then OK in the TV's own menu gives a new picture, like "New
+  picture" on the page. Choosing a picture there is the only key the TV tells about.
+
 ## 0.36.2
 
 - When Art Mode or the TV comes on, the picture on the wall gets a whole interval from then, instead of changing at

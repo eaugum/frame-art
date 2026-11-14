@@ -233,6 +233,12 @@ Three things are up to you:
 - **Downloads:** a service can answer the search and still refuse to let the add-on download its pictures; the Art
   Institute of Chicago answers 403. The picture is then left out.
 
+## From the remote
+
+In Art Mode the remote's keys open the TV's own menu along the bottom, and the TV says nothing about them. Choosing a
+picture there with OK is the one thing Frame Art hears, so it means **New picture**: press right, then OK, and a new
+picture from the rotation comes, whichever one you were on. Like "New picture" on the page, it ends a fixed picture.
+
 ## The add-on's page
 
 Open **Frame Art** in the sidebar. A line under the title says what's in charge now. From the page you can:
