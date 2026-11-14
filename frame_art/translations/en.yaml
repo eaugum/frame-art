@@ -24,6 +24,11 @@ configuration:
     description: >-
       zone.home (someone in it), or a person, device_tracker, group, binary_sensor or input_boolean that is home or
       on. With "Only when someone is home" on, Follow the music and turning the TV on wait for it. Empty: always home.
+  sleep_entity:
+    name: Everyone's asleep
+    description: >-
+      An entity that's on when everyone's asleep (binary_sensor, input_boolean, switch or group). The TV goes off from
+      Art Mode, and the schedule doesn't turn it on until it's off again. Empty: not used
   calendars:
     name: Calendars
     description: Calendars whose events today are in the morning picture.

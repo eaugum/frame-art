@@ -99,20 +99,44 @@ class TV:
             return  # the event log has it from the art channel
         log.info("set_artmode didn't take; pressing power once")
         events.add("tv", "power_key", "set_artmode didn't take; pressing power once")
+        await self._keys([SendRemoteKey.click("KEY_POWER")])
+        if not await self._settled():
+            events.add("tv", "art_mode_failed", "the TV didn't go to Art Mode, even after power")
+            raise RuntimeError("the TV didn't go to Art Mode")
+        events.add("tv", "art_mode_on", "Art Mode on, after pressing power")
+
+    async def _keys(self, commands):
+        """Keys on the remote control channel, which shares the art channel's token."""
         remote = SamsungTVWSAsyncRemote(host=self.host, port=8002, token_file=self.token_file, name=self.name,
                                         timeout=30)
         try:
             await asyncio.wait_for(remote.start_listening(), 40)
-            await remote.send_command(SendRemoteKey.click("KEY_POWER"))
+            await remote.send_commands(commands)
         finally:
             try:
                 await remote.close()
             except Exception:
                 pass
-        if not await self._settled():
-            events.add("tv", "art_mode_failed", "the TV didn't go to Art Mode, even after power")
-            raise RuntimeError("the TV didn't go to Art Mode")
-        events.add("tv", "art_mode_on", "Art Mode on, after pressing power")
+
+    async def power_off(self):
+        """The TV to standby from Art Mode: power held for 3 s, as Home Assistant does for The Frame (a short press
+        only goes between Art Mode and TV). Only called while it's in Art Mode."""
+        events.expect("power_off")
+        await self._keys(SendRemoteKey.hold("KEY_POWER", 3))
+
+    async def motion_timer(self):
+        """The TV's own Art Mode timer ("Sleep After"): (value, valid values), e.g. ("60", ["off", "5", ...])."""
+        got = await self._ask(lambda: self.art.get_artmode_settings("motion_timer"), tries=2)
+        valid = got.get("valid_values") or []
+        if isinstance(valid, str):
+            try:
+                valid = json.loads(valid)
+            except ValueError:
+                valid = [valid]
+        return str(got.get("value")), [str(v) for v in valid]
+
+    async def set_motion_timer(self, value):
+        await asyncio.wait_for(self.art.set_motion_timer(value), 30)
 
     async def _settled(self):
         for _ in range(5):

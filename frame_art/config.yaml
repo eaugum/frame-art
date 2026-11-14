@@ -1,7 +1,7 @@
 # Home Assistant add-on, installed from https://github.com/eaugum/frame-art (see DOCS.md).
 # Bump version for every change, with a line in CHANGELOG.md; HA offers the update.
 name: Frame Art
-version: "0.35.0"
+version: "0.36.0"
 slug: frame_art
 description: A living gallery in The Frame's Art Mode, from museums, NASA and your own photos, with a morning picture and Follow the music
 url: https://github.com/eaugum/frame-art
@@ -39,6 +39,9 @@ options:
   # Who's home: a zone (someone in it), a person, device_tracker, group, binary_sensor or input_boolean; with "Only
   # when someone is home" on, Follow the music and turning the TV on wait for it. Empty: always home
   home_entity: zone.home
+  # Everyone's asleep: an entity that's "on" then (binary_sensor, input_boolean...). The TV goes off from Art Mode,
+  # and the schedule doesn't turn it on until it's off again. Empty: not used
+  sleep_entity: ""
   # Calendars whose events today are in the morning picture, and a Nord Pool or Tibber sensor for the electricity price
   calendars: []
   price_entity: ""
@@ -257,6 +260,7 @@ schema:
   weather_entity: match(^(weather\..+)?$)?
   tv_entity: match(^(media_player\..+)?$)?
   home_entity: match(^((zone|person|device_tracker|group|binary_sensor|input_boolean)\..+)?$)?
+  sleep_entity: match(^((binary_sensor|input_boolean|switch|group)\..+)?$)?
   calendars:
     - match(^calendar\..+$)
   price_entity: match(^(sensor\..+)?$)?

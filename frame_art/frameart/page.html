@@ -87,6 +87,10 @@
   .row > span { flex: 1; }
   .row small { display: block; color: var(--faint); font-size: 13px; }
   .row.sub { padding-left: 24px; }
+  .week { padding: 2px 0 10px 24px; }
+  .day { display: flex; align-items: center; gap: 10px; padding: 3px 0; font-size: 14px; color: #ccc; }
+  .day span { width: 92px; }
+  .day.off input[type=time] { opacity: .4; }
   input[type=number], input[type=time] { font: inherit; background: #222; color: var(--text); border: 1px solid #333;
                                           border-radius: 6px; padding: 5px 8px; }
   input[type=number] { width: 72px; }
@@ -178,14 +182,23 @@
     <div class="row"><span data-t="interval"></span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
     <div class="row"><span><span data-t="keep"></span><small data-t="keep_note"></small></span>
       <input id="keep" type="number" min="1" max="20"></div>
-    <div class="row"><span><span data-t="morning"></span><small data-t="morning_note"></small></span><input id="morning_time" type="time">
+    <div class="row"><span><span data-t="morning"></span><small data-t="morning_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
+    <div class="week" id="morning-week"></div>
     <div class="row sub" id="morning-tv"><span><span data-t="tv_on"></span><small></small></span>
       <label class="switch"><input type="checkbox" data-setting="morning_tv_on"><i></i></label></div>
-    <div class="row"><span><span data-t="tonight"></span><small data-t="tonight_note"></small></span><input id="tonight_time" type="time">
+    <div class="row"><span><span data-t="tonight"></span><small data-t="tonight_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="tonight"><i></i></label></div>
+    <div class="week" id="tonight-week"></div>
     <div class="row sub" id="tonight-tv"><span><span data-t="tv_on"></span><small></small></span>
       <label class="switch"><input type="checkbox" data-setting="tonight_tv_on"><i></i></label></div>
+    <div class="row"><span><span data-t="art_timer"></span><small data-t="art_timer_note"></small></span>
+      <input id="art_timer_minutes" type="number" min="0" max="1440"> min</div>
+    <div class="row"><span><span data-t="away_off_setting"></span><small id="away-note"></small></span>
+      <label class="switch"><input type="checkbox" data-setting="away_off"><i></i></label></div>
+    <div class="row"><span><span data-t="asleep"></span><small id="asleep-note"></small></span></div>
+    <div class="row"><span><span data-t="tv_timer_off"></span><small id="tv-timer-note"></small></span>
+      <label class="switch"><input type="checkbox" data-setting="tv_timer_off"><i></i></label></div>
     <div class="row"><span><span data-t="screensaver"></span><small data-t="screensaver_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver"><i></i></label></div>
     <div class="row sub"><span><span data-t="screensaver_stasera"></span><small data-t="screensaver_stasera_note"></small></span>
@@ -226,6 +239,9 @@
 </div></div>
 <script>
   var T = /*STRINGS*/{}, LOCALE = T.locale || "en-GB";
+  var DAYS = [1, 2, 3, 4, 5, 6, 7].map(function (d) {  // Monday first; 2024-01-01 was a Monday
+    return new Date(2024, 0, d).toLocaleDateString(LOCALE, {weekday: "long"});
+  });
   var last = {}, open = null, expanded = null, savedAt = 0, leaving = null;
   function $(id) { return document.getElementById(id); }
   /** The text for key, with {name} filled in from values. */
@@ -376,12 +392,10 @@
     if (document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox") return;
     $("interval_minutes").value = st.interval_minutes;
     $("keep").value = st.keep;
-    $("morning_time").value = st.morning_time || "";
-    $("tonight_time").value = st.tonight_time || "";
+    $("art_timer_minutes").value = st.art_timer_minutes;
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
-    $("morning_time").disabled = !st.morning;
-    $("tonight_time").disabled = !st.tonight;
     ["morning", "tonight"].forEach(function (kind) {
+      week(kind, st[kind + "_days"] || [], !st[kind]);
       var row = $(kind + "-tv"), tv = row.querySelector("input");
       row.hidden = !st[kind];
       tv.disabled = !s.tv_entity;
@@ -393,6 +407,38 @@
     if (!s.home_entity) home.checked = false;
     $("home-note").textContent = s.home_entity ? tr("home_only_note", {entity: s.home_entity}) :
       tr("home_only_missing");
+    var away = $("away-note").parentNode.parentNode.querySelector("input");
+    away.disabled = !s.home_entity;
+    $("away-note").textContent = s.home_entity ? tr("away_off_note", {entity: s.home_entity}) : tr("home_only_missing");
+    $("asleep-note").textContent = s.sleep_entity ? tr("asleep_note", {entity: s.sleep_entity}) : tr("asleep_missing");
+    $("tv-timer-note").textContent = s.tv_timer === null || s.tv_timer === undefined ? tr("tv_timer_unknown") :
+      tr("tv_timer_now", {value: s.tv_timer === "off" ? tr("tv_timer_is_off") : s.tv_timer + " min"});
+  }
+
+  // A week for the morning picture or tonight's show, Monday first: on, from and until, saved as the whole week
+  function week(kind, days, off) {
+    var box = $(kind + "-week");
+    box.hidden = off;
+    if (box.contains(document.activeElement)) return;
+    box.innerHTML = "";
+    days.forEach(function (d, i) {
+      var on = el("input", {type: "checkbox", checked: d.on}),
+          from = el("input", {type: "time", value: d.from}), until = el("input", {type: "time", value: d.until});
+      var row = el("div", {className: "day" + (d.on ? "" : " off")},
+                   [el("span", {textContent: DAYS[i]}), on, from, el("small", {textContent: "–"}), until]);
+      function keep() {
+        if (!from.value || !until.value) return;
+        var all = days.map(function (x) { return {on: x.on, from: x.from, until: x.until}; });
+        all[i] = {on: on.checked, from: from.value, until: until.value};
+        var c = {};
+        c[kind + "_days"] = all;
+        save(c);
+      }
+      on.onchange = keep;
+      from.onchange = keep;
+      until.onchange = keep;
+      box.append(row);
+    });
   }
 
   function connections(s) {
@@ -542,8 +588,7 @@
   $("close").onclick = function () { open = null; gal.hidden = true; sources(last); };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
   $("keep").onchange = function () { save({keep: +this.value}); };
-  $("morning_time").onchange = function () { if (this.value) save({morning_time: this.value}); };
-  $("tonight_time").onchange = function () { if (this.value) save({tonight_time: this.value}); };
+  $("art_timer_minutes").onchange = function () { save({art_timer_minutes: +this.value}); };
   document.querySelectorAll("[data-setting]").forEach(function (b) {
     b.onchange = function () { var c = {}; c[this.dataset.setting] = this.checked; save(c); };
   });

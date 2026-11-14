@@ -35,7 +35,8 @@ Frame Art starts with only `tv_host`. The rest is optional, and each piece adds 
 | Nord Pool or Tibber | `price_entity` | The electricity price on the morning picture |
 | Samsung Smart TV | `tv_entity` | Turning the TV on. Check that `media_player.turn_on` under Developer tools turns the TV on from standby |
 | Spotify or SpotifyPlus | A `media_player.spotify*` | [Follow the music](#follow-the-music) |
-| Person, Device tracker or a Zone | `home_entity` | "Only when someone is home" |
+| Person, Device tracker or a Zone | `sleep_entity` | Everyone's asleep: a `binary_sensor`, `input_boolean`, `switch` or `group` that is `on` then. The TV goes off from Art Mode and the schedule doesn't turn it on meanwhile. Empty: not used |
+| `home_entity` | "Only when someone is home" |
 
 **What the add-on asks Home Assistant for** (in `config.yaml`, nothing to set up):
 
@@ -277,7 +278,7 @@ alone never turns on Art Mode.
 
 ## The morning picture
 
-At `morning_time` (07:00 by default) Frame Art makes a picture of the day, in calm type on a surface coloured by the
+In its window (07:00–10:00 every day by default; see [The schedule](#the-schedule)) Frame Art makes a picture of the day, in calm type on a surface coloured by the
 weather:
 
 - the weekday and the date, the week number and, in Norwegian, the name day,
@@ -292,21 +293,42 @@ The price works with a Nord Pool sensor (`raw_today` or `today`) or Tibber's pri
 (`sensor.<home>_electricity_price`), whose prices come from `tibber.get_prices`. Without a weather entity, or if it
 doesn't answer, the picture comes without weather.
 
-**Turn the TV on first:** with `tv_entity` set and the switch "Turn the TV on first" on (it is by default), Home
-Assistant turns the TV on when it's off at the morning picture's time, once a day, and the picture comes up in Art
-Mode. With "Only when someone is home" on (it is by default), only when `home_entity` says someone is. Otherwise the
-morning picture waits until the TV is on, but only until tonight's show.
+If the TV isn't on in Art Mode during the window, the picture is made ready for the next time Art Mode comes on, and
+whatever is on the screen stays. After the window it's skipped that day.
 
-A morning picture you ask for yourself before `morning_time` ("Morning picture now") doesn't count as the day's: the
-morning picture still comes at its time.
+A morning picture you ask for yourself before its window ("Morning picture now") doesn't count as the day's: the
+morning picture still comes in its window.
 
 ## Tonight's show (Stasera)
 
-With [Stasera](https://www.stasera.app) linked, Frame Art makes a poster at `tonight_time` (18:00 by default) of the
+With [Stasera](https://www.stasera.app) linked, Frame Art makes a poster in its window (18:00–23:00 by default) of the
 first show in Stasera's "Tonight": the backdrop, the logo or the title, and the season and episode. If there's nothing
 tonight, there's no poster.
 
-Tonight's show has its own "Turn the TV on first", which works like the morning picture's.
+Tonight's show has its own week and its own "Turn the TV on", like the morning picture's.
+
+## The schedule
+
+Each of the two pictures has a week on the add-on's page: for every day, on or off, and the window from and until.
+What happens around the windows:
+
+- **Turn the TV on** (per picture, with `tv_entity`): when the window starts and the TV is off, Home Assistant turns it
+  on, and the picture comes up in Art Mode. Within the window it's turned on again when someone comes home
+  (`home_entity`) or `sleep_entity` goes off. If the TV is already on, whatever it shows stays. If it doesn't come on
+  (off the network), it's tried three times, five minutes apart.
+- **When the window ends,** the TV goes off if it's in Art Mode.
+- **Art Mode timer outside the windows** (120 min by default; 0: never): Art Mode you turn on yourself goes off after
+  that long, counted from when it came on.
+- **Turn off when nobody is home** (on by default): the TV goes off from Art Mode as soon as `home_entity` says nobody
+  is home.
+- **When everyone's asleep** (`sleep_entity` in the configuration, an entity that's `on` then): the TV goes off from
+  Art Mode, and nothing turns it on until the entity is off again. If that happens inside a window, the TV comes on
+  right away.
+- **Turn off the TV's own Art Mode timer** (on by default): the TV's "Sleep After" would otherwise put it in standby
+  after an hour, whatever the schedule says. The page shows what the TV's timer is at.
+
+Frame Art only ever turns the TV off when it's in Art Mode, never while something else is on the screen. It turns the
+TV off by holding power for three seconds, as Home Assistant does for The Frame.
 
 When the TV goes off or out of Art Mode within 10 minutes of the morning picture or tonight's show, or the picture
 came while the TV wasn't in Art Mode, it stays: the rotation counts from when Art Mode is on again, not from when the
@@ -437,7 +459,7 @@ The answers wait for the TV.
 | `GET /category?name=Japan` | Recently shown and 24 at random from the category's ticked sources |
 | `GET /thumb?key=…` | A small copy of a picture from `/category` |
 | `POST /show?key=…` | That picture now, in Art Mode, fixed until the next morning picture |
-| `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_time`, `morning_tv_on`, `tonight`, `tonight_time`, `tonight_tv_on`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only` |
+| `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_days`, `morning_tv_on`, `tonight`, `tonight_days`, `tonight_tv_on`, `art_timer_minutes`, `away_off`, `tv_timer_off`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`. A week is seven `{"on", "from", "until"}`, Monday first; `morning_time` and `tonight_time` from before move every day's start |
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
 | `POST /event` | For Frame TV's events: `{"events": [{"at": <ms>, "kind": "hidden", "detail": "…"}]}`, up to 100 at a time |

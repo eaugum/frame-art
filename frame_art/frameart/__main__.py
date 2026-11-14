@@ -62,6 +62,7 @@ async def run(rot, cfg, port):
     watcher = asyncio.create_task(rot.watch())  # back to Frame TV when Art Mode goes off
     power = asyncio.create_task(rot.watch_power())  # the TV on or off, for the event log
     music = asyncio.create_task(rot.follow())  # Follow the music, from Home Assistant
+    schedule = asyncio.create_task(rot.guard())  # the TV on and off by the week's windows
     language = asyncio.create_task(i18n.keep(rot.ha))  # Home Assistant's language, with auto
     try:
         await rot.run()
@@ -70,6 +71,7 @@ async def run(rot, cfg, port):
         watcher.cancel()
         power.cancel()
         music.cancel()
+        schedule.cancel()
         language.cancel()
 
 

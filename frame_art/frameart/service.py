@@ -2,9 +2,10 @@
 uploads removed. It remembers in state.json what it uploaded (only those are ever deleted), what it showed lately
 and when, so a restart of the Pi or the TV picks up where it was.
 
-Two pictures we make have a time of their own (AUG-1447): Morgenbildet, with the date and the weather, at morning_time
-(07:00), and tonight's show from Stasera as a poster at tonight_time (18:00). Each is shown once a day, as soon as its
-time comes; the rotation goes on after it.
+Two pictures we make have a time of their own (AUG-1447): Morgenbildet, with the date and the weather, and tonight's
+show from Stasera as a poster. Each has a window for every day of the week (morning_days, tonight_days) and is shown
+once a day within it; outside it, it's skipped. guard() turns the TV on and off around the windows, and only ever off
+from Art Mode.
 
 The rotation draws from the sources that are ticked on the add-on's page (sources_off are the others); they're grouped
 in categories only to be found. A picture chosen on the add-on's page (a fixed picture) stands until the next Morgenbildet,
@@ -54,6 +55,11 @@ OWN = ("saver", "music")  # pictures of the moment: not in "Recently shown", and
 MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
 TV_ON_WAIT = 30  # seconds from Home Assistant turning the TV on until Art Mode answers
+WOKE_MINUTES = 10  # this soon after the schedule turned the TV on, its picture may put it in Art Mode
+GUARD_LOOK = 20  # seconds between the schedule's looks at the TV and Home Assistant
+ON_TRIES = 3  # a window's tries to turn the TV on when it doesn't come on (off the network); then not that day
+TIMER_LOOK = 6 * 3600  # the TV's own Art Mode timer is looked at again this often while it's in Art Mode
+DEFAULT_UNTIL = {"morning": "10:00", "tonight": "23:00"}  # a window's end before the days were set
 WAKE_WAIT = 90  # seconds the page's "Turn the TV on" waits for the TV to say it's on
 POWER_LOOK = 20  # seconds between asking the TV whether it's on, for the event log (AUG-1523)
 SEEN = {"power_on": "the TV came on", "power_off": "the TV went off", "art_mode_on": "Art Mode on",
@@ -64,14 +70,39 @@ def _bool(v):
     return v if isinstance(v, bool) else None
 
 
+def _hhmm(v):
+    return datetime.time.fromisoformat(v).strftime("%H:%M")
+
+
+def _days(v):
+    """A week, Monday first: seven {on, from, until}, each window within a day."""
+    if not isinstance(v, list) or len(v) != 7:
+        return None
+    out = []
+    for d in v:
+        if not isinstance(d, dict) or not isinstance(d.get("on"), bool):
+            return None
+        start, end = _hhmm(d["from"]), _hhmm(d["until"])
+        if start >= end:
+            return None
+        out.append({"on": d["on"], "from": start, "until": end})
+    return out
+
+
 # What the add-on's page can change: name -> (default, check)
 SETTINGS = {
     "interval_minutes": (60, lambda v: int(v) if 5 <= int(v) <= 1440 else None),
     "keep": (3, lambda v: int(v) if 1 <= int(v) <= 20 else None),  # our own pictures left on the TV
     "morning": (True, _bool),
-    "morning_time": ("07:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
+    "morning_time": ("07:00", _hhmm),  # before the days: now the start of every day's window
     "tonight": (True, _bool),
-    "tonight_time": ("18:00", lambda v: datetime.time.fromisoformat(v).strftime("%H:%M")),
+    "tonight_time": ("18:00", _hhmm),
+    # The week: when each picture has its window, day by day; outside it, it's skipped that day
+    "morning_days": (None, _days),
+    "tonight_days": (None, _days),
+    "art_timer_minutes": (120, lambda v: int(v) if 0 <= int(v) <= 1440 else None),  # outside the windows; 0: never
+    "away_off": (True, _bool),  # the TV off from Art Mode when nobody's home (home_entity)
+    "tv_timer_off": (True, _bool),  # the TV's own Art Mode timer off, so the schedule decides
     "mode": ("shuffle", lambda v: v if v in MODES else None),
     "category": ("", lambda v: str(v).strip()),
     "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),  # before sources_off
@@ -88,7 +119,7 @@ SETTINGS = {
     # from when it was only the music; it's kept for switch.frame_art_music_home_only
     "music_home_only": (True, _bool),
 }
-SCHEDULE = ("interval_minutes", "morning", "morning_time", "tonight", "tonight_time")
+SCHEDULE = ("interval_minutes", "morning", "morning_time", "morning_days", "tonight", "tonight_time", "tonight_days")
 
 
 class State:
@@ -139,7 +170,6 @@ class Rotation:
         self.saver = False  # Frame TV's screensaver is on, until Art Mode goes off
         self.saver_minutes = None  # how often the picture changes meanwhile, from Frame TV
         self.back_at = 0  # when Frame TV was last opened; the TV says "off" twice
-        self.away_logged = None  # the day "nobody home" was last in the log
         self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
         self.ha = music.HomeAssistant(cfg)
         i18n.setup(cfg)
@@ -150,6 +180,15 @@ class Rotation:
         self.seen = {"power": None, "art_mode": None}  # what the TV was last seen doing; None: not known
         self.art_while_off = None  # Art Mode as heard while the TV counts as off; used if it turns out to be on
         self.waiting = False  # the rotation waits for Art Mode (AUG-1526)
+        # The schedule
+        self.art_since = None  # when Art Mode came on, for art_timer_minutes
+        self.woke_at = 0  # when the schedule turned the TV on: its picture may put it in Art Mode
+        self.was_home, self.was_asleep, self.was_window = None, None, None  # as last looked at
+        self.on_retry_at, self.on_tries = 0, {}  # the TV didn't come on: tried again after this; tries per window
+        self.off_retry_at = 0  # holding power didn't turn it off: not again before this
+        self.turning_off_until = 0  # Art Mode going off now is ours: back_app isn't opened
+        self.timer_at = 0  # when the TV's own Art Mode timer is looked at next
+        self.tv_timer = None  # what it was last seen at ("off", "60" ...)
         self._from_categories()
 
     def _from_categories(self):
@@ -181,7 +220,9 @@ class Rotation:
         self.cfg.update(changes)
 
     def settings(self):
-        return {k: self.cfg.get(k, default) for k, (default, _) in SETTINGS.items()}
+        out = {k: self.cfg.get(k, default) for k, (default, _) in SETTINGS.items()}
+        out.update(morning_days=self.days("morning"), tonight_days=self.days("tonight"))
+        return out
 
     def schedule(self):
         return {k: v for k, v in self.settings().items() if k in SCHEDULE}
@@ -208,6 +249,10 @@ class Rotation:
             clean.update(mode="shuffle", category=c, sources_off=[s.name for s in self.sources if s.category != c])
         if "sources_off" in clean:  # a source renamed or gone in the options is forgotten
             clean["sources_off"] = [n for n in dict.fromkeys(clean["sources_off"]) if n in self.by_name]
+        for kind in MADE:  # a start time from an older caller moves every day's window that it fits
+            if kind + "_time" in clean and kind + "_days" not in clean and self.cfg.get(kind + "_days"):
+                clean[kind + "_days"] = [dict(d, **{"from": clean[kind + "_time"]})
+                                         if clean[kind + "_time"] < d["until"] else d for d in self.days(kind)]
         if ("mode" in clean or "sources_off" in clean) and self.cfg.get("fixed"):
             clean["fixed"] = None
         self._keep(clean)
@@ -239,6 +284,10 @@ class Rotation:
 
     def _next_morning(self):
         now = self.now()
+        for i in range(8):
+            w = self._window("morning", now.date() + datetime.timedelta(days=i))
+            if w and w[0] > now:
+                return w[0].timestamp()
         at = datetime.datetime.combine(now.date(), self._clock("morning_time"), tzinfo=self.zone)
         if at <= now:
             at = datetime.datetime.combine(now.date() + datetime.timedelta(days=1), self._clock("morning_time"),
@@ -350,21 +399,41 @@ class Rotation:
         except ValueError:
             return datetime.time.fromisoformat(SETTINGS[name][0])
 
-    def due(self):
-        """'tonight' or 'morning' when its time has come and it hasn't been shown today, else None."""
+    def days(self, kind):
+        """The week for morning or tonight; before it was set, every day from <kind>_time to DEFAULT_UNTIL."""
+        if self.cfg.get(kind + "_days"):
+            return self.cfg[kind + "_days"]
+        start = self._clock(kind + "_time").strftime("%H:%M")
+        end = DEFAULT_UNTIL[kind] if DEFAULT_UNTIL[kind] > start else "23:59"
+        return [{"on": True, "from": start, "until": end} for _ in range(7)]
+
+    def _window(self, kind, day):
+        """(start, end) of kind's window on that date, or None: switched off, or not that day."""
+        if not self.cfg.get(kind, True) or (kind == "tonight" and self.stasera.state() != "linked"):
+            return None
+        d = self.days(kind)[day.weekday()]
+        if not d["on"]:
+            return None
+        at = lambda hhmm: datetime.datetime.combine(day, datetime.time.fromisoformat(hhmm), tzinfo=self.zone)
+        return at(d["from"]), at(d["until"])
+
+    def window_now(self):
+        """(kind, start, end) of the window we're in now, or None."""
         now = self.now()
-        today, clock = now.date().isoformat(), now.time()
-        evening = self._clock("tonight_time")
-        for kind, on, start, end in (
-                ("tonight", self.cfg.get("tonight", True) and self.stasera.state() == "linked", evening,
-                 datetime.time.max),
-                ("morning", self.cfg.get("morning", True), self._clock("morning_time"), evening)):
-            if not on or not start <= clock < end or self.state["made"].get(kind) == today:
-                continue
-            if time.time() - self.state["tried"].get(kind, 0) < MADE_RETRY_MINUTES * 60:
-                continue
-            return kind
+        for kind in ("tonight", "morning"):
+            w = self._window(kind, now.date())
+            if w and w[0] <= now < w[1]:
+                return (kind,) + w
         return None
+
+    def due(self):
+        """'tonight' or 'morning' while we're in its window and it hasn't been shown today, else None."""
+        w = self.window_now()
+        if not w or self.state["made"].get(w[0]) == self.now().date().isoformat():
+            return None
+        if time.time() - self.state["tried"].get(w[0], 0) < MADE_RETRY_MINUTES * 60:
+            return None
+        return w[0]
 
     def make(self, kind):
         """(jpeg, label, key) for Morgenbildet or tonight's poster, or None (and it's tried again later)."""
@@ -606,8 +675,9 @@ class Rotation:
             if kind in MADE and not art_mode:
                 self._unseen(kind, "the TV isn't in Art Mode")
             if kind in MADE:
-                if self.now().time() >= self._clock(kind + "_time"):
-                    self.state["made"][kind] = day  # one asked for before its time doesn't use up today's
+                w = self._window(kind, self.now().date())
+                if w and self.now() >= w[0]:
+                    self.state["made"][kind] = day  # one asked for before its window doesn't use up today's
             elif kind not in OWN:
                 self.state["history"] = (self.state["history"] + [{"key": key, "label": label,
                                                                     "at": int(time.time())}])[-HISTORY:]
@@ -688,6 +758,10 @@ class Rotation:
         if was == on:
             return
         self.seen[name] = on
+        if name == "art_mode":
+            self.art_since = (self.art_since or time.time()) if on else None
+        elif not on:
+            self.art_since, self.timer_at = None, 0
         if on and name == "art_mode":
             self.wake.set()  # a rotation that waited for Art Mode goes on
         what = "%s_%s" % (name, "on" if on else "off")
@@ -800,7 +874,7 @@ class Rotation:
         and the app. Open back_app from the options instead (Frame TV: FrameTVapp.FrameTV), when the TV is on (not going
         to standby). Without it, nothing."""
         app = (self.cfg.get("back_app") or "").strip()
-        if not app or time.time() - self.back_at < 10:
+        if not app or time.time() - self.back_at < 10 or time.time() < self.turning_off_until:
             return
         self.back_at = time.time()
         await asyncio.sleep(1)
@@ -879,38 +953,6 @@ class Rotation:
         log.info("the music stopped: back to %s", b["label"])
         events.add("music", "back", "back to %s" % b["label"])
 
-    async def _tv_on(self, kind):
-        """Before Morgenbildet or tonight's show: the TV on through Home Assistant when it's off and someone is home,
-        once a day each. True when we turned it on today, so the picture goes to Art Mode (and on a try after that)."""
-        today = self.now().date().isoformat()
-        done = "tv_on" if kind == "morning" else "tv_on_" + kind  # "tv_on" from before tonight's
-        if self.state["made"].get(done) == today:
-            return True
-        if not self.cfg.get(kind + "_tv_on", True) or not await self.tv_off() or not await self._home():
-            return False
-        if not await self.turn_on():
-            return False
-        self.state["made"][done] = today
-        self.state.save()
-        return True
-
-    async def _home(self):
-        """Someone at home, or the switch is off; when Home Assistant doesn't answer, yes rather than no picture."""
-        if not self.cfg.get("music_home_only", True):
-            return True
-        entity = self.home_entity()
-        try:
-            home = await asyncio.to_thread(self.ha.home, entity)
-        except Exception as e:
-            log.info("no state for %s (%s: %s); turning the TV on anyway", entity, type(e).__name__, e)
-            events.add("tv", "home_unknown", "no state for %s; turning the TV on anyway" % entity)
-            return True
-        if not home and self.away_logged != self.now().date():
-            log.info("nobody home (%s): the TV stays off, and the picture waits until it's on", entity)
-            events.add("tv", "stays_off", "nobody home (%s): the TV stays off, and the picture waits" % entity)
-            self.away_logged = self.now().date()
-        return home
-
     def home_entity(self):
         return self.cfg.get("home_entity", "zone.home")  # saved options from before 0.21.0 lack it
 
@@ -936,6 +978,167 @@ class Rotation:
         events.add("tv", "turned_on", "the TV was off: turned it on through Home Assistant (%s)" % entity)
         await asyncio.sleep(TV_ON_WAIT)
         return True
+
+    # MARK: - The schedule: the TV on and off
+
+    async def guard(self):
+        """The schedule's own work, every GUARD_LOOK seconds: the TV on when a window starts, and when someone comes
+        home or wakes up in one; the TV off from Art Mode when a window ends, after art_timer_minutes outside them,
+        when nobody's home and when everyone's asleep (sleep_entity); and the TV's own Art Mode timer off. It only
+        ever turns the TV off from Art Mode: something else on the screen is left alone."""
+        if not self.cfg.get("tv_host"):
+            return
+        while True:
+            try:
+                await self._guard()
+            except Exception as e:
+                log.warning("the schedule: %s: %s", type(e).__name__, e)
+            await asyncio.sleep(GUARD_LOOK)
+
+    async def _guard(self):
+        today = self.now().date().isoformat()
+        w = self.window_now()
+        kind = w[0] if w else None
+        home = await asyncio.to_thread(self._is_home)
+        asleep = await asyncio.to_thread(self._is_asleep)
+        arrived = self.was_home is False and home is True
+        woke = self.was_asleep is True and asleep is False
+        ended = self.was_window if self.was_window and self.was_window != kind else None
+        if home is not None:
+            self.was_home = home
+        if asleep is not None:
+            self.was_asleep = asleep
+        self.was_window = kind
+
+        if self.seen["power"] and self.seen["art_mode"]:
+            why = None
+            if asleep:
+                why = "everyone's asleep (%s)" % self.cfg.get("sleep_entity")
+            elif home is False and self.cfg.get("away_off", True):
+                why = "nobody home (%s)" % self.home_entity()
+            elif ended and not kind:
+                why = "%s's time is over" % ("the morning picture" if ended == "morning" else "tonight's show")
+            elif not kind:
+                minutes = int(self.cfg.get("art_timer_minutes", SETTINGS["art_timer_minutes"][0]))
+                if minutes and self.art_since and time.time() - self.art_since >= minutes * 60:
+                    why = "Art Mode has been on for %d min" % minutes
+            if why and time.time() >= self.off_retry_at:
+                await self.turn_off(why)
+                return
+            if time.time() >= self.timer_at:
+                await self._tv_timer()
+
+        home_ok = home is not False or not self.cfg.get("music_home_only", True)
+        if not kind or asleep or not home_ok or not self.cfg.get("tv_entity") or \
+                not self.cfg.get(kind + "_tv_on", True) or time.time() < self.on_retry_at:
+            return
+        first = self.state["made"].get("on_" + kind) != today  # once a window, when it starts or as soon as it may
+        if first or arrived or woke:
+            name = "the morning picture" if kind == "morning" else "tonight's show"
+            why = "someone came home" if arrived else "nobody's asleep any more" if woke else "%s, %s–%s" % (
+                name, w[1].strftime("%H:%M"), w[2].strftime("%H:%M"))
+            with events.because(why):
+                await self._wake_for(kind, today)
+
+    def _is_home(self):
+        """Someone home, from home_entity (always without one); None when Home Assistant doesn't answer."""
+        if not self.ha.ready():
+            return None
+        try:
+            return self.ha.home(self.home_entity())
+        except Exception:
+            return None
+
+    def _is_asleep(self):
+        """sleep_entity is on; False without one, None when Home Assistant doesn't answer."""
+        entity = (self.cfg.get("sleep_entity") or "").strip()
+        if not entity:
+            return False
+        if not self.ha.ready():
+            return None
+        try:
+            return self.ha.state(entity)["state"] == "on"
+        except Exception:
+            return None
+
+    async def _wake_for(self, kind, today):
+        """The TV on for kind's window, when it's off; then its picture (or Art Mode, when it was shown today)."""
+        done = "on_" + kind
+        off = await self.tv_off()
+        if off is None:
+            return
+        if not off:  # on already: whatever it shows stays, and the window doesn't turn it on later
+            self.state["made"][done] = today
+            self.state.save()
+            return
+        if not await self.turn_on():
+            self.on_retry_at = time.time() + RETRY_MINUTES * 60
+            return
+        on = False
+        for _ in range(10):
+            on = await asyncio.to_thread(tvmod.powered_on, self.cfg["tv_host"], 4)
+            if on:
+                break
+            await asyncio.sleep(3)
+        if not on:
+            tries = self.on_tries[(kind, today)] = self.on_tries.get((kind, today), 0) + 1
+            last = tries >= ON_TRIES
+            log.info("the TV didn't come on (%d of %d)", tries, ON_TRIES)
+            events.add("tv", "turn_on_failed", "the TV didn't come on (off the network?); %s" % (
+                "not trying again today" if last else "trying again in %d min" % RETRY_MINUTES))
+            if last:
+                self.state["made"][done] = today
+                self.state.save()
+            self.on_retry_at = time.time() + RETRY_MINUTES * 60
+            return
+        self.state["made"][done] = today
+        self.state.save()
+        self.woke_at, self.retry_at = time.time(), 0
+        if self.state["made"].get(kind) == today:  # its picture was on the wall today: Art Mode with what it has
+            try:
+                await self.art_mode()
+            except Exception as e:
+                log.info("no Art Mode after turning the TV on (%s: %s)", type(e).__name__, e)
+        self.wake.set()  # the timer shows the picture now
+
+    async def turn_off(self, why):
+        """The TV off from Art Mode; never when something else is on the screen."""
+        host = self.cfg["tv_host"]
+        async with self.lock:
+            async with TV(host, os.path.join(self.data, "token.txt")) as tv:
+                if not await tv.in_art_mode():
+                    self._seen("art_mode", False)
+                    return False
+                self.turning_off_until = time.time() + 30
+                with events.because(why):
+                    await tv.power_off()
+        log.info("turned the TV off: %s", why)
+        events.add("tv", "turned_off", "turned the TV off from Art Mode: %s" % why, why=why)
+        for _ in range(10):
+            await asyncio.sleep(3)
+            if not await asyncio.to_thread(tvmod.powered_on, host, 4):
+                return True
+        log.info("the TV is still on after holding power")
+        events.add("tv", "turn_off_failed", "the TV is still on after holding power; trying again in %d min" %
+                   RETRY_MINUTES, why=why)
+        self.off_retry_at = time.time() + RETRY_MINUTES * 60
+        return False
+
+    async def _tv_timer(self):
+        """The TV's own Art Mode timer ("Sleep After") off, with tv_timer_off, so the schedule decides; read either
+        way for the page."""
+        self.timer_at = time.time() + 600  # until it answers
+        async with self.lock:
+            async with TV(self.cfg["tv_host"], os.path.join(self.data, "token.txt")) as tv:
+                value, valid = await tv.motion_timer()
+                if self.cfg.get("tv_timer_off", True) and value != "off" and "off" in valid:
+                    await tv.set_motion_timer("off")
+                    log.info("the TV's own Art Mode timer was %s; turned it off", value)
+                    events.add("tv", "tv_timer_off", "the TV's own Art Mode timer was %s min: turned it off, so the "
+                               "schedule decides" % value, why="")
+                    value = "off"
+        self.tv_timer = value
+        self.timer_at = time.time() + TIMER_LOOK
 
     async def wake_up(self):
         """The page's "Turn the TV on": on through Home Assistant, then back_app (Frame TV) on the screen. Doesn't wait
@@ -1006,7 +1209,10 @@ class Rotation:
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing,
                 "busy": self.making.locked() or self.lock.locked(),
                 "saver": self.saver, "showing_key": self.showing_key(), "tv_entity": bool(self.cfg.get("tv_entity")),
-                "home_entity": self.home_entity(),
+                "home_entity": self.home_entity(), "sleep_entity": self.cfg.get("sleep_entity") or "",
+                "tv_timer": self.tv_timer,
+                "window": {"kind": w[0], "from": w[1].strftime("%H:%M"), "until": w[2].strftime("%H:%M")}
+                if (w := self.window_now()) else None,
                 "tv": {"power": self.seen["power"], "activity": self.activity(),
                        "art_mode": False if self.seen["power"] is False else self.seen["art_mode"]},
                 "music": {k: self.music[k] for k in ("album", "artist", "title")}
@@ -1116,8 +1322,9 @@ class Rotation:
     def _reason(self, want):
         """Why the timer changes the picture now, for the event log."""
         if want in MADE:
-            return "%s at %s" % ("the morning picture" if want == "morning" else "tonight's show",
-                                 self._clock(want + "_time").strftime("%H:%M"))
+            w = self._window(want, self.now().date())
+            return "%s%s" % ("the morning picture" if want == "morning" else "tonight's show",
+                             ", %s–%s" % (w[0].strftime("%H:%M"), w[1].strftime("%H:%M")) if w else "")
         if want == "music":
             return "Follow the music"
         return "%s, every %g min" % ("the screensaver" if want == "saver" else "the rotation", self.interval() / 60)
@@ -1164,8 +1371,10 @@ class Rotation:
                 if self.waiting and want in ("rotation", "saver"):
                     why = "Art Mode came on again"
                 self.waiting = False
-                with events.because(why):
-                    woke = want in MADE and await self._tv_on(want)
+                # Art Mode only just after the schedule turned the TV on: never over something else
+                # (and not once it's been seen out of Art Mode, after the first couple of minutes)
+                since = time.time() - self.woke_at
+                woke = want in MADE and since < WOKE_MINUTES * 60 and (since < 120 or self.seen["art_mode"] is not False)
                 job = self.change(art_mode=woke, what=want if want in OWN else None)
             try:
                 with events.because(why):

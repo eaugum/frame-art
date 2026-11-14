@@ -1,5 +1,16 @@
 # Changes
 
+## 0.36.0
+
+- The schedule: the morning picture and tonight's show each have a week on the add-on's page, with on, from and until
+  for every day. Outside its window a picture is skipped that day, so a morning picture no longer comes in the
+  afternoon.
+- The TV is turned on when a window starts, and again when someone comes home or wakes up within it. A picture only
+  puts the TV in Art Mode just after Frame Art turned it on, never over something else on the screen.
+- The TV goes off from Art Mode when a window ends, when nobody is home, when everyone's asleep (the new option
+  `sleep_entity`), and after the Art Mode timer outside the windows (120 min by default). Never while something else
+  is on the screen.
+- The TV's own Art Mode timer ("Sleep After") is turned off, so the schedule decides; the page shows what it's at.
 ## 0.35.0
 
 - "Choose picture": the × in a thumbnail's corner leaves that picture out for good, after a question. `POST /never` takes
