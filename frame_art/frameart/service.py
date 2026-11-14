@@ -1003,12 +1003,14 @@ class Rotation:
         asleep = await asyncio.to_thread(self._is_asleep)
         arrived = self.was_home is False and home is True
         woke = self.was_asleep is True and asleep is False
-        ended = self.was_window if self.was_window and self.was_window != kind else None
+        # A window that's over by the clock: not one the page just moved or switched off
+        ended = self.was_window[0] if self.was_window and self.was_window[0] != kind and \
+            self.now() >= self.was_window[1] else None
         if home is not None:
             self.was_home = home
         if asleep is not None:
             self.was_asleep = asleep
-        self.was_window = kind
+        self.was_window = (kind, w[2]) if w else None
 
         if self.seen["power"] and self.seen["art_mode"]:
             why = None

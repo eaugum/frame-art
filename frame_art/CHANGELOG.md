@@ -1,5 +1,11 @@
 # Changes
 
+## 0.36.1
+
+- Moving a window on the add-on's page so that now falls outside it no longer turns the TV off: a window ends only
+  when its end time has passed.
+- The event log says the right version when the add-on starts.
+
 ## 0.36.0
 
 - The schedule: the morning picture and tonight's show each have a week on the add-on's page, with on, from and until
