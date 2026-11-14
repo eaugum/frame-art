@@ -1,5 +1,10 @@
 # Changes
 
+## 0.36.2
+
+- When Art Mode or the TV comes on, the picture on the wall gets a whole interval from then, instead of changing at
+  once because its time ran out while nobody saw it.
+
 ## 0.36.1
 
 - Moving a window on the add-on's page so that now falls outside it no longer turns the TV off: a window ends only

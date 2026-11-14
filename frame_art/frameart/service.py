@@ -180,6 +180,8 @@ class Rotation:
         self.seen = {"power": None, "art_mode": None}  # what the TV was last seen doing; None: not known
         self.art_while_off = None  # Art Mode as heard while the TV counts as off; used if it turns out to be on
         self.waiting = False  # the rotation waits for Art Mode (AUG-1526)
+        self.counts_from = 0  # the TV or Art Mode just came on: the interval counts from then, not from the change
+        self.art_known = False  # Art Mode has been heard since the start: the first look isn't Art Mode coming on
         # The schedule
         self.art_since = None  # when Art Mode came on, for art_timer_minutes
         self.woke_at = 0  # when the schedule turned the TV on: its picture may put it in Art Mode
@@ -758,10 +760,16 @@ class Rotation:
         if was == on:
             return
         self.seen[name] = on
+        # Art Mode coming on (not the first look, not the art channel opening again) or the TV coming on
+        fresh = on and ((name == "art_mode" and self.art_since is None and self.art_known)
+                        or (name == "power" and was is False))
         if name == "art_mode":
             self.art_since = (self.art_since or time.time()) if on else None
+            self.art_known = True
         elif not on:
             self.art_since, self.timer_at = None, 0
+        if fresh:
+            self._count_from_now("Art Mode came on" if name == "art_mode" else "the TV came on")
         if on and name == "art_mode":
             self.wake.set()  # a rotation that waited for Art Mode goes on
         what = "%s_%s" % (name, "on" if on else "off")
@@ -776,6 +784,17 @@ class Rotation:
         if name == "power" and on and self.art_while_off is not None:
             art, self.art_while_off = self.art_while_off, None
             self._seen("art_mode", art)
+
+    def _count_from_now(self, why):
+        """The picture on the wall gets a whole interval from now, rather than changing the moment it's seen."""
+        self.counts_from = time.time()
+        if self.waiting:
+            self.waiting = False
+            events.add("rotation", "counts", "a new picture in %g min" % (self.interval() / 60), why=why)
+
+    def due(self):
+        """When the rotation changes the picture next."""
+        return max(self.state["changed"], self.counts_from) + self.interval()
 
     def _saver_over(self, why):
         if self.saver:
@@ -1201,7 +1220,7 @@ class Rotation:
         # no next change while the music or a fixed picture stands, or while it waits for Art Mode
         rotating = not fixed and not self.playing() and not self.waiting
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
-                "next": int(self.state["changed"] + interval) if self.state["changed"] and rotating else None,
+                "next": int(self.due()) if self.state["changed"] and rotating else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
                 "source_categories": {s.name: s.category for s in self.sources},
                 "pools": pools, "schedule": self.schedule(), "settings": self.settings(),
@@ -1347,7 +1366,7 @@ class Rotation:
             except asyncio.TimeoutError:
                 pass
         while True:
-            wait = self.state["changed"] + self.interval() - time.time()  # the interval can change on the page
+            wait = self.due() - time.time()  # the interval can change on the page
             want = self.wanted()
             if want == "music" and time.time() < self.retry_at:
                 await self._nap(self.retry_at - time.time())  # a new song doesn't try a sleeping TV again sooner
