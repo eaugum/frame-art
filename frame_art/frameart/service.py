@@ -795,7 +795,7 @@ class Rotation:
             self.waiting = False
             events.add("rotation", "counts", "a new picture in %g min" % (self.interval() / 60), why=why)
 
-    def due(self):
+    def change_at(self):
         """When the rotation changes the picture next."""
         return max(self.state["changed"], self.counts_from) + self.interval()
 
@@ -1242,7 +1242,7 @@ class Rotation:
         # no next change while the music or a fixed picture stands, or while it waits for Art Mode
         rotating = not fixed and not self.playing() and not self.waiting
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
-                "next": int(self.due()) if self.state["changed"] and rotating else None,
+                "next": int(self.change_at()) if self.state["changed"] and rotating else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
                 "source_categories": {s.name: s.category for s in self.sources},
                 "pools": pools, "schedule": self.schedule(), "settings": self.settings(),
@@ -1388,7 +1388,7 @@ class Rotation:
             except asyncio.TimeoutError:
                 pass
         while True:
-            wait = self.due() - time.time()  # the interval can change on the page
+            wait = self.change_at() - time.time()  # the interval can change on the page
             want = self.wanted()
             if want == "music" and time.time() < self.retry_at:
                 await self._nap(self.retry_at - time.time())  # a new song doesn't try a sleeping TV again sooner

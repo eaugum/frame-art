@@ -1,5 +1,10 @@
 # Changes
 
+## 0.37.1
+
+- Fixed: since 0.36.2 the add-on sent tonight's show to the TV again every 15 seconds, as two checks had the same name.
+- The event log and the page say the right version again.
+
 ## 0.37.0
 
 - New picture from the remote: in Art Mode, right and then OK in the TV's own menu gives a new picture, like "New
