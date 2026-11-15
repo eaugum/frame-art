@@ -255,12 +255,20 @@ Open **Frame Art** in the sidebar. A line under the title says what's in charge 
   (a backdrop with a logo after all, or a picture you don't like). Another one comes at once.
 
 The **Settings** tab sets how often the picture changes, how many of Frame Art's pictures stay on the TV, the times for
-the morning picture and tonight's show, and the screensaver, and links the add-on to Stasera.
+the morning picture and tonight's show and what the morning picture shows, and the screensaver, and links the add-on
+to Stasera. Two more are for the rotation:
 
-The **Debug** tab shows a day at a time; ‹ and › go between the days. At the top is a timeline: when the TV was on, in
+- **Don't repeat a picture for** (0 days by default): a picture shown within that many days isn't drawn again while its
+  source has others; when they've all been shown, the one shown longest ago comes. With 0, a picture only waits for the
+  last 200 changes.
+- **Pause the rotation**: the picture on the wall stays. The morning picture, tonight's show, the music and "New
+  picture" still work; resumed, the picture gets a whole interval before the next one.
+
+The **Debug** tab shows a day at a time; ‹ and › go between the days, and "Today" comes back to today. At the top is a timeline: when the TV was on, in
 Art Mode, showing Frame TV, the screensaver and the music, and when the morning picture and tonight's show came (striped:
 not known). Under it is what the add-on did and what it saw the TV do, newest first: when, what and why (the timer, the
-morning picture at 07:00, Home Assistant, Frame TV or the page). A button per source shows or hides its events.
+morning picture at 07:00, Home Assistant, Frame TV or the page). A button per source with events that day shows only
+that source's; pressed again, or "All", shows them all.
 "Export as JSON" downloads all of it. The last 7 days are kept in `/data/events.jsonl`.
 
 The add-on asks the TV every 20 seconds whether it's on, and hears from the TV when Art Mode goes on or off. Only
@@ -294,6 +302,9 @@ weather:
   morning,
 - on the right, when there's something to show: today's events from `calendars`, what's new in Stasera today, and the
   electricity price hour by hour as bars, with the cheapest and dearest two hours for the rest of the day.
+
+Each part (the weather, the calendar, the electricity price, the name day and what's new in Stasera) can be turned off
+under the morning picture on the Settings tab. Without the weather the surface is grey.
 
 The price works with a Nord Pool sensor (`raw_today` or `today`) or Tibber's price sensor
 (`sensor.<home>_electricity_price`), whose prices come from `tibber.get_prices`. Without a weather entity, or if it
@@ -376,6 +387,7 @@ to set up. Without Mosquitto it runs as before.
 | `select.frame_art_category` | The categories; choosing one ticks only its sources |
 | `number.frame_art_interval` | Minutes between the changes |
 | `switch.frame_art_morning`, `_tonight` | The morning picture and tonight's show |
+| `switch.frame_art_paused` | Pause the rotation |
 | `switch.frame_art_screensaver`, `_screensaver_stasera`, `_music` | The screensaver and Follow the music |
 | `switch.frame_art_music_home_only` | Only when someone is home: Follow the music (the schedule only turns the TV on when someone is home anyway) |
 | `sensor.frame_art_showing` | The picture's title, with the source, the category, when it changed and the next change as attributes |
@@ -470,7 +482,7 @@ The answers wait for the TV.
 | `GET /category?name=Japan` | Recently shown and 24 at random from the category's ticked sources |
 | `GET /thumb?key=…` | A small copy of a picture from `/category` |
 | `POST /show?key=…` | That picture now, in Art Mode, fixed until the next morning picture |
-| `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_days`, `morning_tv_on`, `tonight`, `tonight_days`, `tonight_tv_on`, `night_timer_minutes`, `away_off`, `tv_timer_off`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`. A week is seven `{"on", "from", "until"}`, Monday first; `morning_time` and `tonight_time` from before move every day's start |
+| `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_days`, `morning_tv_on`, `tonight`, `tonight_days`, `tonight_tv_on`, `night_timer_minutes`, `away_off`, `tv_timer_off`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`, `repeat_days` (0–365), `paused`, `morning_weather`, `morning_calendar`, `morning_price`, `morning_names`, `morning_stasera`. A week is seven `{"on", "from", "until"}`, Monday first; `morning_time` and `tonight_time` from before move every day's start |
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
 | `POST /event` | For Frame TV's events: `{"events": [{"at": <ms>, "kind": "hidden", "detail": "…"}]}`, up to 100 at a time |

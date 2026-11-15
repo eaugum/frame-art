@@ -53,6 +53,7 @@ MADE = ("morning", "tonight")
 EVENT_SOURCES = ("morning", "tonight", "music", "saver")  # a picture's kind -> the event log's source; else rotation
 MODES = ("shuffle", "category")  # "category" only from older callers: it becomes that category's sources
 SAVER = {"watching": "watching", "wantToStart": "want_to_start"}  # Stasera's lists for the screensaver -> the heading
+REPEAT_DAYS_MAX = 365  # how long "shown_at" remembers a picture
 HISTORY = 100  # pictures from the rotation remembered for "Recently shown"
 THUMBS = 600  # small copies kept for the add-on's page
 OWN = ("saver", "music")  # pictures of the moment: not in "Recently shown", and not prepared ahead
@@ -124,6 +125,15 @@ SETTINGS = {
     # Only when someone is home (home_entity in the options): Follow the music and turning the TV on. The name is
     # from when it was only the music; it's kept for switch.frame_art_music_home_only
     "music_home_only": (True, _bool),
+    # Not the same picture again within this many days (0: only not among the last RECENT changes)
+    "repeat_days": (0, lambda v: int(v) if 0 <= int(v) <= REPEAT_DAYS_MAX else None),
+    "paused": (False, _bool),  # the rotation stands still; the schedule, the music and "New picture" still work
+    # What Morgenbildet shows, each part on its own
+    "morning_weather": (True, _bool),
+    "morning_calendar": (True, _bool),
+    "morning_price": (True, _bool),
+    "morning_names": (True, _bool),
+    "morning_stasera": (True, _bool),
 }
 SCHEDULE = ("interval_minutes", "morning", "morning_time", "morning_days", "tonight", "tonight_time", "tonight_days")
 
@@ -160,6 +170,8 @@ class Rotation:
         self.cfg = dict(cfg, **self._saved())
         self.state = State(os.path.join(data_dir, "state.json"))
         self.state.d.setdefault("history", [])
+        if "shown_at" not in self.state.d:  # when each picture from the rotation was last on the wall; from 0.39.0
+            self.state.d["shown_at"] = {h["key"]: h["at"] for h in self.state["history"]}
         self.stasera = Stasera(cfg.get("stasera_url"), data_dir)
         self.sources = sources.from_config(cfg, self.stasera)
         self.by_name = {s.name: s for s in self.sources}
@@ -266,7 +278,10 @@ class Rotation:
                                          if clean[kind + "_time"] < d["until"] else d for d in self.days(kind)]
         if ("mode" in clean or "sources_off" in clean) and self.cfg.get("fixed"):
             clean["fixed"] = None
+        resumed = clean.get("paused") is False and self.cfg.get("paused")
         self._keep(clean)
+        if resumed:  # a whole interval for what's on the wall, rather than a new picture the moment it's resumed
+            self.counts_from = time.time()
         log.info("settings: %s", ", ".join("%s=%s" % kv for kv in sorted(clean.items())))
         return self.settings()
 
@@ -387,6 +402,10 @@ class Rotation:
                 empty.add(src.name)
                 continue
             fresh = [k for k in keys if src.name + ":" + k not in recent[-min(RECENT, len(keys) - 1):]] or keys
+            if self.cfg.get("repeat_days"):  # all of them shown within the days: the one shown longest ago
+                shown, since = self.state["shown_at"], time.time() - self.cfg["repeat_days"] * 86400
+                fresh = [k for k in fresh if shown.get(src.name + ":" + k, 0) < since] or [
+                    min(fresh, key=lambda k: shown.get(src.name + ":" + k, 0))]
             key = random.choice(fresh)
             full = src.name + ":" + key
             try:
@@ -513,7 +532,7 @@ class Rotation:
         today = now.date().isoformat()
         try:
             if kind == "morning":
-                w = self.weather(now)
+                w = self.weather(now) if self.cfg.get("morning_weather", True) else None
                 img, label = made.morning_picture(now, w, self._day(now)), "Morning picture"
             else:
                 items = [i for i in self.stasera.tonight() if i.get("textlessBackdropPath") or i.get("backdropPath")]
@@ -551,12 +570,14 @@ class Rotation:
 
     def _day(self, now):
         """What else Morgenbildet says (today.py); what doesn't answer is left out."""
-        ha = self.ha.ready()
-        return {"names": todaymod.names(now),
-                "events": todaymod.events(self.ha, self.cfg.get("calendars") or [], now) if ha else [],
-                "shows": todaymod.shows(self.stasera, now.date()) if self.stasera.state() == "linked" else [],
+        ha, on = self.ha.ready(), lambda part: self.cfg.get("morning_" + part, True)
+        return {"names": todaymod.names(now) if on("names") else "",
+                "events": todaymod.events(self.ha, self.cfg.get("calendars") or [], now)
+                if ha and on("calendar") else [],
+                "shows": todaymod.shows(self.stasera, now.date())
+                if on("stasera") and self.stasera.state() == "linked" else [],
                 "power": todaymod.power(self.ha, self.cfg["price_entity"], now)
-                if ha and self.cfg.get("price_entity") else None}
+                if ha and on("price") and self.cfg.get("price_entity") else None}
 
     def make_saver(self):
         """(jpeg, label, key) for the screensaver: the next of what we watch and want to start, in turn, or None."""
@@ -754,6 +775,9 @@ class Rotation:
             elif kind not in OWN:
                 self.state["history"] = (self.state["history"] + [{"key": key, "label": label,
                                                                     "at": int(time.time())}])[-HISTORY:]
+                old = time.time() - REPEAT_DAYS_MAX * 86400
+                self.state["shown_at"] = {k: at for k, at in self.state["shown_at"].items() if at >= old}
+                self.state["shown_at"][key] = int(time.time())
             if prepared:
                 self.state.d.pop("next", None)
             self.state.save()
@@ -1353,7 +1377,7 @@ class Rotation:
                                "pictures": sum(counts) if counts else None, "unread": len(names) - len(counts)})
         fixed = self.fixed()
         # no next change while the music or a fixed picture stands, or while it waits for Art Mode
-        rotating = not fixed and not self.playing() and not self.waiting
+        rotating = not fixed and not self.playing() and not self.waiting and not self.cfg.get("paused")
         return {"version": __version__, "showing": self.state.d.get("showing"), "changed": int(self.state["changed"]),
                 "next": int(self.change_at()) if self.state["changed"] and rotating else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
@@ -1513,6 +1537,9 @@ class Rotation:
                 continue
             if want != "music" and (self.state.d.get("music_shown") or self.state.d.get("before")):
                 why, job = "the music stopped", self._after_music(want)
+            elif want == "rotation" and self.cfg.get("paused"):
+                await self._nap(60)  # resumed on the page or from Home Assistant
+                continue
             elif want == "fixed" or (want in MADE and not self.due()) or (want in ("rotation", "saver") and wait > 0):
                 await self._nap(min(wait, 60) if wait > 0 else 60)  # the API moves the time; look each minute
                 continue

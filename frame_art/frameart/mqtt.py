@@ -31,6 +31,7 @@ MODES = {"shuffle": "Shuffle", "fixed": "Fixed picture"}  # -> the select's opti
 SWITCHES = {  # settings
     "morning": "Morning picture",
     "tonight": "Tonight's show",
+    "paused": "Pause the rotation",
     "screensaver": "Screensaver",
     "screensaver_stasera": "Stasera in the screensaver",
     "music": "Follow the music",

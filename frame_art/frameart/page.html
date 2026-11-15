@@ -112,7 +112,7 @@
   .filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 10px; }
   .filters button { padding: 4px 10px; font-size: 13px; }
   .filters button.on { background: #2a2a2a; color: var(--text); font-weight: 400; }
-  .filters button:not(.on) { opacity: .4; }
+  .filters button:not(.on) { opacity: .6; }
   .day { font-size: 13px; color: var(--dim); font-weight: 600; margin: 16px 0 4px; }
   .ev { display: flex; gap: 12px; padding: 6px 0; border-top: 1px solid var(--line); font-size: 14px; }
   .ev time { flex: none; width: 62px; color: var(--faint); font-variant-numeric: tabular-nums; }
@@ -180,11 +180,27 @@
   <section>
     <header><h2 data-t="settings"></h2><span id="saved"></span></header>
     <div class="row"><span data-t="interval"></span><input id="interval_minutes" type="number" min="5" max="1440"> min</div>
+    <div class="row"><span><span data-t="repeat_days"></span><small data-t="repeat_days_note"></small></span>
+      <label><input id="repeat_days" type="number" min="0" max="365"> <b data-t="days_unit" style="font-weight: 400"></b></label></div>
+    <div class="row"><span><span data-t="paused"></span><small data-t="paused_note"></small></span>
+      <label class="switch"><input type="checkbox" data-setting="paused"><i></i></label></div>
     <div class="row"><span><span data-t="keep"></span><small data-t="keep_note"></small></span>
       <input id="keep" type="number" min="1" max="20"></div>
     <div class="row"><span><span data-t="morning"></span><small data-t="morning_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="morning"><i></i></label></div>
     <div class="week" id="morning-week"></div>
+    <div id="morning-parts">
+      <div class="row sub"><span data-t="morning_weather"></span>
+        <label class="switch"><input type="checkbox" data-setting="morning_weather"><i></i></label></div>
+      <div class="row sub"><span data-t="morning_calendar"></span>
+        <label class="switch"><input type="checkbox" data-setting="morning_calendar"><i></i></label></div>
+      <div class="row sub"><span data-t="morning_price"></span>
+        <label class="switch"><input type="checkbox" data-setting="morning_price"><i></i></label></div>
+      <div class="row sub"><span data-t="morning_names"></span>
+        <label class="switch"><input type="checkbox" data-setting="morning_names"><i></i></label></div>
+      <div class="row sub"><span data-t="morning_stasera"></span>
+        <label class="switch"><input type="checkbox" data-setting="morning_stasera"><i></i></label></div>
+    </div>
     <div class="row sub" id="morning-tv"><span><span data-t="tv_on"></span><small></small></span>
       <label class="switch"><input type="checkbox" data-setting="morning_tv_on"><i></i></label></div>
     <div class="row"><span><span data-t="tonight"></span><small data-t="tonight_note"></small></span>
@@ -218,7 +234,7 @@
       <header><h2 data-t="events"></h2><span class="sum" id="events-sum"></span></header>
       <p class="note" data-t="events_note" style="margin: 0 0 12px"></p>
       <div class="daynav"><button id="day-prev" class="small">‹</button><b id="day"></b>
-        <button id="day-next" class="small">›</button></div>
+        <button id="day-next" class="small">›</button><button id="day-today" class="small" data-t="today" hidden></button></div>
       <div id="lanes" class="lanes"></div>
       <div id="filters" class="filters"></div>
       <div id="log"></div>
@@ -312,7 +328,9 @@
     } else {
       var on = (s.sources || []).filter(function (n) { return off().indexOf(n) < 0; }).length;
       what = tr("rotation");
-      words = [on ? tr("rotation_words", {n: st.interval_minutes, sources: tr(on === 1 ? "source_one" : "source_other",
+      if (st.paused) words = [tr("paused_words"),
+        el("a", {textContent: tr("resume"), onclick: function () { save({paused: false}); }})];
+      else words = [on ? tr("rotation_words", {n: st.interval_minutes, sources: tr(on === 1 ? "source_one" : "source_other",
         {n: on})}) + (s.next ? tr("next_at", {time: time(s.next)}) : "") : tr("standing")];
     }
     $("now-what").textContent = what;
@@ -393,6 +411,8 @@
     if (document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox") return;
     $("interval_minutes").value = st.interval_minutes;
     $("keep").value = st.keep;
+    $("repeat_days").value = st.repeat_days;
+    $("morning-parts").hidden = !st.morning;
     $("night_timer_minutes").value = st.night_timer_minutes;
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     ["morning", "tonight"].forEach(function (kind) {
@@ -589,6 +609,7 @@
   $("close").onclick = function () { open = null; gal.hidden = true; sources(last); };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
   $("keep").onchange = function () { save({keep: +this.value}); };
+  $("repeat_days").onchange = function () { save({repeat_days: +this.value}); };
   $("night_timer_minutes").onchange = function () { save({night_timer_minutes: +this.value}); };
   document.querySelectorAll("[data-setting]").forEach(function (b) {
     b.onchange = function () { var c = {}; c[this.dataset.setting] = this.checked; save(c); };
@@ -616,7 +637,7 @@
                                  "tonight:shown": COLORS.tonight, "tonight:ready": COLORS.tonight,
                                  "morning:failed": "#e06666", "tonight:failed": "#e06666"}}
   ];
-  var DAY = 86400000, evs = [], evFrom = 0, evTo = 0, hiddenSources = {}, polling = null, day = 0, fetching = false;
+  var DAY = 86400000, evs = [], evFrom = 0, evTo = 0, onlySource = null, polling = null, day = 0, fetching = false;
   function getEvents(query, then) {
     fetch("events?" + query).then(function (r) { return r.json(); }).then(then)
       .catch(function () { fetching = false; $("events-sum").textContent = tr("no_answer"); });
@@ -648,6 +669,7 @@
     day = start;
     $("day").textContent = new Date(day).toLocaleDateString(LOCALE, {weekday: "long", day: "numeric", month: "long"});
     $("day-next").disabled = day >= midnight(Date.now());
+    $("day-today").hidden = day >= midnight(Date.now());
     $("lanes").innerHTML = "";
     $("log").innerHTML = "";
     $("events-sum").textContent = tr("fetching");
@@ -655,6 +677,7 @@
   }
   $("day-prev").onclick = function () { showDay(midnight(day - DAY / 2)); };
   $("day-next").onclick = function () { showDay(midnight(day + DAY * 1.5)); };
+  $("day-today").onclick = function () { showDay(midnight(Date.now())); };
   function clock(ms, seconds) {
     return new Date(ms).toLocaleTimeString(LOCALE, seconds === false ? {hour: "2-digit", minute: "2-digit"} :
       {hour: "2-digit", minute: "2-digit", second: "2-digit"});
@@ -732,17 +755,22 @@
   function drawEvents(list) {
     var counts = {};
     list.forEach(function (e) { counts[e.source] = (counts[e.source] || 0) + 1; });
+    // One source at a time: pressing it shows only that one, pressing it again (or All) shows them all.
+    // Sources with nothing this day are left out, except the one chosen.
     $("filters").innerHTML = "";
+    $("filters").append(el("button", {className: onlySource ? "" : "on", textContent: tr("source_all") + " " + list.length,
+      onclick: function () { onlySource = null; drawDay(); }}));
     SOURCES.forEach(function (src) {
-      $("filters").append(el("button", {className: hiddenSources[src] ? "" : "on",
+      if (!counts[src] && onlySource !== src) return;
+      $("filters").append(el("button", {className: onlySource === src ? "on" : "",
         textContent: tr("source_" + src) + " " + (counts[src] || 0),
-        onclick: function () { hiddenSources[src] = !hiddenSources[src]; drawDay(); }}));
+        onclick: function () { onlySource = onlySource === src ? null : src; drawDay(); }}));
     });
     var box = $("log"), shown = 0;
     box.innerHTML = "";
     for (var i = list.length - 1; i >= 0; i--) {
       var e = list[i];
-      if (hiddenSources[e.source]) continue;
+      if (onlySource && e.source !== onlySource) continue;
       var what = el("span", {className: "what"}, [e.detail || e.kind, el("span", {className: "kind", textContent: e.kind})]);
       if (e.why) what.append(el("span", {className: e.why === "from outside" ? "why outside" : "why",
         textContent: "← " + e.why}));

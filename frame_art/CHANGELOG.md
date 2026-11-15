@@ -1,5 +1,16 @@
 # Changes
 
+## 0.39.0
+
+- "Don't repeat a picture for" on the Settings tab: a picture shown within that many days isn't drawn again while its
+  source has others (0, the default, keeps the old rule: not among the last 200).
+- "Pause the rotation" on the Settings tab and as `switch.frame_art_paused`: the picture stays, while the morning
+  picture, tonight's show, the music and "New picture" still work.
+- The morning picture's parts can be turned off one by one: the weather, the calendar, the electricity price, the name
+  day and what's new in Stasera.
+- Debug tab: a source button shows only that source (again, or "All", shows them all), sources with nothing that day
+  are left out, and "Today" comes back from an earlier day.
+
 ## 0.38.0
 
 - A new schedule: Art Mode is on while someone is home, except at night. The night is from when tonight's window ends
