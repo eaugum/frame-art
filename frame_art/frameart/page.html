@@ -192,8 +192,8 @@
     <div class="week" id="tonight-week"></div>
     <div class="row sub" id="tonight-tv"><span><span data-t="tv_on"></span><small></small></span>
       <label class="switch"><input type="checkbox" data-setting="tonight_tv_on"><i></i></label></div>
-    <div class="row"><span><span data-t="art_timer"></span><small data-t="art_timer_note"></small></span>
-      <input id="art_timer_minutes" type="number" min="0" max="1440"> min</div>
+    <div class="row"><span><span data-t="night_timer"></span><small data-t="night_timer_note"></small></span>
+      <input id="night_timer_minutes" type="number" min="0" max="1440"> min</div>
     <div class="row"><span><span data-t="away_off_setting"></span><small id="away-note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="away_off"><i></i></label></div>
     <div class="row"><span><span data-t="asleep"></span><small id="asleep-note"></small></span></div>
@@ -304,7 +304,8 @@
         el("a", {textContent: tr("resume"), onclick: function () { save({mode: "shuffle"}); }})];
     } else if (s.wanted === "morning" || s.wanted === "tonight") {
       what = tr(s.wanted === "morning" ? "morning" : "tonight");
-      words = [tr("coming")];
+      words = [!s.held ? tr("coming") : s.window && s.window.until ? tr("held_until", {time: s.window.until})
+        : tr("held_asleep")];
     } else if (s.wanted === "saver") {
       what = tr("saver");
       words = [tr("saver_words", {n: s.interval_minutes})];
@@ -392,7 +393,7 @@
     if (document.activeElement.tagName === "INPUT" && document.activeElement.type !== "checkbox") return;
     $("interval_minutes").value = st.interval_minutes;
     $("keep").value = st.keep;
-    $("art_timer_minutes").value = st.art_timer_minutes;
+    $("night_timer_minutes").value = st.night_timer_minutes;
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     ["morning", "tonight"].forEach(function (kind) {
       week(kind, st[kind + "_days"] || [], !st[kind]);
@@ -588,7 +589,7 @@
   $("close").onclick = function () { open = null; gal.hidden = true; sources(last); };
   $("interval_minutes").onchange = function () { save({interval_minutes: +this.value}); };
   $("keep").onchange = function () { save({keep: +this.value}); };
-  $("art_timer_minutes").onchange = function () { save({art_timer_minutes: +this.value}); };
+  $("night_timer_minutes").onchange = function () { save({night_timer_minutes: +this.value}); };
   document.querySelectorAll("[data-setting]").forEach(function (b) {
     b.onchange = function () { var c = {}; c[this.dataset.setting] = this.checked; save(c); };
   });

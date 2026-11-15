@@ -119,8 +119,8 @@ class TV:
                 pass
 
     async def power_off(self):
-        """The TV to standby from Art Mode: power held for 3 s, as Home Assistant does for The Frame (a short press
-        only goes between Art Mode and TV). Only called while it's in Art Mode."""
+        """The TV to standby: power held for 3 s, as Home Assistant does for The Frame (a short press only goes
+        between Art Mode and TV). From Art Mode, or from anything when nobody's home."""
         events.expect("power_off")
         await self._keys(SendRemoteKey.hold("KEY_POWER", 3))
 

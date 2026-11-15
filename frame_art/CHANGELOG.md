@@ -1,5 +1,17 @@
 # Changes
 
+## 0.38.0
+
+- A new schedule: Art Mode is on while someone is home, except at night. The night is from when tonight's window ends
+  until the morning window starts, or while `sleep_entity` is on. The TV comes on when the night is over, when a window
+  starts and when someone comes home; it goes off when the night starts, and when nobody is home, also while
+  something plays.
+- The morning picture and tonight's show stand through their window instead of the rotation; with `sleep_entity`,
+  tonight's show stands until everyone's asleep.
+- Turned on by hand less than two hours before the morning window, the night is over and the morning picture comes
+  at once. Art Mode turned on at night goes off after the new "Art Mode timer at night" (30 min).
+- The TV no longer goes off when a window ends, and the Art Mode timer outside the windows is gone.
+
 ## 0.37.1
 
 - Fixed: since 0.36.2 the add-on sent tonight's show to the TV again every 15 seconds, as two checks had the same name.
