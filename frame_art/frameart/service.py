@@ -47,6 +47,7 @@ log = logging.getLogger(__name__)
 PICK_TRIES = 12  # pictures tried for one change before giving up until the next
 RECENT = 200  # not the same picture again within this many changes (or the whole pool, if it's smaller)
 RETRY_MINUTES = 5  # TV off or away
+PICK_QUIET = 5  # seconds after Art Mode comes on when the picture the TV names is not a choice in its menu
 MADE_RETRY_MINUTES = 15  # Stasera didn't answer
 MADE_UNSEEN_MINUTES = 10  # the TV off this soon after Morgenbildet or tonight's show: it stays until it's seen
 MADE = ("morning", "tonight")
@@ -865,8 +866,8 @@ class Rotation:
             self.art_since, self.timer_at = None, 0
         if fresh:
             self._count_from_now("Art Mode came on" if name == "art_mode" else "the TV came on")
-        if on and name == "art_mode":
-            self.wake.set()  # a rotation that waited for Art Mode goes on
+        if on:
+            self.wake.set()  # a rotation that waited for Art Mode, or music that waited for the TV, goes on
         what = "%s_%s" % (name, "on" if on else "off")
         cause = events.cause(what)
         events.add("tv", what, SEEN[what], why=cause or ("first look" if was is None else "from outside"))
@@ -1012,6 +1013,8 @@ class Rotation:
             return
         if data.get("is_shown") == "No" or time.time() - self.picked_at < 5 or self.making.locked():
             return
+        if self.art_since and time.time() - self.art_since < PICK_QUIET:
+            return  # the TV says which picture it shows as Art Mode comes on; nobody chose it
         self.picked_at = time.time()
         log.info("OK in the TV's Art Mode menu: a new picture")
         with events.because("OK in the TV's Art Mode menu"):
@@ -1534,6 +1537,9 @@ class Rotation:
                 continue
             if want == "music" and self.state.d.get("music_shown") == self.music["key"]:
                 await self._nap(60)  # the same song still
+                continue
+            if want == "music" and self.seen["power"] is False:
+                await self._nap(60)  # the TV is off: the song goes up when it comes on, not into a sleeping TV
                 continue
             if want != "music" and (self.state.d.get("music_shown") or self.state.d.get("before")):
                 why, job = "the music stopped", self._after_music(want)

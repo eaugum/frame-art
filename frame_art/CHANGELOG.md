@@ -1,5 +1,11 @@
 # Changes
 
+## 0.39.1
+
+- Art Mode coming on no longer counts as OK in the TV's Art Mode menu, so it doesn't bring a new picture (nor one
+  after the TV has been turned off for the night).
+- The music no longer tries a TV that's off every 5 minutes; the song goes up when the TV comes on.
+
 ## 0.39.0
 
 - "Don't repeat a picture for" on the Settings tab: a picture shown within that many days isn't drawn again while its
