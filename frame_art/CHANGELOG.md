@@ -1,5 +1,12 @@
 # Changes
 
+## 0.39.2
+
+- A TV waking from standby, by itself or turned on through Home Assistant, no longer counts as OK in the TV's Art
+  Mode menu: the picture it names then isn't a choice, so no new picture comes (0.39.1 only covered a TV already on).
+- The log says when the TV comes on, goes off, goes to standby and turns Art Mode on or off, and why, so a TV that falls
+  asleep again can be followed.
+
 ## 0.39.1
 
 - Art Mode coming on no longer counts as OK in the TV's Art Mode menu, so it doesn't bring a new picture (nor one

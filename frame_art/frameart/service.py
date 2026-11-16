@@ -47,7 +47,7 @@ log = logging.getLogger(__name__)
 PICK_TRIES = 12  # pictures tried for one change before giving up until the next
 RECENT = 200  # not the same picture again within this many changes (or the whole pool, if it's smaller)
 RETRY_MINUTES = 5  # TV off or away
-PICK_QUIET = 5  # seconds after Art Mode comes on when the picture the TV names is not a choice in its menu
+PICK_QUIET = 5  # seconds after the TV or Art Mode comes on when the picture the TV names is not a choice in its menu
 MADE_RETRY_MINUTES = 15  # Stasera didn't answer
 MADE_UNSEEN_MINUTES = 10  # the TV off this soon after Morgenbildet or tonight's show: it stays until it's seen
 MADE = ("morning", "tonight")
@@ -850,6 +850,8 @@ class Rotation:
         it, or "from outside" (the remote, the motion sensor, the TV's own sleep). A TV in standby wakes for a minute
         now and then and says it's in Art Mode, so what's heard while it's off waits until it's seen to be on."""
         if name == "art_mode" and self.seen["power"] is False:
+            if self.art_while_off != on:
+                log.info("the TV says Art Mode is %s while it counts as off", "on" if on else "off")
             self.art_while_off = on
             return
         was = self.seen[name]
@@ -870,7 +872,9 @@ class Rotation:
             self.wake.set()  # a rotation that waited for Art Mode, or music that waited for the TV, goes on
         what = "%s_%s" % (name, "on" if on else "off")
         cause = events.cause(what)
-        events.add("tv", what, SEEN[what], why=cause or ("first look" if was is None else "from outside"))
+        why = cause or ("first look" if was is None else "from outside")
+        events.add("tv", what, SEEN[what], why=why)
+        log.info("%s (%s)", SEEN[what], why)
         if name == "power" and on and was is False:
             self.on_since = time.time()
             if not cause:
@@ -991,6 +995,7 @@ class Rotation:
         if (event == "art_mode_changed" or "artmode_status" in (event or "")) and status in ("on", "off"):
             self._seen("art_mode", status == "on")
         elif event == "go_to_standby":
+            log.info("the TV says it's going to standby (%s)", events.cause("power_off") or "from outside")
             events.add("tv", "standby", "the TV says it's going to standby",
                        why=events.cause("power_off") or "from outside")
             if self.seen["power"]:
@@ -1013,8 +1018,15 @@ class Rotation:
             return
         if data.get("is_shown") == "No" or time.time() - self.picked_at < 5 or self.making.locked():
             return
-        if self.art_since and time.time() - self.art_since < PICK_QUIET:
-            return  # the TV says which picture it shows as Art Mode comes on; nobody chose it
+        # The TV says which picture it shows as it wakes or Art Mode comes on; nobody chose it. Waking, it says so
+        # before the power look has seen it on.
+        if self.seen["power"] is not True:
+            log.info("the TV names a picture while it counts as off: not OK in the menu")
+            return
+        quiet = [t for t in (self.art_since, self.on_since) if t and time.time() - t < PICK_QUIET]
+        if quiet:
+            log.info("the TV names a picture as it comes on: not OK in the menu")
+            return
         self.picked_at = time.time()
         log.info("OK in the TV's Art Mode menu: a new picture")
         with events.because("OK in the TV's Art Mode menu"):
