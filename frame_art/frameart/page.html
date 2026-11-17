@@ -135,7 +135,7 @@
   .hours span { position: absolute; transform: translateX(-50%); }
   .row .val { flex: none; max-width: 60%; color: var(--dim); text-align: right; overflow-wrap: anywhere; }
   .row .val.yes { color: var(--accent); }
-  .row.locked > span:first-child { opacity: .6; }
+  .row.locked > span:first-child, .row.locked output, .row.locked input[type=range], .row.locked select { opacity: .45; }
   #tv-saved { color: var(--faint); font-size: 13px; }
   input[type=range] { width: 160px; accent-color: var(--accent); }
   .row output { width: 28px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
@@ -909,11 +909,13 @@
         : tr("tv_slideshow_on", {n: show.value}), show.value && show.value !== "off" ? tr("tv_slideshow_note") : ""]
     ];
     rows($("tv-art"), list);
+    if (i.answer === true || i.answer === false) tvAnswers = i.answer;
     lastTv = i;
     tvSettings();
     $("tv-art-sum").textContent = i.art_at ? tr("tv_read_at", {when: when(i.art_at)}) : "";
     $("tv-art-note").textContent = i.art_error ? tr("tv_art_error", {error: i.art_error})
       : !power ? tr("tv_art_off") : i.busy ? tr("tv_art_busy") : "";
+    tvPower();
     $("tv-raw").textContent = JSON.stringify({device: i.device, apps: i.apps, art: i.art}, null, 1);
   }
   $("tv-read").onclick = function () { tvInfo(true); };
@@ -925,7 +927,8 @@
     var i = lastTv, box = $("tv-settings");
     if (!i || tvSaving || box.contains(document.activeElement) && document.activeElement.type === "range") return;
     var art = i.art || {}, list = Array.isArray(art.settings) ? art.settings : [];
-    var on = ((i.device || {}).device || {}).PowerState === "on" && i.answer !== false;
+    // only once the TV has answered now: what was read before says nothing about whether it's there
+    var on = ((i.device || {}).device || {}).PowerState === "on" && tvAnswers === true;
     var kept = (last.settings || {}).tv_timer_off !== undefined ? last.settings.tv_timer_off : i.tv_timer_off;
     box.innerHTML = "";
     list.forEach(function (x) {
@@ -952,19 +955,21 @@
           onchange: function () { saveTv(x.item, this.value); }});
         control.disabled = !on;
       }
-      box.append(el("div", {className: "row" + (locked ? " locked" : "")},
+      box.append(el("div", {className: "row" + (locked || !on ? " locked" : "")},
         [label].concat(shown ? [shown] : [], [control])));
     });
     $("tv-settings-note").textContent = !list.length ? tr("tv_settings_unread")
-      : !on ? tr("tv_settings_off", {when: when(i.art_at)}) : "";
+      : tvAnswers === null ? tr("tv_asking") : !on ? tr("tv_settings_off", {when: when(i.art_at)}) : "";
   }
   // On and off: on through Home Assistant (tv_entity), then Frame TV; off by holding power, whatever it shows
-  var powering = false;
+  // A TV that doesn't answer at all is off the network, and Home Assistant can't wake it either
+  var powering = false, tvAnswers = null;
   function tvPower() {
-    var tv = last.tv || {}, b = $("tv-power");
+    var tv = last.tv || {}, b = $("tv-power"), gone = !tv.power && tvAnswers === false;
     b.textContent = tr(tv.power ? "tv_turn_off" : "tv_turn_on");
-    b.disabled = powering || tv.power === null || tv.power === undefined || (!tv.power && !last.tv_entity);
+    b.disabled = powering || tv.power === null || tv.power === undefined || (!tv.power && !last.tv_entity) || gone;
     if (!powering) $("tv-power-note").textContent = tv.power === null || tv.power === undefined ? tr("not_known")
+      : gone ? tr("tv_power_gone")
       : tr(tv.power ? "tv_is_on" : "tv_is_off") + (!tv.power && !last.tv_entity ? tr("tv_power_no_entity") : "");
   }
   $("tv-power").onclick = function () {

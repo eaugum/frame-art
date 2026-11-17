@@ -318,6 +318,7 @@ PAGE = {
     "tv_is_off": "The TV is off",
     "tv_power_no_entity": ": set tv_entity in the options to turn it on from here",
     "tv_turning_off": "Turning the TV off …",
+    "tv_power_gone": "The TV doesn't answer, so it can't be turned on from here (it's off the network)",
     "tv_saving": "Saving on the TV …",
     "tv_kept_off": "Kept off by Frame Art: see below",
     "tv_settings_unread": "Read when the TV is on.",

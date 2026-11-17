@@ -1,5 +1,11 @@
 # Changes
 
+## 0.41.1
+
+- The TV tab: "Turn on" and the TV's settings are locked while the TV doesn't answer (off the network, so Home
+  Assistant can't wake it either), and the settings stay locked until the TV has answered, rather than for the first
+  seconds showing what was read before. Locked rows are dimmed, the sliders and lists too.
+
 ## 0.41.0
 
 - The TV on and off from the TV tab and from Home Assistant (`switch.frame_art_tv_power`, AUG-1722): on through
