@@ -311,7 +311,8 @@ PAGE = {
     "tv_art_busy": "Frame Art is talking to the TV just now; Art Mode is read again in a moment.",
     "tv_raw": "Everything the TV said",
     "tv_settings": "TV settings",
-    "tv_power": "Power",
+    "tv_frame_art": "What Frame Art does with the TV",
+    "tv_frame_art_note": "Kept by Frame Art, so they can be changed while the TV is off.",
     "tv_turn_on": "Turn on",
     "tv_turn_off": "Turn off",
     "tv_is_on": "The TV is on",
@@ -322,7 +323,7 @@ PAGE = {
     "tv_saving": "Saving on the TV …",
     "tv_kept_off": "Kept off by Frame Art: see below",
     "tv_settings_unread": "Read when the TV is on.",
-    "tv_settings_off": "The TV is off: as they were {when}. They can be changed when it's on.",
+    "tv_settings_off": "The TV's own settings, as they were {when}. They can be changed when it's on.",
 }
 
 _chosen = "auto"  # the option

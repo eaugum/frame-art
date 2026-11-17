@@ -1,5 +1,13 @@
 # Changes
 
+## 0.41.2
+
+- The TV tab: "Turn off the TV's own Art Mode timer and light sensor" and "Turn the TV off when nobody is home" have a
+  heading of their own, since they're Frame Art's and can be changed while the TV is off; the note on the TV's own
+  settings comes right under them.
+- A locked switch no longer shows the checkbox behind it (the light sensor on the TV tab, "Only when someone is home"
+  without `home_entity`).
+
 ## 0.41.1
 
 - The TV tab: "Turn on" and the TV's settings are locked while the TV doesn't answer (off the network, so Home

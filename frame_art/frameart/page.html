@@ -101,7 +101,8 @@
   .switch i::after { content: ""; position: absolute; top: 3px; left: 3px; width: 16px; height: 16px;
                      border-radius: 50%; background: #ccc; transition: transform .15s; }
   .switch input:checked + i { background: var(--accent); }
-  .switch input:disabled, .switch input:disabled + i { opacity: .4; cursor: default; }
+  .switch input:disabled { cursor: default; }  /* the box itself stays invisible */
+  .switch input:disabled + i { opacity: .4; }
   .switch input:checked + i::after { transform: translateX(18px); background: #111; }
   #saved { color: var(--faint); font-size: 13px; transition: opacity .3s; }
 
@@ -137,6 +138,10 @@
   .row .val.yes { color: var(--accent); }
   .row.locked > span:first-child, .row.locked output, .row.locked input[type=range], .row.locked select { opacity: .45; }
   #tv-saved { color: var(--faint); font-size: 13px; }
+  h3.sub { font-size: 13px; font-weight: 600; color: var(--dim); margin: 18px 0 0; padding-top: 14px;
+           border-top: 1px solid var(--line); }
+  h3.sub + .row { border-top: 0; }
+  #tv-settings-note { margin-bottom: 4px; }
   input[type=range] { width: 160px; accent-color: var(--accent); }
   .row output { width: 28px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
   select { font: inherit; background: #222; color: var(--text); border: 1px solid #333; border-radius: 6px;
@@ -247,11 +252,13 @@
       <div class="row"><span><span data-t="tv_power"></span><small id="tv-power-note"></small></span>
         <button id="tv-power" class="small"></button></div>
       <div id="tv-settings"></div>
+      <p class="note" id="tv-settings-note"></p>
+      <h3 class="sub" data-t="tv_frame_art"></h3>
+      <p class="note" data-t="tv_frame_art_note" style="margin: 2px 0 0"></p>
       <div class="row"><span><span data-t="tv_timer_off"></span><small id="tv-timer-note"></small></span>
         <label class="switch"><input type="checkbox" data-setting="tv_timer_off"><i></i></label></div>
       <div class="row"><span><span data-t="away_off_setting"></span><small id="away-off-note"></small></span>
         <label class="switch"><input type="checkbox" data-setting="away_off"><i></i></label></div>
-      <p class="note" id="tv-settings-note"></p>
     </section>
     <section>
       <header><h2 data-t="tv_apps"></h2><span class="sum" id="tv-apps-sum"></span></header>
