@@ -170,6 +170,32 @@ def app(rotation):
     async def tv(request):
         return web.json_response({"off": await rotation.tv_off()}, headers=CORS)
 
+    async def tv_info(request):
+        """The TV tab (AUG-1722): ?fresh=1 asks the TV first; without, the last answers."""
+        return web.json_response(await rotation.tv_info(request.query.get("fresh") == "1"), headers=CORS)
+
+    async def tv_report(request):
+        """Frame TV's report on the TV (AUG-1722), sent when it starts."""
+        try:
+            rotation.tv_report(await request.json())
+        except ValueError as e:
+            return web.json_response({"ok": False, "error": str(e) or "send JSON"}, status=400, headers=CORS)
+        return web.json_response({"ok": True}, headers=CORS)
+
+    async def tv_settings(request):
+        """The TV's own Art Mode settings (AUG-1722): {"brightness": 6, ...}; the answer is GET /tv/info's."""
+        try:
+            changes = await request.json()
+        except ValueError:
+            changes = None
+        try:
+            return web.json_response(dict(await rotation.set_tv_settings(changes), ok=True), headers=CORS)
+        except ValueError as e:
+            return web.json_response({"ok": False, "error": str(e)}, status=400, headers=CORS)
+        except Exception as e:
+            log.info("%s failed (%s: %s)", request.path, type(e).__name__, e)
+            return web.json_response({"ok": False, "error": str(e) or type(e).__name__}, status=503, headers=CORS)
+
     async def settings(request):
         try:
             changes = await request.json()
@@ -306,7 +332,9 @@ def app(rotation):
 
     a = web.Application(middlewares=[keyed])
     a.add_routes([web.get("/", page), web.get("/showing.jpg", picture), web.get("/status", status),
-                  web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv), web.post("/tv/on", tv_on),
+                  web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv),
+                  web.get("/tv/info", tv_info), web.post("/tv/settings", tv_settings),
+                  web.post("/tv/report", tv_report), web.post("/tv/on", tv_on),
                   web.get("/events", event_log), web.get("/events/export", export), web.post("/event", app_event),
                   web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/never", never),

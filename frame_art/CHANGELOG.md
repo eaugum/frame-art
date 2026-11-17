@@ -1,5 +1,18 @@
 # Changes
 
+## 0.40.0
+
+- A **TV** tab on the page (AUG-1722): what the TV says about itself (model, power, network, when it last came on and
+  went off), its streaming apps (in front, running or closed) and Art Mode (what it shows, My Photos, Samsung's own
+  slideshow). With an updated Frame TV, also the firmware, Tizen and Chromium versions, memory, storage and the
+  Wi-Fi signal. With the TV off, it shows what was read last. `GET /tv/info`.
+- The TV's own Art Mode settings can be changed there: brightness, colour temperature, motion sensitivity, Sleep After
+  and the light sensor (`POST /tv/settings`). They're entities in Home Assistant too, unavailable while the TV is off,
+  and read again each time it goes to Art Mode.
+- "Turn off the TV's own Art Mode timer and light sensor" and "Turn the TV off when nobody is home" moved to the TV
+  tab, and are switches in Home Assistant (`switch.frame_art_tv_timer_off`, `switch.frame_art_away_off`).
+- Fixed: the note under "Turn off when nobody is home" ended up in the Frame Art tab's note instead.
+
 ## 0.39.3
 
 - "Turn off the TV's own Art Mode timer" also turns off the TV's light sensor, which put the TV in standby within a

@@ -36,7 +36,20 @@ SWITCHES = {  # settings
     "screensaver_stasera": "Stasera in the screensaver",
     "music": "Follow the music",
     "music_home_only": "Only when someone is home",  # Follow the music
+    "tv_timer_off": "Keep the TV's timer and light sensor off",
+    "away_off": "Turn the TV off when nobody is home",
 }
+# The TV's own Art Mode settings (AUG-1722), read from the TV and changed on it; unavailable while the TV is off
+TV_NUMBERS = {  # item -> (name, min, max, icon)
+    "brightness": ("TV brightness in Art Mode", 0, 10, "mdi:brightness-6"),
+    "color_temperature": ("TV colour temperature in Art Mode", -5, 5, "mdi:thermometer"),
+    "motion_sensitivity": ("TV motion sensitivity", 1, 3, "mdi:motion-sensor"),
+}
+TV_TIMER = ["off", "5", "15", "30", "60", "120", "240"]  # what the 2022 Frame says Sleep After can be
+
+
+def _timer_name(value):
+    return "Off" if value == "off" else value + " min"
 BUTTONS = {  # id -> (name, icon)
     "next": ("Next picture", "mdi:image-refresh"),
     "morning_now": ("Morning picture now", "mdi:weather-sunset-up"),
@@ -79,10 +92,14 @@ class Device:
         device = {"identifiers": [BASE], "name": "Frame Art", "manufacturer": "eaugum/frame-art",
                   "model": "Art Mode for The Frame", "sw_version": __version__}
         common = {"device": device, "availability_topic": AVAILABILITY}
+        on_tv = {"device": device, "availability_mode": "all", "entity_category": "config",
+                 "availability": [{"topic": AVAILABILITY},
+                                  {"topic": BASE + "/tv_on", "payload_available": "ON",
+                                   "payload_not_available": "OFF"}]}
 
-        def entity(component, key, name, **extra):
+        def entity(component, key, name, base=common, **extra):
             topic = "%s/%s/%s_%s/config" % (DISCOVERY, component, BASE, key)
-            return topic, dict(common, name=name, unique_id="%s_%s" % (BASE, key),
+            return topic, dict(base, name=name, unique_id="%s_%s" % (BASE, key),
                                default_entity_id="%s.%s_%s" % (component, BASE, key), **extra)
 
         out = []
@@ -108,6 +125,16 @@ class Device:
                           state_topic=BASE + "/art_mode"))
         out.append(entity("sensor", "activity", "Activity", icon="mdi:television-guide", device_class="enum",
                           options=ACTIVITIES, state_topic=BASE + "/activity"))
+        for item, (name, low, high, icon) in TV_NUMBERS.items():
+            out.append(entity("number", "tv_" + item, name, base=on_tv, icon=icon, min=low, max=high, step=1,
+                              mode="slider", state_topic="%s/tv/%s" % (BASE, item),
+                              command_topic="%s/tv_%s/set" % (BASE, item)))
+        out.append(entity("select", "tv_motion_timer", "TV Sleep After", base=on_tv, icon="mdi:timer-sand",
+                          options=[_timer_name(v) for v in TV_TIMER], state_topic=BASE + "/tv/motion_timer",
+                          command_topic=BASE + "/tv_motion_timer/set"))
+        out.append(entity("switch", "tv_light_sensor", "TV light sensor", base=on_tv, icon="mdi:brightness-auto",
+                          state_topic=BASE + "/tv/brightness_sensor_setting",
+                          command_topic=BASE + "/tv_light_sensor/set", payload_on="ON", payload_off="OFF"))
         out.append(entity("image", "picture", "The picture on the wall", image_topic=BASE + "/picture",
                           content_type="image/jpeg"))
         return out
@@ -135,6 +162,13 @@ class Device:
             out[BASE + "/category"] = s["category"]
         for key in SWITCHES:
             out["%s/%s" % (BASE, key)] = "ON" if st.get(key) else "OFF"
+        for item, value in self.rot.art_settings().items():
+            if item in TV_NUMBERS:
+                out["%s/tv/%s" % (BASE, item)] = value
+            elif item == "motion_timer":
+                out[BASE + "/tv/motion_timer"] = _timer_name(value)
+            elif item == "brightness_sensor_setting":
+                out[BASE + "/tv/brightness_sensor_setting"] = "ON" if value == "on" else "OFF"
         return out
 
     def picture(self):
@@ -208,11 +242,20 @@ class Device:
                 self.rot.set_settings({"mode": "category", "category": payload})
             elif name == "interval_minutes/set":
                 self.rot.set_settings({"interval_minutes": int(float(payload))})
+            elif name.startswith("tv_") and name.endswith("/set") and name[3:-4] in TV_NUMBERS:
+                self._tv(name[3:-4], str(int(float(payload))))
+            elif name == "tv_motion_timer/set":
+                self._tv("motion_timer", {_timer_name(v): v for v in TV_TIMER}[payload])
+            elif name == "tv_light_sensor/set":
+                self._tv("brightness_sensor_setting", "on" if payload == "ON" else "off")
             elif name.endswith("/set") and name[:-4] in SWITCHES:
                 self.rot.set_settings({name[:-4]: payload == "ON"})
-        except (ValueError, TypeError) as e:
+        except (ValueError, TypeError, KeyError) as e:
             log.info("MQTT: %s %s: %s", name, payload, e)
             events.add("mqtt", "failed", "%s %s: %s" % (name, payload, e))
+
+    def _tv(self, item, value):
+        self.run_task(self.rot.set_tv_settings({item: value}), "the TV's %s" % item)
 
     # MARK: - Running
 

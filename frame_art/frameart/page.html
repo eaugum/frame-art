@@ -133,9 +133,20 @@
   .bar u { position: absolute; top: 0; bottom: 0; width: 1px; background: #fff; opacity: .6; }
   .hours { position: relative; flex: 1; height: 14px; font-size: 11px; color: var(--faint); }
   .hours span { position: absolute; transform: translateX(-50%); }
+  .row .val { flex: none; max-width: 60%; color: var(--dim); text-align: right; overflow-wrap: anywhere; }
+  .row .val.yes { color: var(--accent); }
+  .row.locked > span:first-child { opacity: .6; }
+  #tv-saved { color: var(--faint); font-size: 13px; }
+  input[type=range] { width: 160px; accent-color: var(--accent); }
+  .row output { width: 28px; text-align: right; color: var(--dim); font-variant-numeric: tabular-nums; }
+  select { font: inherit; background: #222; color: var(--text); border: 1px solid #333; border-radius: 6px;
+           padding: 5px 8px; }
+  details { margin-top: 20px; color: var(--dim); font-size: 14px; }
+  summary { cursor: pointer; }
+  pre { background: var(--card); border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 12px; color: #ccc; }
 </style></head>
 <body><main>
-  <nav class="tabs"><a data-tab="art" class="on">Frame Art</a><a data-tab="settings" data-t="settings"></a><a data-tab="debug" data-t="debug"></a></nav>
+  <nav class="tabs"><a data-tab="art" class="on">Frame Art</a><a data-tab="settings" data-t="settings"></a><a data-tab="tv" data-t="tv_tab"></a><a data-tab="debug" data-t="debug"></a></nav>
   <div id="tab-art">
   <div class="frame">
     <img id="pic" alt="" onerror="this.style.visibility = 'hidden'" onload="this.style.visibility = ''">
@@ -210,11 +221,7 @@
       <label class="switch"><input type="checkbox" data-setting="tonight_tv_on"><i></i></label></div>
     <div class="row"><span><span data-t="night_timer"></span><small data-t="night_timer_note"></small></span>
       <input id="night_timer_minutes" type="number" min="0" max="1440"> min</div>
-    <div class="row"><span><span data-t="away_off_setting"></span><small id="away-note"></small></span>
-      <label class="switch"><input type="checkbox" data-setting="away_off"><i></i></label></div>
     <div class="row"><span><span data-t="asleep"></span><small id="asleep-note"></small></span></div>
-    <div class="row"><span><span data-t="tv_timer_off"></span><small id="tv-timer-note"></small></span>
-      <label class="switch"><input type="checkbox" data-setting="tv_timer_off"><i></i></label></div>
     <div class="row"><span><span data-t="screensaver"></span><small data-t="screensaver_note"></small></span>
       <label class="switch"><input type="checkbox" data-setting="screensaver"><i></i></label></div>
     <div class="row sub"><span><span data-t="screensaver_stasera"></span><small data-t="screensaver_stasera_note"></small></span>
@@ -227,6 +234,33 @@
     <header><h2>Stasera</h2></header>
     <div class="row"><span id="stasera"></span><button id="link" class="small"></button></div>
   </section>
+  </div>
+
+  <div id="tab-tv" hidden>
+    <section>
+      <header><h2 data-t="tv_about"></h2><span class="sum" id="tv-sum"></span></header>
+      <div id="tv-device"></div>
+      <div class="actions"><button id="tv-read" class="small" data-t="tv_read"></button></div>
+    </section>
+    <section>
+      <header><h2 data-t="tv_settings"></h2><span id="tv-saved"></span></header>
+      <div id="tv-settings"></div>
+      <div class="row"><span><span data-t="tv_timer_off"></span><small id="tv-timer-note"></small></span>
+        <label class="switch"><input type="checkbox" data-setting="tv_timer_off"><i></i></label></div>
+      <div class="row"><span><span data-t="away_off_setting"></span><small id="away-off-note"></small></span>
+        <label class="switch"><input type="checkbox" data-setting="away_off"><i></i></label></div>
+      <p class="note" id="tv-settings-note"></p>
+    </section>
+    <section>
+      <header><h2 data-t="tv_apps"></h2><span class="sum" id="tv-apps-sum"></span></header>
+      <div id="tv-apps"></div>
+    </section>
+    <section>
+      <header><h2>Art Mode</h2><span class="sum" id="tv-art-sum"></span></header>
+      <div id="tv-art"></div>
+      <p class="note" id="tv-art-note"></p>
+    </section>
+    <details><summary data-t="tv_raw"></summary><pre id="tv-raw"></pre></details>
   </div>
 
   <div id="tab-debug" hidden>
@@ -305,6 +339,7 @@
 
     sources(s);
     settings(s.settings || {}, s);
+    if (lastTv) tvSettings();
     connections(s);
   }
 
@@ -428,9 +463,10 @@
     if (!s.home_entity) home.checked = false;
     $("home-note").textContent = s.home_entity ? tr("home_only_note", {entity: s.home_entity}) :
       tr("home_only_missing");
-    var away = $("away-note").parentNode.parentNode.querySelector("input");
+    var away = $("away-off-note").parentNode.parentNode.querySelector("input");
     away.disabled = !s.home_entity;
-    $("away-note").textContent = s.home_entity ? tr("away_off_note", {entity: s.home_entity}) : tr("home_only_missing");
+    $("away-off-note").textContent = s.home_entity ? tr("away_off_note", {entity: s.home_entity})
+      : tr("home_only_missing");
     $("asleep-note").textContent = s.sleep_entity ? tr("asleep_note", {entity: s.sleep_entity}) : tr("asleep_missing");
     $("tv-timer-note").textContent = s.tv_timer === null || s.tv_timer === undefined ? tr("tv_timer_unknown") :
       tr("tv_timer_now", {value: s.tv_timer === "off" ? tr("tv_timer_is_off") : s.tv_timer + " min"}) +
@@ -783,13 +819,167 @@
     if (!shown) box.append(el("p", {className: "note", textContent: tr("events_empty")}));
     $("events-sum").textContent = tr(shown === 1 ? "events_one" : "events_other", {n: shown});
   }
+  // The TV tab (AUG-1722): what the TV says about itself, its apps and Art Mode. The last answers first, then the TV is
+  // asked, and again every minute while the tab is open.
+  var tvReading = false, ART_SETTINGS = {brightness: "tv_brightness", color_temperature: "tv_color_temperature",
+    motion_sensitivity: "tv_motion_sensitivity", motion_timer: "tv_motion_timer",
+    brightness_sensor_setting: "tv_light_sensor"};
+  function when(s) {
+    if (!s) return "";
+    var d = new Date(s * 1000);
+    return d.toDateString() === new Date().toDateString() ? time(s)
+      : d.toLocaleDateString(LOCALE, {day: "numeric", month: "short"}) + " " + time(s);
+  }
+  function rows(box, list) {
+    box.innerHTML = "";
+    list.forEach(function (r) {
+      if (r[1] === undefined || r[1] === null || r[1] === "") return;
+      var label = el("span", {textContent: r[0]});
+      if (r[2]) label.append(el("small", {textContent: r[2]}));
+      box.append(el("div", {className: "row"}, [label, el("span", {className: "val" + (r[3] ? " yes" : ""),
+        textContent: r[1]})]));
+    });
+    if (!box.children.length) box.append(el("p", {className: "note", textContent: tr("tv_nothing")}));
+  }
+  function size(free, total) {
+    if (!total) return "";
+    function gb(n) { return n >= 1e9 ? (n / 1e9).toFixed(1) + " GB" : Math.round(n / 1e6) + " MB"; }
+    return tr("tv_free", {free: gb(free || 0), total: gb(total)});
+  }
+  function onOff(v) { return v === true || v === "on" ? tr("on") : v === false || v === "off" ? tr("off") : v; }
+  function tvInfo(fresh, then) {
+    if (tvReading) return;
+    tvReading = true;
+    $("tv-read").disabled = true;
+    if (fresh) $("tv-sum").textContent = tr("tv_asking");
+    fetch("tv/info" + (fresh ? "?fresh=1" : "")).then(function (r) { return r.json(); }).then(drawTv)
+      .catch(function () { $("tv-sum").textContent = tr("no_answer"); })
+      .then(function () { tvReading = false; $("tv-read").disabled = false; if (then) then(); });
+  }
+  function drawTv(i) {
+    var all = i.device || {}, d = all.device || {}, art = i.art || {}, last = i.last || {}, r = i.report || {};
+    var power = d.PowerState === "on" && i.answer !== false;
+    $("tv-sum").textContent = i.answer === false ? tr("tv_away", {when: when(i.device_at)})
+      : i.device_at ? tr("tv_read_at", {when: when(i.device_at)}) : "";
+    var offAt = Math.max(last.power_off || 0, last.standby || 0);
+    rows($("tv-device"), [
+      [tr("tv_name"), d.name],
+      [tr("tv_model"), [d.modelName, d.model].filter(Boolean).join(" · ")],
+      [tr("tv_power"), i.answer === false ? tr("tv_no_answer") : d.PowerState === "on" ? tr("on") : d.PowerState, "",
+       power],
+      ["Art Mode", i.art_mode === null || i.art_mode === undefined ? tr("not_known") : onOff(i.art_mode), "",
+       i.art_mode === true],
+      [tr("tv_last_on"), when(last.power_on)],
+      [tr("tv_last_off"), when(offAt), last.standby && last.standby === offAt ? tr("tv_standby_note") : ""],
+      [tr("tv_resolution"), d.resolution],
+      [tr("tv_network"), d.networkType && tr("tv_network_" + d.networkType)],
+      [tr("tv_ip"), d.ip],
+      [tr("tv_language"), [d.Language, d.countryCode].filter(Boolean).join(" · ")],
+      [tr("tv_firmware"), d.firmwareVersion && d.firmwareVersion !== "Unknown" ? d.firmwareVersion : r.firmware],
+      [tr("tv_os"), [r.tizen ? "Tizen " + r.tizen : d.OS, r.browser, all.version && tr("tv_api", {v: all.version})]
+        .filter(Boolean).join(" · ")],
+      [tr("tv_memory"), size(r.memory_free, r.memory_total)],
+      [tr("tv_storage"), size(r.storage_free, r.storage_total)],
+      [tr("tv_wifi"), r.wifi_signal === undefined ? "" : Math.round(r.wifi_signal * 100) + " %"],
+      ["Frame TV", r.app_version && tr("tv_version", {v: r.app_version}),
+       i.report_at ? tr("tv_reported", {when: when(i.report_at)}) : ""],
+      [tr("tv_developer"), d.developerMode === undefined ? "" : onOff(d.developerMode === "1")]
+    ]);
+
+    var apps = (i.apps || []).slice().sort(function (a, b) {
+      return (b.visible - a.visible) || (b.running - a.running) || a.name.localeCompare(b.name);
+    });
+    $("tv-apps-sum").textContent = i.apps_at ? tr("tv_read_at", {when: when(i.apps_at)}) : "";
+    rows($("tv-apps"), apps.map(function (a) {
+      return [a.name + (a.id === i.app ? " ★" : ""), a.visible ? tr("tv_app_front") : a.running ? tr("tv_app_running")
+        : tr("tv_app_closed"), a.version && tr("tv_version", {v: a.version}), a.visible];
+    }));
+
+    var current = art.current || {}, show = art.slideshow || {};
+    var photos = art.my_photos ? art.my_photos.length : null;
+    var list = [
+      [tr("tv_art_api"), art.api_version],
+      [tr("tv_showing"), i.current_label || current.content_id, i.current_ours ? tr("tv_from_frame_art") : ""],
+      ["My Photos", photos === null ? "" : tr("n_pictures", {n: photos}), i.ours === null || i.ours === undefined ? ""
+        : tr("tv_ours", {n: i.ours})],
+      [tr("tv_slideshow"), show.value === undefined ? "" : show.value === "off" ? tr("off")
+        : tr("tv_slideshow_on", {n: show.value}), show.value && show.value !== "off" ? tr("tv_slideshow_note") : ""]
+    ];
+    rows($("tv-art"), list);
+    lastTv = i;
+    tvSettings();
+    $("tv-art-sum").textContent = i.art_at ? tr("tv_read_at", {when: when(i.art_at)}) : "";
+    $("tv-art-note").textContent = i.art_error ? tr("tv_art_error", {error: i.art_error})
+      : !power ? tr("tv_art_off") : i.busy ? tr("tv_art_busy") : "";
+    $("tv-raw").textContent = JSON.stringify({device: i.device, apps: i.apps, art: i.art}, null, 1);
+  }
+  $("tv-read").onclick = function () { tvInfo(true); };
+
+  // The TV's own Art Mode settings: changed one at a time, and drawn from what the TV says after. Sleep After and the
+  // light sensor stay off while tv_timer_off is on, since Frame Art turns them off again anyway.
+  var lastTv = null, tvSaving = false, LOCKED = ["motion_timer", "brightness_sensor_setting"];
+  function tvSettings() {
+    var i = lastTv, box = $("tv-settings");
+    if (!i || tvSaving || box.contains(document.activeElement) && document.activeElement.type === "range") return;
+    var art = i.art || {}, list = Array.isArray(art.settings) ? art.settings : [];
+    var on = ((i.device || {}).device || {}).PowerState === "on" && i.answer !== false;
+    var kept = (last.settings || {}).tv_timer_off !== undefined ? last.settings.tv_timer_off : i.tv_timer_off;
+    box.innerHTML = "";
+    list.forEach(function (x) {
+      if (!ART_SETTINGS[x.item]) return;
+      var locked = kept && LOCKED.indexOf(x.item) >= 0, control, shown = null;
+      var label = el("span", {textContent: tr(ART_SETTINGS[x.item])});
+      if (locked) label.append(el("small", {textContent: tr("tv_kept_off")}));
+      if (x.item === "brightness_sensor_setting") {
+        var box2 = el("input", {type: "checkbox", checked: x.value === "on",
+          onchange: function () { saveTv(x.item, this.checked ? "on" : "off"); }});
+        control = el("label", {className: "switch"}, [box2, el("i")]);
+        box2.disabled = !on || locked;
+      } else if (x.valid_values) {
+        control = el("select", {onchange: function () { saveTv(x.item, this.value); }},
+          [].concat(x.valid_values).map(function (v) {
+            return el("option", {value: v, textContent: v === "off" ? tr("off") : v + " min",
+              selected: String(v) === String(x.value)});
+          }));
+        control.disabled = !on || locked;
+      } else {
+        shown = el("output", {textContent: x.value});
+        control = el("input", {type: "range", min: x.min, max: x.max, step: 1, value: x.value,
+          oninput: function () { shown.textContent = this.value; },
+          onchange: function () { saveTv(x.item, this.value); }});
+        control.disabled = !on;
+      }
+      box.append(el("div", {className: "row" + (locked ? " locked" : "")},
+        [label].concat(shown ? [shown] : [], [control])));
+    });
+    $("tv-settings-note").textContent = !list.length ? tr("tv_settings_unread")
+      : !on ? tr("tv_settings_off", {when: when(i.art_at)}) : "";
+  }
+  function saveTv(name, value) {
+    var body = {};
+    body[name] = value;
+    tvSaving = true;
+    $("tv-saved").textContent = tr("tv_saving");
+    fetch("tv/settings", {method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify(body)})
+      .then(function (r) { return r.json(); }).then(function (i) {
+        tvSaving = false;
+        if (i.ok) { $("tv-saved").textContent = tr("saved"); drawTv(i); }
+        else { $("tv-saved").textContent = i.error || tr("couldnt_save"); tvInfo(false); }
+      }).catch(function () { tvSaving = false; $("tv-saved").textContent = tr("no_answer"); tvInfo(false); });
+  }
+
   function tab(name) {
     document.querySelectorAll(".tabs a").forEach(function (a) { a.className = a.dataset.tab === name ? "on" : ""; });
     $("tab-art").hidden = name !== "art";
     $("tab-settings").hidden = name !== "settings";
+    $("tab-tv").hidden = name !== "tv";
     $("tab-debug").hidden = name !== "debug";
     clearInterval(polling);
     polling = null;
+    if (name === "tv") {
+      tvInfo(false, function () { tvInfo(true); });
+      polling = setInterval(function () { tvInfo(true); }, 60000);
+    }
     if (name === "debug") {
       if (!evTo) showDay(midnight(Date.now())); else newEvents();
       polling = setInterval(function () { if (evTo) newEvents(); }, 5000);

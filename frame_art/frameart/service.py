@@ -25,6 +25,7 @@ per song, in front of everything else. A few minutes after it stops, what was on
 What the add-on's page changes (SETTINGS, and the fixed picture) is kept in settings.json, before the add-on's options.
 """
 import asyncio
+import copy
 import datetime
 import hashlib
 import json
@@ -69,6 +70,8 @@ TIMER_LOOK = 6 * 3600  # the TV's own Art Mode timer is looked at again this oft
 DEFAULT_UNTIL = {"morning": "10:00", "tonight": "23:00"}  # a window's end before the days were set
 WAKE_WAIT = 90  # seconds the page's "Turn the TV on" waits for the TV to say it's on
 POWER_LOOK = 20  # seconds between asking the TV whether it's on, for the event log (AUG-1523)
+TV_INFO_FRESH = 300  # seconds an answer from the art channel is good for on the TV tab
+TV_INFO_WAIT = 60  # seconds the TV tab waits for the art channel
 SEEN = {"power_on": "the TV came on", "power_off": "the TV went off", "art_mode_on": "Art Mode on",
         "art_mode_off": "Art Mode off"}
 
@@ -214,6 +217,8 @@ class Rotation:
         self.timer_at = 0  # when the TV's own Art Mode timer is looked at next
         self.tv_timer = None  # what it was last seen at ("off", "60" ...)
         self.tv_sensor = None  # the TV's light sensor in Art Mode, as last seen ("on"/"off")
+        self.tv_info_path = os.path.join(data_dir, "tv_info.json")  # the TV tab's last answers (AUG-1722)
+        self._tv_info = None  # what's in it, once read
         self._from_categories()
 
     def _from_categories(self):
@@ -281,6 +286,8 @@ class Rotation:
         if ("mode" in clean or "sources_off" in clean) and self.cfg.get("fixed"):
             clean["fixed"] = None
         resumed = clean.get("paused") is False and self.cfg.get("paused")
+        if clean.get("tv_timer_off") and not self.cfg.get("tv_timer_off", True):
+            self.timer_at = 0  # turned on: the TV's timer and light sensor are turned off at once (in Art Mode)
         self._keep(clean)
         if resumed:  # a whole interval for what's on the wall, rather than a new picture the moment it's resumed
             self.counts_from = time.time()
@@ -1348,6 +1355,10 @@ class Rotation:
                                "it off, so the schedule decides", why="")
                     sensor = "off"
                 self.tv_sensor = sensor
+                try:  # all of them, for the TV tab and Home Assistant: changed in the TV's menu, they're seen here
+                    self._keep_art_settings(await tv._ask(tv.art_settings, wait=15, tries=2))
+                except Exception as e:
+                    log.info("the TV's Art Mode settings: %s: %s", type(e).__name__, e)
         self.timer_at = time.time() + TIMER_LOOK
 
     async def wake_up(self):
@@ -1384,6 +1395,153 @@ class Rotation:
             await asyncio.sleep(3)
         events.add("tv", "back_app_failed", "the TV is on, but didn't open %s" % app)
         raise RuntimeError("the TV is on, but didn't open %s" % app)
+
+    # MARK: - The TV tab (AUG-1722)
+
+    def _tv_info_saved(self):
+        """A copy of the last answers, to change and keep."""
+        if self._tv_info is None:
+            try:
+                with open(self.tv_info_path) as f:
+                    self._tv_info = json.load(f)
+            except (OSError, ValueError):
+                self._tv_info = {}
+        return copy.deepcopy(self._tv_info)
+
+    def art_settings(self):
+        """The TV's Art Mode settings as last read: {item: value}, for Home Assistant."""
+        if self._tv_info is None:
+            self._tv_info_saved()
+        return {x.get("item"): str(x.get("value")) for x in ((self._tv_info.get("art") or {}).get("settings") or [])
+                if isinstance(x, dict)}
+
+    def _keep_art_settings(self, settings):
+        if not isinstance(settings, list):
+            return
+        got = self._tv_info_saved()
+        got.setdefault("art", {})["settings"] = settings
+        got["art_at"] = time.time()
+        self._keep_tv_info(got)
+
+    async def tv_info(self, fresh=False):
+        """What the TV says about itself, its apps and Art Mode, for the TV tab. Each part is kept in tv_info.json with
+        when it was read, so the tab has something while the TV is off. fresh: the TV is asked first; the art channel
+        only when the TV is on, nobody else is talking to it, and the last answer is older than TV_INFO_FRESH."""
+        got = self._tv_info_saved()
+        host = self.cfg.get("tv_host")
+        answer = None  # whether the TV answered now; None: not asked
+        if fresh and host:
+            now = time.time()
+            try:
+                got["device"] = await asyncio.to_thread(tvmod.device, host, 5)
+                got["device_at"] = now
+                answer = True
+            except Exception:
+                answer = False
+            on = answer and (got["device"].get("device") or {}).get("PowerState") == "on"
+            if on:
+                back = (self.cfg.get("back_app") or "").strip()
+                ids = ((back,) if back and back not in tvmod.APPS else ()) + tvmod.APPS
+                found = await asyncio.gather(*[asyncio.to_thread(tvmod.app_state, host, a) for a in ids],
+                                             return_exceptions=True)
+                got["apps"] = [a for a in found if isinstance(a, dict)]
+                got["apps_at"] = now
+            if on and now - got.get("art_at", 0) > TV_INFO_FRESH and not self.lock.locked():
+                try:
+                    async with self.lock:
+                        async with TV(host, os.path.join(self.data, "token.txt")) as tv:
+                            got["art"] = await asyncio.wait_for(tv.info(), TV_INFO_WAIT)
+                    got["art_at"] = time.time()
+                    got.pop("art_error", None)
+                except Exception as e:
+                    log.info("the TV tab: the art channel didn't answer (%s: %s)", type(e).__name__, e)
+                    got["art_error"] = str(e) or type(e).__name__
+            self._keep_tv_info(got)
+        ours = {u["content_id"] for u in self.state["uploaded"]}
+        photos = (got.get("art") or {}).get("my_photos")
+        current = ((got.get("art") or {}).get("current") or {}).get("content_id")
+        newest = self.state["uploaded"][-1]["content_id"] if self.state["uploaded"] else None
+        last = {}
+        for e in events.since(0, None, events.LIMIT)[0]:
+            if e["source"] == "tv" and e["kind"] in ("power_on", "power_off", "standby", "art_mode_on", "art_mode_off"):
+                last[e["kind"]] = e["at"]
+        return dict(got, answer=answer, busy=self.lock.locked(), app=(self.cfg.get("back_app") or "").strip(),
+                    tv_timer_off=self.cfg.get("tv_timer_off", True),
+                    power=self.seen["power"], art_mode=False if self.seen["power"] is False else self.seen["art_mode"],
+                    last=last,
+                    ours=None if photos is None else len([p for p in photos if p in ours]),
+                    current_ours=current in ours,
+                    current_label=self.state.d.get("showing") if current and current == newest else None)
+
+    def tv_report(self, report):
+        """What Frame TV read on the TV itself (firmware, Tizen, memory, storage, Wi-Fi), sent when it starts; for
+        the TV tab, since the TV's REST API says "Unknown" for the firmware."""
+        if not isinstance(report, dict) or len(json.dumps(report)) > 10000:
+            raise ValueError("send a JSON object (at most 10 kB)")
+        got = self._tv_info_saved()
+        got["report"], got["report_at"] = report, time.time()
+        self._keep_tv_info(got)
+
+    def _keep_tv_info(self, got):
+        self._tv_info = got
+        try:
+            tmp = self.tv_info_path + ".tmp"
+            with open(tmp, "w") as f:
+                json.dump(got, f, indent=1)
+            os.replace(tmp, self.tv_info_path)
+        except OSError as e:
+            log.warning("couldn't keep the TV tab's answers (%s)", e)
+
+    async def set_tv_settings(self, changes):
+        """The TV's own Art Mode settings, from the TV tab: {name: value}, checked against what the TV said they can
+        be. Raises ValueError on a bad one, and RuntimeError when the TV is off. Sleep After and the light sensor are
+        Frame Art's while tv_timer_off is on."""
+        if not isinstance(changes, dict) or not changes:
+            raise ValueError("send a JSON object")
+        got = self._tv_info_saved()
+        known = {x.get("item"): x for x in ((got.get("art") or {}).get("settings") or []) if isinstance(x, dict)}
+        clean = {}
+        for name, value in changes.items():
+            if name not in tvmod.ART_SETTINGS:
+                raise ValueError("unknown TV setting %s" % name)
+            if name in ("motion_timer", "brightness_sensor_setting") and self.cfg.get("tv_timer_off", True):
+                raise ValueError("%s is kept off by Frame Art while tv_timer_off is on" % name)
+            value, x = str(value).strip(), known.get(name) or {}
+            if name == "brightness_sensor_setting":
+                ok = value in ("on", "off")
+            elif x.get("valid_values"):
+                ok = value in [str(v) for v in x["valid_values"]]
+            elif "min" in x and "max" in x:
+                try:
+                    ok = int(x["min"]) <= int(value) <= int(x["max"])
+                except ValueError:
+                    ok = False
+            else:
+                raise ValueError("the TV hasn't said what %s can be yet; open the TV tab with the TV on" % name)
+            if not ok:
+                raise ValueError("bad value for %s: %r" % (name, value))
+            clean[name] = value
+        host = self.cfg["tv_host"]
+        if not await asyncio.to_thread(tvmod.powered_on, host, 5):
+            raise RuntimeError("the TV is off")
+        async with self.lock:
+            async with TV(host, os.path.join(self.data, "token.txt")) as tv:
+                settings = None
+                for name, value in clean.items():
+                    was = (known.get(name) or {}).get("value")
+                    settings = await tv.set_art_setting(name, value)
+                    now = next((str(x.get("value")) for x in settings if x.get("item") == name), None)
+                    log.info("the TV's %s: %s -> %s", name, was, now)
+                    events.add("tv", "art_setting", "%s: %s → %s" % (name, was, now))
+                    if now != value:
+                        raise RuntimeError("the TV kept %s at %s" % (name, now))
+        self._keep_art_settings(settings)
+        for x in settings:
+            if x.get("item") == "motion_timer":
+                self.tv_timer = str(x.get("value"))
+            elif x.get("item") == "brightness_sensor_setting":
+                self.tv_sensor = str(x.get("value"))
+        return await self.tv_info()
 
     async def _nap(self, seconds):
         try:

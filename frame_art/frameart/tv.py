@@ -3,6 +3,7 @@ Besides, watch() keeps one open to hear when Art Mode goes off, and launch() ope
 import asyncio
 import json
 import logging
+import urllib.error
 import urllib.request
 
 from samsungtvws.async_art import SamsungTVAsyncArt
@@ -15,6 +16,18 @@ from . import events
 log = logging.getLogger(__name__)
 
 MY_PHOTOS = "MY-C0002"
+
+# The TV's Art Mode settings the TV tab can change (AUG-1722): name -> samsungtvws' call. The values are strings.
+ART_SETTINGS = {"brightness": "set_brightness", "color_temperature": "set_color_temperature",
+                "motion_sensitivity": "set_motion_sensitivity", "motion_timer": "set_motion_timer",
+                "brightness_sensor_setting": "set_brightness_sensor_setting"}
+
+# Apps the TV tab asks about (AUG-1722): the streaming apps in Frame TV's library, by the ids the TV's REST API knows
+# (Tizen ids, and Netflix's, Prime Video's and Apple TV's older Smart Hub ids). Those not installed answer 404.
+APPS = ("3201907018807", "3201910019365", "3201807016597", "9Ur5IzDKqV.TizenYouTube", "n8N84lD1cR.NRKTVBeta",
+        "PyZfkXAf88.tv2sumoTizen", "niYSnzL6h1.Viaplay", "5b8c3eb16b.BeamCTVDev", "NvZ26VG9Yw.HBOGOLAG",
+        "MCmYXNxgcu.DisneyPlus", "rJeHak5zRg.Spotify", "5SLwh7m3En.TizenYouTubeKids", "AprZAARz4r.Jellyfin",
+        "vIutycUzou.SteamLink")
 
 
 async def _art(**kw):
@@ -147,6 +160,46 @@ class TV:
     async def set_light_sensor(self, value):
         await asyncio.wait_for(self.art.set_brightness_sensor_setting(value), 30)
 
+    async def info(self):
+        """What the art channel says about Art Mode, for the TV tab (AUG-1722); each part on its own, since an older
+        TV can lack one. Only reads."""
+        out = {}
+        for name, call in (("api_version", self.art.get_api_version), ("device", self.art.get_device_info),
+                           ("settings", self.art_settings), ("slideshow", self.art.get_slideshow_status),
+                           ("current", self.art.get_current)):
+            try:
+                out[name] = await self._ask(call, wait=15, tries=2)
+            except Exception as e:
+                log.info("the art channel's %s: %s: %s", name, type(e).__name__, e)
+                out[name] = None
+        try:
+            out["my_photos"] = sorted(await self.my_photos())
+        except Exception as e:
+            log.info("the art channel's My Photos: %s: %s", type(e).__name__, e)
+            out["my_photos"] = None
+        return out
+
+    async def art_settings(self):
+        """The Art Mode settings as the TV has them: [{item, value, min, max} or {item, value, valid_values}]."""
+        got = await self.art.get_artmode_settings()
+        for x in got if isinstance(got, list) else ():
+            if isinstance(x.get("valid_values"), str):  # motion_timer's comes as JSON in a string
+                try:
+                    x["valid_values"] = json.loads(x["valid_values"])
+                except ValueError:
+                    pass
+        return got
+
+    async def set_art_setting(self, name, value):
+        """One of ART_SETTINGS; then the settings as the TV has them after. The TV may not answer a set_ request in
+        time (samsungtvws asserts), so what counts is what it says after."""
+        try:
+            await asyncio.wait_for(getattr(self.art, ART_SETTINGS[name])(str(value)), 30)
+        except AssertionError:
+            log.info("no answer to %s=%s; reading it back", name, value)
+        await asyncio.sleep(1)
+        return await self._ask(self.art_settings, wait=15, tries=2)
+
     async def _settled(self):
         for _ in range(5):
             await asyncio.sleep(2)
@@ -235,6 +288,22 @@ def _rest(host, method, path, timeout=10):
     req = urllib.request.Request("http://%s:8001/api/v2/%s" % (host, path), method=method)
     with urllib.request.urlopen(req, timeout=timeout) as r:
         return json.loads(r.read() or b"null")
+
+
+def device(host, timeout=10):
+    """What the TV says about itself on port 8001 (no token): its name, model, network, PowerState... Raises when it
+    doesn't answer."""
+    return _rest(host, "GET", "", timeout)
+
+
+def app_state(host, app_id, timeout=5):
+    """{id, name, running, visible, version} for an installed app, None when it isn't installed."""
+    try:
+        return _rest(host, "GET", "applications/" + app_id, timeout)
+    except urllib.error.HTTPError as e:
+        if e.code == 404:
+            return None
+        raise
 
 
 def powered_on(host, timeout=10):
