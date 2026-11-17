@@ -271,11 +271,13 @@ while it's open; Art Mode at most every 5 minutes, and only while the TV is on. 
 read last, and when. The firmware, Tizen and Chromium versions, memory, storage and the Wi-Fi signal come from Frame TV,
 which reads them on the TV when it starts (with `art_url` set). "Everything the TV said" has the TV's own answers.
 
-Under **TV settings** are the TV's own: brightness, colour temperature and motion sensitivity, Sleep After and the light
-sensor, within what the TV says they can be. A change goes to the TV at once and is shown as the TV has it after; it can
-only be made while the TV is on. Under them are Frame Art's two settings for the TV: "Turn off the TV's own Art Mode
-timer and light sensor" (Sleep After and the light sensor are locked while it's on, since Frame Art turns them off
-again) and "Turn the TV off when nobody is home".
+Under **TV settings** is first a button that turns the TV on (through Home Assistant, with `tv_entity`, and then Frame
+TV opens, as "Turn the TV on" does) or off (by holding power, whatever it shows). After it come the TV's own settings:
+brightness, colour temperature and motion sensitivity, Sleep After and the light sensor, within what the TV says they
+can be. A change goes to the TV at once and is shown as the TV has it after; it can only be made while the TV is on.
+Under them are Frame Art's two settings for the TV: "Turn off the TV's own Art Mode timer and light sensor" (Sleep After
+and the light sensor are locked while it's on, since Frame Art turns them off again) and "Turn the TV off when nobody is
+home".
 
 The **Debug** tab shows a day at a time; ‹ and › go between the days, and "Today" comes back to today. At the top is a timeline: when the TV was on, in
 Art Mode, showing Frame TV, the screensaver and the music, and when the morning picture and tonight's show came (striped:
@@ -409,6 +411,7 @@ to set up. Without Mosquitto it runs as before.
 | `image.frame_art_picture` | The picture on the wall, 1280 pixels wide |
 | `binary_sensor.frame_art_tv_on`, `_art_mode` | Whether the TV is on, and in Art Mode, as the add-on sees it (asked every 20 seconds) |
 | `sensor.frame_art_activity` | What the TV does: `off`, `app` (Frame TV or another app), `art`, `morning`, `tonight`, `saver`, `music` or `unknown` |
+| `switch.frame_art_tv_power` | The TV on (through `tv_entity`, then Frame TV) and off (holding power, whatever it shows); its state is `binary_sensor.frame_art_tv_on`'s |
 | `number.frame_art_tv_brightness`, `_tv_color_temperature`, `_tv_motion_sensitivity` | The TV's own Art Mode brightness (0–10), colour temperature (−5 to 5) and motion sensitivity (1–3) |
 | `select.frame_art_tv_motion_timer` | The TV's Sleep After: Off, 5, 15, 30, 60, 120 or 240 min |
 | `switch.frame_art_tv_light_sensor` | The TV's light sensor in Art Mode |
@@ -502,6 +505,7 @@ The answers wait for the TV.
 | `GET /tv/info` | What the TV tab shows, as last read; `?fresh=1` asks the TV first (Art Mode at most every 5 minutes) |
 | `POST /tv/settings` | The TV's Art Mode settings, e.g. `{"brightness": 6}` (`brightness`, `color_temperature`, `motion_sensitivity`, `motion_timer`, `brightness_sensor_setting`); answers as `GET /tv/info` |
 | `POST /tv/on` | The TV on through Home Assistant (`tv_entity`), then `back_app` opened. Doesn't wait for the TV's turn, so it answers while the add-on waits for a sleeping TV |
+| `POST /tv/off` | Turns the TV off by holding power, whatever it shows; nothing when it's off already |
 | `POST /next` | A new picture now. `?art_mode=1` turns on Art Mode too, `?what=morning` or `?what=tonight` shows that picture, and `?wake=1` turns the TV on first when it's off. Ends a fixed picture |
 | `POST /artmode` | Art Mode on, with the picture it has |
 | `POST /never` | The picture on the wall is never shown again, and another comes; only for a picture from a source (`showing_key` in `/status`). `?picture=…` is a key from `/category` instead, and the wall only changes if that picture is on it |

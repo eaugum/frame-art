@@ -1327,6 +1327,13 @@ class Rotation:
         self.off_retry_at = time.time() + RETRY_MINUTES * 60
         return False
 
+    async def power_off(self):
+        """The TV off from the page or Home Assistant, whatever it shows; the schedule turns it on again only when
+        someone comes home, a window starts or the night is over."""
+        if not await asyncio.to_thread(tvmod.powered_on, self.cfg["tv_host"], 4):
+            return True
+        return await self.turn_off(events.why() or "asked to", anything=True)
+
     async def _tv_timer(self):
         """The TV's own Art Mode timer ("Sleep After") and its light sensor off, with tv_timer_off, so the schedule
         decides; read either way for the page. The light sensor puts the TV in standby within a minute in a dark room,

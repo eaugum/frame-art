@@ -167,6 +167,11 @@ def app(rotation):
         events.add("api", "tv_on", "turn the TV on")
         return await act(request, rotation.wake_up)
 
+    async def tv_off(request):
+        log.info("asked to turn the TV off")
+        events.add("api", "tv_off", "turn the TV off")
+        return await act(request, rotation.power_off)
+
     async def tv(request):
         return web.json_response({"off": await rotation.tv_off()}, headers=CORS)
 
@@ -335,6 +340,7 @@ def app(rotation):
                   web.get("/category", category), web.get("/thumb", thumb), web.get("/tv", tv),
                   web.get("/tv/info", tv_info), web.post("/tv/settings", tv_settings),
                   web.post("/tv/report", tv_report), web.post("/tv/on", tv_on),
+                  web.post("/tv/off", tv_off),
                   web.get("/events", event_log), web.get("/events/export", export), web.post("/event", app_event),
                   web.post("/show", show),
                   web.post("/next", next_), web.post("/artmode", artmode), web.post("/never", never),

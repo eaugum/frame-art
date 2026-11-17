@@ -1,5 +1,10 @@
 # Changes
 
+## 0.41.0
+
+- The TV on and off from the TV tab and from Home Assistant (`switch.frame_art_tv_power`, AUG-1722): on through
+  `tv_entity`, then Frame TV opens; off by holding power, whatever it shows. `POST /tv/off`.
+
 ## 0.40.0
 
 - A **TV** tab on the page (AUG-1722): what the TV says about itself (model, power, network, when it last came on and

@@ -244,6 +244,8 @@
     </section>
     <section>
       <header><h2 data-t="tv_settings"></h2><span id="tv-saved"></span></header>
+      <div class="row"><span><span data-t="tv_power"></span><small id="tv-power-note"></small></span>
+        <button id="tv-power" class="small"></button></div>
       <div id="tv-settings"></div>
       <div class="row"><span><span data-t="tv_timer_off"></span><small id="tv-timer-note"></small></span>
         <label class="switch"><input type="checkbox" data-setting="tv_timer_off"><i></i></label></div>
@@ -340,6 +342,7 @@
     sources(s);
     settings(s.settings || {}, s);
     if (lastTv) tvSettings();
+    tvPower();
     connections(s);
   }
 
@@ -955,6 +958,29 @@
     $("tv-settings-note").textContent = !list.length ? tr("tv_settings_unread")
       : !on ? tr("tv_settings_off", {when: when(i.art_at)}) : "";
   }
+  // On and off: on through Home Assistant (tv_entity), then Frame TV; off by holding power, whatever it shows
+  var powering = false;
+  function tvPower() {
+    var tv = last.tv || {}, b = $("tv-power");
+    b.textContent = tr(tv.power ? "tv_turn_off" : "tv_turn_on");
+    b.disabled = powering || tv.power === null || tv.power === undefined || (!tv.power && !last.tv_entity);
+    if (!powering) $("tv-power-note").textContent = tv.power === null || tv.power === undefined ? tr("not_known")
+      : tr(tv.power ? "tv_is_on" : "tv_is_off") + (!tv.power && !last.tv_entity ? tr("tv_power_no_entity") : "");
+  }
+  $("tv-power").onclick = function () {
+    var on = !(last.tv || {}).power;
+    powering = true;
+    tvPower();
+    $("tv-power-note").textContent = tr(on ? "waking" : "tv_turning_off");
+    fetch(on ? "tv/on" : "tv/off", {method: "POST"}).then(function (r) { return r.json(); }).then(function (s) {
+      powering = false;
+      if (s.version) show(s);
+      tvPower();
+      if (!s.ok) $("tv-power-note").textContent = s.error || tr("no_answer");
+      setTimeout(function () { tvInfo(true); }, 3000);
+    }).catch(function () { powering = false; tvPower(); $("tv-power-note").textContent = tr("no_answer"); });
+  };
+
   function saveTv(name, value) {
     var body = {};
     body[name] = value;
@@ -991,7 +1017,7 @@
   if (location.hash.length > 1) gallery(decodeURIComponent(location.hash.slice(1)));  // a link to a category
   setInterval(load, 30000);
   setInterval(function () {  // the TV's state, more often than the rest
-    fetch("status").then(function (r) { return r.json(); }).then(function (s) { last = s; away(s.tv); })
+    fetch("status").then(function (r) { return r.json(); }).then(function (s) { last = s; away(s.tv); tvPower(); })
       .catch(function () {});
   }, 10000);
   setInterval(function () { if ($("stasera").querySelector("b") || last.reading) load(); }, 3000);  // a code, or reading

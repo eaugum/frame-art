@@ -125,6 +125,9 @@ class Device:
                           state_topic=BASE + "/art_mode"))
         out.append(entity("sensor", "activity", "Activity", icon="mdi:television-guide", device_class="enum",
                           options=ACTIVITIES, state_topic=BASE + "/activity"))
+        # The TV on and off (AUG-1722); its state is binary_sensor.frame_art_tv_on's, unknown until seen
+        out.append(entity("switch", "tv_power", "TV", icon="mdi:television", state_topic=BASE + "/tv_on",
+                          command_topic=BASE + "/tv_power/set", payload_on="ON", payload_off="OFF"))
         for item, (name, low, high, icon) in TV_NUMBERS.items():
             out.append(entity("number", "tv_" + item, name, base=on_tv, icon=icon, min=low, max=high, step=1,
                               mode="slider", state_topic="%s/tv/%s" % (BASE, item),
@@ -244,6 +247,11 @@ class Device:
                 self.rot.set_settings({"interval_minutes": int(float(payload))})
             elif name.startswith("tv_") and name.endswith("/set") and name[3:-4] in TV_NUMBERS:
                 self._tv(name[3:-4], str(int(float(payload))))
+            elif name == "tv_power/set":
+                if payload == "ON":
+                    self.run_task(self.rot.wake_up(), "turning the TV on")
+                else:
+                    self.run_task(self.rot.power_off(), "turning the TV off")
             elif name == "tv_motion_timer/set":
                 self._tv("motion_timer", {_timer_name(v): v for v in TV_TIMER}[payload])
             elif name == "tv_light_sensor/set":
