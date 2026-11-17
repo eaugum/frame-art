@@ -138,6 +138,15 @@ class TV:
     async def set_motion_timer(self, value):
         await asyncio.wait_for(self.art.set_motion_timer(value), 30)
 
+    async def light_sensor(self):
+        """The TV's light sensor in Art Mode ("on"/"off"), which puts it in standby in a dark room; None on a TV
+        without one."""
+        got = await self._ask(lambda: self.art.get_artmode_settings("brightness_sensor_setting"), tries=2)
+        return str(got.get("value")) if isinstance(got, dict) and got.get("value") is not None else None
+
+    async def set_light_sensor(self, value):
+        await asyncio.wait_for(self.art.set_brightness_sensor_setting(value), 30)
+
     async def _settled(self):
         for _ in range(5):
             await asyncio.sleep(2)

@@ -433,7 +433,8 @@
     $("away-note").textContent = s.home_entity ? tr("away_off_note", {entity: s.home_entity}) : tr("home_only_missing");
     $("asleep-note").textContent = s.sleep_entity ? tr("asleep_note", {entity: s.sleep_entity}) : tr("asleep_missing");
     $("tv-timer-note").textContent = s.tv_timer === null || s.tv_timer === undefined ? tr("tv_timer_unknown") :
-      tr("tv_timer_now", {value: s.tv_timer === "off" ? tr("tv_timer_is_off") : s.tv_timer + " min"});
+      tr("tv_timer_now", {value: s.tv_timer === "off" ? tr("tv_timer_is_off") : s.tv_timer + " min"}) +
+      (s.tv_sensor ? tr("tv_sensor_now", {value: tr(s.tv_sensor === "off" ? "tv_timer_is_off" : "tv_sensor_on")}) : "");
   }
 
   // A week for the morning picture or tonight's show, Monday first: on, from and until, saved as the whole week

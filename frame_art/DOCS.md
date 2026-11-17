@@ -345,8 +345,9 @@ someone is home, except at night:
   came home, goes off after that long.
 - **Turn off when nobody is home** (on by default): the TV goes off as soon as `home_entity` says nobody is home, also
   while something plays.
-- **Turn off the TV's own Art Mode timer** (on by default): the TV's "Sleep After" would otherwise put it in standby
-  after an hour, whatever the schedule says. The page shows what the TV's timer is at.
+- **Turn off the TV's own Art Mode timer and light sensor** (on by default): the TV's "Sleep After" would otherwise put
+  it in standby after an hour, and its light sensor within a minute in a dark room (a winter morning at 06:00),
+  whatever the schedule says. The page shows what the TV's timer and light sensor are at.
 
 Turned off by hand, the TV stays off until someone comes home, the next window starts or the night is over. If it
 doesn't come on (off the network), it's tried three times, five minutes apart. Frame Art turns the TV off by holding

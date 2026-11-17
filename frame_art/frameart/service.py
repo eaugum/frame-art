@@ -213,6 +213,7 @@ class Rotation:
         self.turning_off_until = 0  # Art Mode going off now is ours: back_app isn't opened
         self.timer_at = 0  # when the TV's own Art Mode timer is looked at next
         self.tv_timer = None  # what it was last seen at ("off", "60" ...)
+        self.tv_sensor = None  # the TV's light sensor in Art Mode, as last seen ("on"/"off")
         self._from_categories()
 
     def _from_categories(self):
@@ -1320,19 +1321,33 @@ class Rotation:
         return False
 
     async def _tv_timer(self):
-        """The TV's own Art Mode timer ("Sleep After") off, with tv_timer_off, so the schedule decides; read either
-        way for the page."""
+        """The TV's own Art Mode timer ("Sleep After") and its light sensor off, with tv_timer_off, so the schedule
+        decides; read either way for the page. The light sensor puts the TV in standby within a minute in a dark room,
+        such as when the morning picture turns it on at 06:00 in winter."""
         self.timer_at = time.time() + 600  # until it answers
+        off = self.cfg.get("tv_timer_off", True)
         async with self.lock:
             async with TV(self.cfg["tv_host"], os.path.join(self.data, "token.txt")) as tv:
                 value, valid = await tv.motion_timer()
-                if self.cfg.get("tv_timer_off", True) and value != "off" and "off" in valid:
+                if off and value != "off" and "off" in valid:
                     await tv.set_motion_timer("off")
                     log.info("the TV's own Art Mode timer was %s; turned it off", value)
                     events.add("tv", "tv_timer_off", "the TV's own Art Mode timer was %s min: turned it off, so the "
                                "schedule decides" % value, why="")
                     value = "off"
-        self.tv_timer = value
+                self.tv_timer = value
+                try:
+                    sensor = await tv.light_sensor()
+                except Exception as e:  # a TV without one
+                    log.info("the TV's light sensor: %s: %s", type(e).__name__, e)
+                    sensor = None
+                if off and sensor == "on":
+                    await tv.set_light_sensor("off")
+                    log.info("the TV's light sensor was on; turned it off")
+                    events.add("tv", "tv_sensor_off", "the TV's light sensor was on (standby in a dark room): turned "
+                               "it off, so the schedule decides", why="")
+                    sensor = "off"
+                self.tv_sensor = sensor
         self.timer_at = time.time() + TIMER_LOOK
 
     async def wake_up(self):
@@ -1405,7 +1420,7 @@ class Rotation:
                 "busy": self.making.locked() or self.lock.locked(),
                 "saver": self.saver, "showing_key": self.showing_key(), "tv_entity": bool(self.cfg.get("tv_entity")),
                 "home_entity": self.home_entity(), "sleep_entity": self.cfg.get("sleep_entity") or "",
-                "tv_timer": self.tv_timer,
+                "tv_timer": self.tv_timer, "tv_sensor": self.tv_sensor,
                 "window": {"kind": w[0], "from": w[1].strftime("%H:%M"),
                            "until": w[2].strftime("%H:%M") if w[2] else None}
                 if (w := self.window_now()) else None,

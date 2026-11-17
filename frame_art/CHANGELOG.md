@@ -1,5 +1,10 @@
 # Changes
 
+## 0.39.3
+
+- "Turn off the TV's own Art Mode timer" also turns off the TV's light sensor, which put the TV in standby within a
+  minute in a dark room, such as when the morning picture turned it on at 06:00. The page shows both.
+
 ## 0.39.2
 
 - A TV waking from standby, by itself or turned on through Home Assistant, no longer counts as OK in the TV's Art
