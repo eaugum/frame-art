@@ -211,6 +211,9 @@ class Rotation:
         self.was_home, self.was_asleep, self.was_night = None, None, None  # as last looked at
         self.on_since = None  # when the TV was seen coming on; None: on since before we looked
         self.on_retry_at, self.on_tries = 0, {}  # the TV didn't come on: tried again after this; tries per window
+        # Wake-on-LAN didn't wake it: off the network (switched off completely), until it's seen on again. A TV that
+        # only doesn't answer is in standby, which is normal
+        self.gone_at = None
         self.off_retry_at = 0  # holding power didn't turn it off: not again before this
         self.turning_off_until = 0  # Art Mode going off now is ours: back_app isn't opened
         self.timer_at = 0  # when the TV's own Art Mode timer is looked at next
@@ -882,6 +885,8 @@ class Rotation:
         why = cause or ("first look" if was is None else "from outside")
         events.add("tv", what, SEEN[what], why=why)
         log.info("%s (%s)", SEEN[what], why)
+        if on and name == "power":
+            self.gone_at = None
         if name == "power" and on and was is False:
             self.on_since = time.time()
             if not cause:
@@ -1309,8 +1314,9 @@ class Rotation:
         if not on:
             tries = self.on_tries[(kind, today)] = self.on_tries.get((kind, today), 0) + 1
             last = tries >= ON_TRIES
+            self.gone_at = time.time()
             log.info("the TV didn't come on (%d of %d)", tries, ON_TRIES)
-            events.add("tv", "turn_on_failed", "the TV didn't come on (off the network?); %s" % (
+            events.add("tv", "turn_on_failed", "the TV didn't come on: it's off the network; %s" % (
                 "not trying again now" if last else "trying again in %d min" % RETRY_MINUTES))
             if last and done:
                 self.state["made"][done] = today
@@ -1415,8 +1421,10 @@ class Rotation:
             until = time.time() + WAKE_WAIT
             while not await asyncio.to_thread(tvmod.powered_on, host):
                 if time.time() > until:
-                    events.add("tv", "turn_on_failed", "the TV didn't come on")
-                    raise RuntimeError("the TV didn't come on")
+                    self.gone_at = time.time()
+                    events.add("tv", "turn_on_failed", "the TV didn't come on: it's off the network")
+                    raise RuntimeError("The TV didn't come on: it's off the network (switched off completely). Turn "
+                                       "it on with the remote")
                 await asyncio.sleep(2)
         self.retry_at = 0
         self.wake.set()  # the timer tries again now that it answers
@@ -1505,7 +1513,7 @@ class Rotation:
         for e in events.since(0, None, events.LIMIT)[0]:
             if e["source"] == "tv" and e["kind"] in ("power_on", "power_off", "standby", "art_mode_on", "art_mode_off"):
                 last[e["kind"]] = e["at"]
-        return dict(got, answer=answer, busy=self.lock.locked(), app=(self.cfg.get("back_app") or "").strip(),
+        return dict(got, answer=answer, gone_at=self.gone_at, busy=self.lock.locked(), app=(self.cfg.get("back_app") or "").strip(),
                     tv_timer_off=self.cfg.get("tv_timer_off", True),
                     power=self.seen["power"], art_mode=False if self.seen["power"] is False else self.seen["art_mode"],
                     last=last,

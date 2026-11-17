@@ -1,5 +1,10 @@
 # Changes
 
+## 0.42.1
+
+- The TV tab: a TV that doesn't answer is "off" (in standby it often doesn't), not "off, or away from the network". It
+  says the TV is off the network only when Wake-on-LAN didn't wake it, until it's seen on again.
+
 ## 0.42.0
 
 - The TV is turned on with Wake-on-LAN, sent by Home Assistant (`wake_on_lan.send_magic_packet`) to the MAC address

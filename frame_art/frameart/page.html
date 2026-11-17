@@ -867,13 +867,14 @@
   function drawTv(i) {
     var all = i.device || {}, d = all.device || {}, art = i.art || {}, last = i.last || {}, r = i.report || {};
     var power = d.PowerState === "on" && i.answer !== false;
-    $("tv-sum").textContent = i.answer === false ? tr("tv_away", {when: when(i.device_at)})
+    $("tv-sum").textContent = i.gone_at ? tr("tv_gone", {when: when(i.gone_at)})
+      : i.answer === false ? tr("tv_off_read", {when: when(i.device_at)})
       : i.device_at ? tr("tv_read_at", {when: when(i.device_at)}) : "";
     var offAt = Math.max(last.power_off || 0, last.standby || 0);
     rows($("tv-device"), [
       [tr("tv_name"), d.name],
       [tr("tv_model"), [d.modelName, d.model].filter(Boolean).join(" · ")],
-      [tr("tv_power"), i.answer === false ? tr("tv_no_answer") : d.PowerState === "on" ? tr("on") : d.PowerState, "",
+      [tr("tv_power"), i.gone_at ? tr("tv_off_network") : i.answer === false ? tr("off") : d.PowerState === "on" ? tr("on") : d.PowerState, "",
        power],
       ["Art Mode", i.art_mode === null || i.art_mode === undefined ? tr("not_known") : onOff(i.art_mode), "",
        i.art_mode === true],
