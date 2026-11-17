@@ -1,5 +1,13 @@
 # Changes
 
+## 0.42.0
+
+- The TV is turned on with Wake-on-LAN, sent by Home Assistant (`wake_on_lan.send_magic_packet`) to the MAC address
+  the TV gives about itself, instead of through a `media_player`: the `tv_entity` option is gone. Add the Wake on LAN
+  integration in Home Assistant (see the documentation).
+- The TV tab: "Turn on" is no longer locked while the TV doesn't answer. A TV in standby often doesn't, and wakes all
+  the same.
+
 ## 0.41.2
 
 - The TV tab: "Turn off the TV's own Art Mode timer and light sensor" and "Turn the TV off when nobody is home" have a

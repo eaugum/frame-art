@@ -33,7 +33,7 @@ Frame Art starts with only `tv_host`. The rest is optional, and each piece adds 
 | Met.no, or another with a `weather.*` entity that gives forecasts | `weather_entity` | The weather on the morning picture |
 | Any calendar integration, such as Google Calendar or Local Calendar | `calendars` | Today's events on the morning picture |
 | Nord Pool or Tibber | `price_entity` | The electricity price on the morning picture |
-| Samsung Smart TV | `tv_entity` | Turning the TV on. Check that `media_player.turn_on` under Developer tools turns the TV on from standby |
+| [Wake on LAN](https://www.home-assistant.io/integrations/wake_on_lan/) | `wake_on_lan.send_magic_packet` | Turning the TV on. The add-on can't reach the home network's broadcast itself, so Home Assistant sends the packet, to the MAC address the TV gives on port 8001. Add the integration (`wake_on_lan:` in `configuration.yaml`, or Settings → Devices & services) |
 | Spotify or SpotifyPlus | A `media_player.spotify*` | [Follow the music](#follow-the-music) |
 | Person, Device tracker or a Zone | `sleep_entity` | Everyone's asleep: a `binary_sensor`, `input_boolean`, `switch` or `group` that is `on` then. It's the night then: the TV goes off from Art Mode, and comes on with the morning picture when it's off. Empty: the night is between tonight's window and the morning window |
 | `home_entity` | "Only when someone is home" |
@@ -65,7 +65,6 @@ interval, the times and the switches) is on the add-on's page and is saved in `/
 | `language` | The language of the morning picture and the posters: `auto` (default), `en` or `nb`. See [Language](#language) |
 | `api_key` | The key for the API and Frame TV's `art_key`. Left empty, the add-on makes one at its start and writes it in |
 | `weather_entity` | The weather for the morning picture, e.g. `weather.forecast_home` (Met.no). Empty gives no weather |
-| `tv_entity` | The TV as a `media_player` in Home Assistant, turned on before the morning picture and tonight's show when it's off. Empty: never |
 | `home_entity` | Who's home, for "Only when someone is home": `zone.home` (default; someone in it), or a `person`, `device_tracker`, `group`, `binary_sensor` or `input_boolean` that is `home` or `on`. Empty: always home |
 | `calendars` | `calendar.*` entities whose events today are shown on the morning picture |
 | `price_entity` | A Nord Pool or Tibber price sensor for the morning picture |
@@ -245,7 +244,7 @@ Open **Frame Art** in the sidebar. A line under the title says what's in charge 
 
 - show a new picture, the morning picture or tonight's show at once,
 - turn Follow the music on or off with its button by the others (it's lit when it's on),
-- turn the TV on: "Turn the TV on" is there while the TV is off (with `tv_entity` set). It turns the TV on through Home Assistant
+- turn the TV on: "Turn the TV on" is there while the TV is off It turns the TV on with Wake-on-LAN
   and opens `back_app` (Frame TV: `FrameTVapp.FrameTV`); without `back_app`, the TV stays where it comes up,
 - tick sources and categories,
 - **choose a picture**: "Choose picture" in an opened category shows what's been shown lately and 24 at random. The picture
@@ -271,7 +270,7 @@ while it's open; Art Mode at most every 5 minutes, and only while the TV is on. 
 read last, and when. The firmware, Tizen and Chromium versions, memory, storage and the Wi-Fi signal come from Frame TV,
 which reads them on the TV when it starts (with `art_url` set). "Everything the TV said" has the TV's own answers.
 
-Under **TV settings** is first a button that turns the TV on (through Home Assistant, with `tv_entity`, and then Frame
+Under **TV settings** is first a button that turns the TV on (with Wake-on-LAN, and then Frame
 TV opens, as "Turn the TV on" does) or off (by holding power, whatever it shows). After it come the TV's own settings:
 brightness, colour temperature and motion sensitivity, Sleep After and the light sensor, within what the TV says they
 can be. A change goes to the TV at once and is shown as the TV has it after; it can only be made while the TV is on.
@@ -351,7 +350,7 @@ someone is home, except at night:
 - **When the night starts,** the TV goes off if it's in Art Mode. If something plays, it's left alone, and the TV goes
   off when it comes back to Art Mode.
 - **When the night is over,** the TV comes on with the morning picture if someone is home ("Turn the TV on" under the
-  morning picture, with `tv_entity`). Turn the TV on yourself less than two hours before the morning window, or wake
+  morning picture). Turn the TV on yourself less than two hours before the morning window, or wake
   up then (`sleep_entity`), and the night is over: the morning picture comes at once and stands until its window ends.
 - **When a window starts,** the TV comes on if someone is home, also if you turned it off earlier that day ("Turn the
   TV on", per picture). If it's on already, whatever it shows stays.
@@ -411,7 +410,7 @@ to set up. Without Mosquitto it runs as before.
 | `image.frame_art_picture` | The picture on the wall, 1280 pixels wide |
 | `binary_sensor.frame_art_tv_on`, `_art_mode` | Whether the TV is on, and in Art Mode, as the add-on sees it (asked every 20 seconds) |
 | `sensor.frame_art_activity` | What the TV does: `off`, `app` (Frame TV or another app), `art`, `morning`, `tonight`, `saver`, `music` or `unknown` |
-| `switch.frame_art_tv_power` | The TV on (through `tv_entity`, then Frame TV) and off (holding power, whatever it shows); its state is `binary_sensor.frame_art_tv_on`'s |
+| `switch.frame_art_tv_power` | The TV on (Wake-on-LAN, then Frame TV) and off (holding power, whatever it shows); its state is `binary_sensor.frame_art_tv_on`'s |
 | `number.frame_art_tv_brightness`, `_tv_color_temperature`, `_tv_motion_sensitivity` | The TV's own Art Mode brightness (0–10), colour temperature (−5 to 5) and motion sensitivity (1–3) |
 | `select.frame_art_tv_motion_timer` | The TV's Sleep After: Off, 5, 15, 30, 60, 120 or 240 min |
 | `switch.frame_art_tv_light_sensor` | The TV's light sensor in Art Mode |
@@ -501,10 +500,10 @@ The answers wait for the TV.
 | Call | What |
 |---|---|
 | `GET /status` | What's showing, when it changed and changes next, the mode, the categories, the number of pictures per source and the settings |
-| `GET /tv` | Whether the TV is off (`{"off": true}`), asked of the TV; `null` without `tv_entity` |
+| `GET /tv` | Whether the TV is off (`{"off": true}`), asked of the TV; `null` while Home Assistant doesn't answer |
 | `GET /tv/info` | What the TV tab shows, as last read; `?fresh=1` asks the TV first (Art Mode at most every 5 minutes) |
 | `POST /tv/settings` | The TV's Art Mode settings, e.g. `{"brightness": 6}` (`brightness`, `color_temperature`, `motion_sensitivity`, `motion_timer`, `brightness_sensor_setting`); answers as `GET /tv/info` |
-| `POST /tv/on` | The TV on through Home Assistant (`tv_entity`), then `back_app` opened. Doesn't wait for the TV's turn, so it answers while the add-on waits for a sleeping TV |
+| `POST /tv/on` | The TV on with Wake-on-LAN through Home Assistant, then `back_app` opened. Doesn't wait for the TV's turn, so it answers while the add-on waits for a sleeping TV |
 | `POST /tv/off` | Turns the TV off by holding power, whatever it shows; nothing when it's off already |
 | `POST /next` | A new picture now. `?art_mode=1` turns on Art Mode too, `?what=morning` or `?what=tonight` shows that picture, and `?wake=1` turns the TV on first when it's off. Ends a fixed picture |
 | `POST /artmode` | Art Mode on, with the picture it has |
@@ -544,8 +543,10 @@ add-on's page shows the day's events. Every change of picture is in the log.
 - **The morning picture has no weather:** check `weather_entity`. The log says `no weather from …`.
 - **No calendar or electricity price on the morning picture:** check `calendars` and `price_entity`. They only show when
   there's something today.
-- **The TV doesn't turn on:** check `tv_entity`, try `media_player.turn_on` on it under Developer tools, and check
-  whether "Only when someone is home" stopped it. The log says `nobody home`.
+- **The TV doesn't turn on:** check that the Wake on LAN integration is added (the log says `couldn't send
+  Wake-on-LAN`), and whether "Only when someone is home" stopped it (the log says `nobody home`). The MAC address is
+  read from the TV the first time it answers. A TV that has switched off completely, not just to standby, is off the
+  network and can't be woken.
 - **No device in Home Assistant:** the log says `no broker`. Install Mosquitto, add the MQTT integration, and restart
   the add-on.
 - **Follow the music does nothing:** the switch is off by default, and it needs a `media_player.spotify*` that is

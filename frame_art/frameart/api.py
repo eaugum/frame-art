@@ -8,11 +8,12 @@ GET  /showing.jpg  the picture
 GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random, from the
                category's sources that are ticked
 GET  /thumb?key=…  a small copy of a picture (a key from /category)
-GET  /tv       whether the TV is off ({"off": true}), from tv_entity; null without one
-POST /tv/on    the TV on through Home Assistant (tv_entity), then back_app opened, without waiting for the TV's turn
+GET  /tv       whether the TV is off ({"off": true}), asked of the TV; null while Home Assistant doesn't answer
+POST /tv/on    the TV on with Wake-on-LAN through Home Assistant, then back_app opened, without waiting for the TV's
+               turn
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture. ?wake=1 (and on
-               /show) turns the TV on first through Home Assistant when it's off.
+               /show) turns the TV on first (Wake-on-LAN) when it's off.
 POST /show?key=…  that picture now, in Art Mode, standing until the next morning picture (a fixed picture)
 POST /artmode  Art Mode on, with the picture it has
 POST /never    what's on the wall (from a source; showing_key in /status) is never drawn again, and another comes;

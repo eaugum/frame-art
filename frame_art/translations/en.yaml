@@ -14,11 +14,6 @@ configuration:
   weather_entity:
     name: Weather
     description: The weather entity for the morning picture (met.no). Empty gives no weather.
-  tv_entity:
-    name: The TV in Home Assistant
-    description: >-
-      A media_player that is turned on before the morning picture and tonight's show when the TV is off. Empty:
-      never.
   home_entity:
     name: Who's home
     description: >-

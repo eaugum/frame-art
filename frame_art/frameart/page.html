@@ -462,11 +462,9 @@
     document.querySelectorAll("[data-setting]").forEach(function (b) { b.checked = !!st[b.dataset.setting]; });
     ["morning", "tonight"].forEach(function (kind) {
       week(kind, st[kind + "_days"] || [], !st[kind]);
-      var row = $(kind + "-tv"), tv = row.querySelector("input");
+      var row = $(kind + "-tv");
       row.hidden = !st[kind];
-      tv.disabled = !s.tv_entity;
-      if (!s.tv_entity) tv.checked = false;
-      row.querySelector("small").textContent = tr(s.tv_entity ? "tv_on_note" : "tv_on_missing");
+      row.querySelector("small").textContent = tr("tv_on_note");
     });
     var home = $("home-note").parentNode.parentNode.querySelector("input");
     home.disabled = !s.home_entity;
@@ -533,12 +531,12 @@
     fetch("status").then(function (r) { return r.json(); }).then(show).catch(function () {});
     power();
   }
-  // "Turn the TV on" only while tv_entity says it's off
+  // "Turn the TV on" only while the TV is off
   function power() {
     fetch("tv").then(function (r) { return r.json(); }).then(function (tv) { $("power").hidden = !tv.off; })
       .catch(function () {});
   }
-  // The TV off (tv_entity): ask before turning it on; then the same with &wake=1
+  // The TV off: ask before turning it on; then the same with &wake=1
   function act(path, doing) {
     if (last.wanted === "music") return;  // the cover stands while it plays: turn Follow the music off first
     busy(true);
@@ -968,16 +966,15 @@
     $("tv-settings-note").textContent = !list.length ? tr("tv_settings_unread")
       : tvAnswers === null ? tr("tv_asking") : !on ? tr("tv_settings_off", {when: when(i.art_at)}) : "";
   }
-  // On and off: on through Home Assistant (tv_entity), then Frame TV; off by holding power, whatever it shows
-  // A TV that doesn't answer at all is off the network, and Home Assistant can't wake it either
+  // On and off: on with Wake-on-LAN through Home Assistant, then Frame TV; off by holding power, whatever it shows.
+  // A TV in standby often doesn't answer, and wakes all the same, so "Turn on" stays open then
   var powering = false, tvAnswers = null;
   function tvPower() {
-    var tv = last.tv || {}, b = $("tv-power"), gone = !tv.power && tvAnswers === false;
+    var tv = last.tv || {}, b = $("tv-power");
     b.textContent = tr(tv.power ? "tv_turn_off" : "tv_turn_on");
-    b.disabled = powering || tv.power === null || tv.power === undefined || (!tv.power && !last.tv_entity) || gone;
+    b.disabled = powering || tv.power === null || tv.power === undefined;
     if (!powering) $("tv-power-note").textContent = tv.power === null || tv.power === undefined ? tr("not_known")
-      : gone ? tr("tv_power_gone")
-      : tr(tv.power ? "tv_is_on" : "tv_is_off") + (!tv.power && !last.tv_entity ? tr("tv_power_no_entity") : "");
+      : tr(tv.power ? "tv_is_on" : "tv_is_off");
   }
   $("tv-power").onclick = function () {
     var on = !(last.tv || {}).power;

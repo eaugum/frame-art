@@ -119,8 +119,7 @@ SETTINGS = {
     "categories_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),  # before sources_off
     "sources_off": ([], lambda v: [str(c) for c in v] if isinstance(v, list) else None),
     # Kept for the screensaver (AUG-1494) and Follow the music (AUG-1495); the page shows them already
-    # The TV (tv_entity in the options) turned on through Home Assistant before Morgenbildet and tonight's show,
-    # when it's off
+    # The TV turned on (Wake-on-LAN through Home Assistant) before Morgenbildet and tonight's show, when it's off
     "morning_tv_on": (True, _bool),
     "tonight_tv_on": (True, _bool),
     "screensaver": (True, _bool),  # off: Frame TV doesn't start its screensaver (it reads this from /status)
@@ -990,6 +989,8 @@ class Rotation:
         misses = 0
         while True:
             on = await asyncio.to_thread(tvmod.powered_on, host, 5)
+            if on and not self._mac():
+                await self._learn_mac()  # for Wake-on-LAN, before it's needed
             misses = 0 if on else misses + 1
             if on or misses >= 2 or self.seen["power"] is None:
                 self._seen("power", on)
@@ -1134,25 +1135,54 @@ class Rotation:
         return self.cfg.get("home_entity", "zone.home")  # saved options from before 0.21.0 lack it
 
     async def tv_off(self):
-        """Whether the TV is off, asked of the TV itself: Home Assistant's tv_entity can say "on" for a TV that's
-        asleep and doesn't answer. None without tv_entity, which is what turns it on."""
-        if not self.cfg.get("tv_entity") or not self.ha.ready():
+        """Whether the TV is off, asked of the TV itself. None while Home Assistant, which turns it on, doesn't
+        answer."""
+        if not self.ha.ready():
             return None
         return not await asyncio.to_thread(tvmod.powered_on, self.cfg["tv_host"], 4)
 
+    def _mac(self):
+        """The TV's MAC address, as the TV said it on port 8001 (wifiMac), or None."""
+        if self._tv_info is None:
+            self._tv_info_saved()
+        return ((self._tv_info.get("device") or {}).get("device") or {}).get("wifiMac") or None
+
+    async def _learn_mac(self):
+        """Asks the TV about itself and keeps the answer (the TV tab shows it too); the MAC address, or None."""
+        try:
+            got = self._tv_info_saved()
+            got["device"] = await asyncio.to_thread(tvmod.device, self.cfg["tv_host"], 5)
+            got["device_at"] = time.time()
+            self._keep_tv_info(got)
+        except Exception as e:
+            log.info("couldn't ask the TV for its MAC address (%s: %s)", type(e).__name__, e)
+        return self._mac()
+
+    async def _wol(self):
+        """Wake-on-LAN to the TV, sent by Home Assistant: the add-on's own network doesn't reach the home network's
+        broadcast. Raises when it can't; the MAC address when it's sent. Tested 17.11.2026: on from standby in a
+        second."""
+        mac = self._mac() or await self._learn_mac()
+        if not mac:
+            raise RuntimeError("the TV's MAC address isn't known yet; it's read from the TV the first time it answers")
+        try:
+            await asyncio.to_thread(self.ha.call, "wake_on_lan", "send_magic_packet", {"mac": mac})
+        except Exception as e:
+            raise RuntimeError("Home Assistant couldn't send Wake-on-LAN; is the Wake on LAN integration added? "
+                               "(%s: %s)" % (type(e).__name__, e))
+        return mac
+
     async def turn_on(self):
-        """The TV on through Home Assistant, and time for Art Mode to answer. False when it couldn't."""
-        entity = self.cfg.get("tv_entity")
+        """The TV on with Wake-on-LAN, and time for Art Mode to answer. False when it couldn't."""
         events.expect("power_on")
         try:
-            await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
+            mac = await self._wol()
         except Exception as e:
-            log.info("couldn't turn the TV on through Home Assistant (%s: %s)", type(e).__name__, e)
-            events.add("tv", "turn_on_failed", "couldn't turn the TV on through Home Assistant (%s: %s)" % (
-                type(e).__name__, e))
+            log.info("couldn't turn the TV on (%s)", e)
+            events.add("tv", "turn_on_failed", "couldn't turn the TV on (%s)" % e)
             return False
-        log.info("turned the TV on through Home Assistant (%s)", entity)
-        events.add("tv", "turned_on", "the TV was off: turned it on through Home Assistant (%s)" % entity)
+        log.info("turned the TV on with Wake-on-LAN (%s)", mac)
+        events.add("tv", "turned_on", "the TV was off: turned it on with Wake-on-LAN")
         await asyncio.sleep(TV_ON_WAIT)
         return True
 
@@ -1206,7 +1236,7 @@ class Rotation:
             if self.seen["art_mode"] and time.time() >= self.timer_at:
                 await self._tv_timer()
 
-        if home is not True or not self.cfg.get("tv_entity") or time.time() < self.on_retry_at:
+        if home is not True or time.time() < self.on_retry_at:
             return
         why = None
         if arrived:
@@ -1369,16 +1399,19 @@ class Rotation:
         self.timer_at = time.time() + TIMER_LOOK
 
     async def wake_up(self):
-        """The page's "Turn the TV on": on through Home Assistant, then back_app (Frame TV) on the screen. Doesn't wait
-        for the lock, which a sleeping TV holds."""
-        entity, host = self.cfg.get("tv_entity"), self.cfg["tv_host"]
-        if not entity:
-            raise ValueError("tv_entity is empty in the add-on's configuration")
+        """The page's "Turn the TV on": on with Wake-on-LAN, then back_app (Frame TV) on the screen. Also when the TV
+        didn't answer: in standby it often doesn't, and it wakes all the same. Doesn't wait for the lock, which a
+        sleeping TV holds."""
+        host = self.cfg["tv_host"]
         if not await asyncio.to_thread(tvmod.powered_on, host):
             events.expect("power_on")
-            await asyncio.to_thread(self.ha.call, "media_player", "turn_on", {"entity_id": entity})
-            log.info("turned the TV on through Home Assistant (%s), from the page", entity)
-            events.add("tv", "turned_on", "turned the TV on through Home Assistant (%s)" % entity)
+            try:
+                mac = await self._wol()
+            except Exception as e:
+                events.add("tv", "turn_on_failed", "couldn't turn the TV on (%s)" % e)
+                raise
+            log.info("turned the TV on with Wake-on-LAN (%s), from the page", mac)
+            events.add("tv", "turned_on", "turned the TV on with Wake-on-LAN")
             until = time.time() + WAKE_WAIT
             while not await asyncio.to_thread(tvmod.powered_on, host):
                 if time.time() > until:
@@ -1583,7 +1616,7 @@ class Rotation:
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
                 "stasera": self.stasera.state(), "pairing": self.stasera.pairing,
                 "busy": self.making.locked() or self.lock.locked(),
-                "saver": self.saver, "showing_key": self.showing_key(), "tv_entity": bool(self.cfg.get("tv_entity")),
+                "saver": self.saver, "showing_key": self.showing_key(),
                 "home_entity": self.home_entity(), "sleep_entity": self.cfg.get("sleep_entity") or "",
                 "tv_timer": self.tv_timer, "tv_sensor": self.tv_sensor,
                 "window": {"kind": w[0], "from": w[1].strftime("%H:%M"),
