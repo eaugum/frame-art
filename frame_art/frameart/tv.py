@@ -3,6 +3,7 @@ Besides, watch() keeps one open to hear when Art Mode goes off, and launch() ope
 import asyncio
 import json
 import logging
+import re
 import urllib.error
 import urllib.request
 
@@ -294,6 +295,31 @@ def device(host, timeout=10):
     """What the TV says about itself on port 8001 (no token): its name, model, network, PowerState... Raises when it
     doesn't answer."""
     return _rest(host, "GET", "", timeout)
+
+
+_SOAP = ('<?xml version="1.0"?><s:Envelope xmlns:s="http://schemas.xmlsoap.org/soap/envelope/" '
+         's:encodingStyle="http://schemas.xmlsoap.org/soap/encoding/"><s:Body><u:{0} '
+         'xmlns:u="urn:schemas-upnp-org:service:RenderingControl:1"><InstanceID>0</InstanceID><Channel>Master</Channel>'
+         '</u:{0}></s:Body></s:Envelope>')
+
+
+def _upnp(host, action, answer, timeout):
+    req = urllib.request.Request("http://%s:9197/upnp/control/RenderingControl1" % host,
+                                 data=_SOAP.format(action).encode(), method="POST",
+                                 headers={"Content-Type": 'text/xml; charset="utf-8"',
+                                          "SOAPACTION": '"urn:schemas-upnp-org:service:RenderingControl:1#%s"' % action})
+    with urllib.request.urlopen(req, timeout=timeout) as r:
+        got = re.search(r"<%s>([^<]*)</%s>" % (answer, answer), r.read().decode("utf-8", "replace"))
+    if not got:
+        raise ValueError("no %s in the answer to %s" % (answer, action))
+    return got.group(1)
+
+
+def volume(host, timeout=3):
+    """{volume: 0-100, muted} from the TV's media renderer (UPnP, port 9197, no token; AUG-1728). Raises when it
+    doesn't answer."""
+    return {"volume": int(_upnp(host, "GetVolume", "CurrentVolume", timeout)),
+            "muted": _upnp(host, "GetMute", "CurrentMute", timeout) in ("1", "true")}
 
 
 def app_state(host, app_id, timeout=5):

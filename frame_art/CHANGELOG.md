@@ -1,5 +1,15 @@
 # Changes
 
+## 0.43.0
+
+- The TV tab in sections (AUG-1728): Now and Art Mode first, then Picture and sound, Power and energy, Apps and About
+  the TV, closed until opened (the page remembers which).
+- New on it: the volume (asked of the TV over UPnP), picture mode, sound mode, source and power draw from Home
+  Assistant's SmartThings integration (the new `smartthings_entity` option, or the `media_player` with the TV's name),
+  and, from Frame TV's new service, why the TV last went off, how long the screen has been on, Auto Power Off, energy
+  saving, ambient light detection, network standby, the sleep timer, HDMI-CEC and Art Mode's learned brightness.
+- `sensor.frame_art_tv_off_reason` in Home Assistant: why the TV last went off, as it says itself.
+
 ## 0.42.1
 
 - The TV tab: a TV that doesn't answer is "off" (in standby it often doesn't), not "off, or away from the network". It

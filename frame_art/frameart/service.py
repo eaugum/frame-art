@@ -72,6 +72,7 @@ WAKE_WAIT = 90  # seconds the page's "Turn the TV on" waits for the TV to say it
 POWER_LOOK = 20  # seconds between asking the TV whether it's on, for the event log (AUG-1523)
 TV_INFO_FRESH = 300  # seconds an answer from the art channel is good for on the TV tab
 TV_INFO_WAIT = 60  # seconds the TV tab waits for the art channel
+SMARTTHINGS_SECONDS = 3600  # the TV's entities in Home Assistant are looked up again this often
 SEEN = {"power_on": "the TV came on", "power_off": "the TV went off", "art_mode_on": "Art Mode on",
         "art_mode_off": "Art Mode off"}
 
@@ -195,6 +196,7 @@ class Rotation:
         self.picked_at = 0  # when OK in the TV's Art Mode menu last asked for a new picture
         self.before_path = os.path.join(data_dir, "before.jpg")  # what was on the wall when the music started
         self.ha = music.HomeAssistant(cfg)
+        self.smartthings = ([], 0)  # the TV's SmartThings entities in Home Assistant, and when they were looked up
         i18n.setup(cfg)
         self.music, self.music_at = None, 0  # what played last, and when it was last seen playing
         self.wake = asyncio.Event()  # the music changed: the timer looks at once
@@ -1456,6 +1458,13 @@ class Rotation:
                 self._tv_info = {}
         return copy.deepcopy(self._tv_info)
 
+    def off_reason(self):
+        """Why the TV last went off, as it says itself (POWER_KEY, ART_APP_TO_SUSPEND...), from Frame TV's service
+        (AUG-1728); None before it has said."""
+        if self._tv_info is None:
+            self._tv_info_saved()
+        return ((self._tv_info.get("report") or {}).get("settings") or {}).get("db/sp-kpi/power_off_reason")
+
     def art_settings(self):
         """The TV's Art Mode settings as last read: {item: value}, for Home Assistant."""
         if self._tv_info is None:
@@ -1494,6 +1503,19 @@ class Rotation:
                                              return_exceptions=True)
                 got["apps"] = [a for a in found if isinstance(a, dict)]
                 got["apps_at"] = now
+            if on:
+                try:
+                    got["volume"] = await asyncio.to_thread(tvmod.volume, host)
+                    got["volume_at"] = now
+                except Exception as e:
+                    log.info("the TV tab: no volume over UPnP (%s: %s)", type(e).__name__, e)
+            name = ((got.get("device") or {}).get("device") or {}).get("name")
+            if self.ha.ready() and (name or self.cfg.get("smartthings_entity")):
+                try:
+                    got["ha"] = await asyncio.to_thread(self._smartthings, name, now)
+                    got["ha_at"] = now
+                except Exception as e:
+                    log.info("the TV tab: nothing from SmartThings in Home Assistant (%s: %s)", type(e).__name__, e)
             if on and now - got.get("art_at", 0) > TV_INFO_FRESH and not self.lock.locked():
                 try:
                     async with self.lock:
@@ -1521,9 +1543,60 @@ class Rotation:
                     current_ours=current in ours,
                     current_label=self.state.d.get("showing") if current and current == newest else None)
 
+    def _smartthings(self, name, now):
+        """What Home Assistant's SmartThings integration knows about the TV (AUG-1728): picture and sound mode,
+        volume, source and power. The TV is smartthings_entity, or else the media_player named like the TV
+        (its name on port 8001); the rest are that device's entities."""
+        entities, at = self.smartthings
+        if not entities or now - at > SMARTTHINGS_SECONDS:
+            player = (self.cfg.get("smartthings_entity") or "").strip()
+            if not player:
+                states = json.loads(self.ha.get("/api/states", timeout=30))
+                named = [x["entity_id"] for x in states if x["entity_id"].startswith("media_player.")
+                         and (x.get("attributes") or {}).get("friendly_name") == name]
+                if not named:
+                    raise LookupError("no media_player named %r" % name)
+                player = named[0]
+            entities = json.loads(self.ha.template("{{ device_entities(device_id(%s)) | list | tojson }}"
+                                                   % json.dumps(player))) or [player]
+            self.smartthings = (entities, now)
+        out = {}
+        for entity in entities:
+            s = json.loads(self.ha.get("/api/states/" + entity))
+            a, state = s.get("attributes") or {}, s.get("state")
+            known = state not in ("unknown", "unavailable", None, "")
+            if entity.startswith("media_player."):
+                out["entity"] = entity
+                out["state"] = state
+                if a.get("volume_level") is not None:
+                    out["volume"] = round(a["volume_level"] * 100)
+                out.update({k: a[v] for k, v in (("muted", "is_volume_muted"), ("source", "source"),
+                                                 ("sound_mode", "sound_mode"), ("sound_modes", "sound_mode_list"))
+                            if a.get(v) is not None})
+            elif entity.startswith("select.") and entity.endswith("picture_mode"):
+                out["picture_mode"] = state if known else None
+                out["picture_modes"] = a.get("options")
+            elif entity.startswith("sensor.") and known and a.get("device_class") == "power":
+                out["power_w"] = float(state)
+                period = [a.get("power_consumption_start"), a.get("power_consumption_end")]
+                try:
+                    period = [datetime.datetime.fromisoformat(x.replace("Z", "+00:00")) for x in period]
+                    out["period_hours"] = (period[1] - period[0]).total_seconds() / 3600
+                except (AttributeError, TypeError, ValueError):
+                    pass
+            elif entity.startswith("sensor.") and known and entity.endswith("energy_difference"):
+                out["period_kwh"] = float(state)
+                out["period_at"] = s.get("last_updated")
+        # Samsung's TVs often say 0 W; the energy used in the last report period (15 minutes) says more
+        if not out.get("power_w") and out.get("period_kwh") is not None:
+            out["power_w"] = round(out["period_kwh"] / (out.get("period_hours") or 0.25) * 1000)
+            out["power_averaged"] = True
+        return out
+
     def tv_report(self, report):
-        """What Frame TV read on the TV itself (firmware, Tizen, memory, storage, Wi-Fi), sent when it starts; for
-        the TV tab, since the TV's REST API says "Unknown" for the firmware."""
+        """What Frame TV read on the TV itself (firmware, Tizen, memory, storage, Wi-Fi), sent when it starts and every
+        hour; for the TV tab, since the TV's REST API says "Unknown" for the firmware. With Frame TV's service beside it
+        (AUG-1728), also settings: the TV's own ECO, power and HDMI-CEC settings, by their vconf keys."""
         if not isinstance(report, dict) or len(json.dumps(report)) > 10000:
             raise ValueError("send a JSON object (at most 10 kB)")
         got = self._tv_info_saved()

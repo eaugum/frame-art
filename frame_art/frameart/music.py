@@ -46,6 +46,14 @@ class HomeAssistant:
     def call(self, domain, service, data):
         return self.post("/api/services/%s/%s" % (domain, service), data)
 
+    def template(self, text):
+        """What Home Assistant makes of a template, as text."""
+        req = urllib.request.Request(self.url + "/api/template", data=json.dumps({"template": text}).encode(),
+                                     method="POST", headers={"Authorization": "Bearer " + self.token,
+                                                             "Content-Type": "application/json"})
+        with urllib.request.urlopen(req, timeout=15) as r:
+            return r.read().decode()
+
 
     def _players(self, now):
         if not self.players or now - self.players_at > PLAYERS_SECONDS:

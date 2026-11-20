@@ -138,6 +138,8 @@ class Device:
         out.append(entity("switch", "tv_light_sensor", "TV light sensor", base=on_tv, icon="mdi:brightness-auto",
                           state_topic=BASE + "/tv/brightness_sensor_setting",
                           command_topic=BASE + "/tv_light_sensor/set", payload_on="ON", payload_off="OFF"))
+        out.append(entity("sensor", "tv_off_reason", "TV last went off by", icon="mdi:power-plug-off",
+                          state_topic=BASE + "/tv/off_reason"))
         out.append(entity("image", "picture", "The picture on the wall", image_topic=BASE + "/picture",
                           content_type="image/jpeg"))
         return out
@@ -165,6 +167,9 @@ class Device:
             out[BASE + "/category"] = s["category"]
         for key in SWITCHES:
             out["%s/%s" % (BASE, key)] = "ON" if st.get(key) else "OFF"
+        reason = self.rot.off_reason()
+        if reason:
+            out[BASE + "/tv/off_reason"] = reason
         for item, value in self.rot.art_settings().items():
             if item in TV_NUMBERS:
                 out["%s/tv/%s" % (BASE, item)] = value

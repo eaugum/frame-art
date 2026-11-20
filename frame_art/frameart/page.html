@@ -148,6 +148,17 @@
            padding: 5px 8px; }
   details { margin-top: 20px; color: var(--dim); font-size: 14px; }
   summary { cursor: pointer; }
+  details.card { background: var(--card); border-radius: 12px; padding: 16px 18px; color: var(--text);
+                 font-size: inherit; }
+  details.card > summary { display: flex; align-items: baseline; gap: 12px; list-style: none; }
+  details.card > summary::-webkit-details-marker { display: none; }
+  details.card > summary h2 { flex: none; }
+  details.card > summary h2::before { content: "\25B8"; display: inline-block; width: 16px; color: var(--dim);
+                                      transition: transform .15s; }
+  details.card[open] > summary h2::before { transform: rotate(90deg); }
+  details.card > summary .sum { margin-left: auto; text-align: right; color: var(--dim); font-size: 14px; }
+  details.card[open] > summary { margin-bottom: 8px; }
+  .table { font-variant-numeric: tabular-nums; }
   pre { background: var(--card); border-radius: 8px; padding: 12px; overflow-x: auto; font-size: 12px; color: #ccc; }
 </style></head>
 <body><main>
@@ -243,16 +254,18 @@
 
   <div id="tab-tv" hidden>
     <section>
-      <header><h2 data-t="tv_about"></h2><span class="sum" id="tv-sum"></span></header>
-      <div id="tv-device"></div>
+      <header><h2 data-t="tv_now"></h2><span class="sum" id="tv-sum"></span></header>
+      <div id="tv-now"></div>
+      <div class="row"><span><span data-t="tv_power"></span><small id="tv-power-note"></small></span>
+        <button id="tv-power" class="small"></button></div>
       <div class="actions"><button id="tv-read" class="small" data-t="tv_read"></button></div>
     </section>
     <section>
-      <header><h2 data-t="tv_settings"></h2><span id="tv-saved"></span></header>
-      <div class="row"><span><span data-t="tv_power"></span><small id="tv-power-note"></small></span>
-        <button id="tv-power" class="small"></button></div>
+      <header><h2>Art Mode</h2><span id="tv-saved"></span></header>
       <div id="tv-settings"></div>
       <p class="note" id="tv-settings-note"></p>
+      <div id="tv-art"></div>
+      <p class="note" id="tv-art-note"></p>
       <h3 class="sub" data-t="tv_frame_art"></h3>
       <p class="note" data-t="tv_frame_art_note" style="margin: 2px 0 0"></p>
       <div class="row"><span><span data-t="tv_timer_off"></span><small id="tv-timer-note"></small></span>
@@ -260,15 +273,22 @@
       <div class="row"><span><span data-t="away_off_setting"></span><small id="away-off-note"></small></span>
         <label class="switch"><input type="checkbox" data-setting="away_off"><i></i></label></div>
     </section>
-    <section>
-      <header><h2 data-t="tv_apps"></h2><span class="sum" id="tv-apps-sum"></span></header>
+    <details class="card" id="tv-picture-card">
+      <summary><h2 data-t="tv_picture_sound"></h2><span class="sum" id="tv-picture-sum"></span></summary>
+      <div id="tv-picture"></div>
+    </details>
+    <details class="card" id="tv-energy-card">
+      <summary><h2 data-t="tv_energy"></h2><span class="sum" id="tv-energy-sum"></span></summary>
+      <div id="tv-energy"></div>
+    </details>
+    <details class="card" id="tv-apps-card">
+      <summary><h2 data-t="tv_apps"></h2><span class="sum" id="tv-apps-sum"></span></summary>
       <div id="tv-apps"></div>
-    </section>
-    <section>
-      <header><h2>Art Mode</h2><span class="sum" id="tv-art-sum"></span></header>
-      <div id="tv-art"></div>
-      <p class="note" id="tv-art-note"></p>
-    </section>
+    </details>
+    <details class="card" id="tv-about-card">
+      <summary><h2 data-t="tv_about"></h2><span class="sum" id="tv-about-sum"></span></summary>
+      <div id="tv-device"></div>
+    </details>
     <details><summary data-t="tv_raw"></summary><pre id="tv-raw"></pre></details>
   </div>
 
@@ -864,27 +884,106 @@
       .catch(function () { $("tv-sum").textContent = tr("no_answer"); })
       .then(function () { tvReading = false; $("tv-read").disabled = false; if (then) then(); });
   }
+  // The TV's own settings, from Frame TV's service (AUG-1728), by their vconf keys
+  var VC = "db/menu/system/", REASONS = {POWER_KEY: "tv_why_power_key", ART_APP_TO_SUSPEND: "tv_why_art_mode"};
+  function setting(r, key) { return (r.settings || {})[key]; }
+  function minutes(v, unit) { return v === undefined ? "" : v ? v + " " + unit : tr("off"); }
+  function reason(v) { return v ? REASONS[v] ? tr(REASONS[v]) : v.toLowerCase().replace(/_/g, " ") : ""; }
+  // Art Mode's brightness for each light level, as the TV has learned it: "0–6: 0 · 7: 2 · 8: 5"
+  function learned(list) {
+    if (!Array.isArray(list) || !list.length) return "";
+    var out = [], from = list[0];
+    list.forEach(function (x, n) {
+      var next = list[n + 1];
+      if (next && next.osd_level === x.osd_level) return;
+      out.push((from.lux === x.lux ? x.lux : from.lux + "–" + x.lux) + ": " + x.osd_level);
+      from = next;
+    });
+    return out.join(" · ");
+  }
   function drawTv(i) {
     var all = i.device || {}, d = all.device || {}, art = i.art || {}, last = i.last || {}, r = i.report || {};
-    var power = d.PowerState === "on" && i.answer !== false;
+    var ha = i.ha || {}, power = d.PowerState === "on" && i.answer !== false;
     $("tv-sum").textContent = i.gone_at ? tr("tv_gone", {when: when(i.gone_at)})
       : i.answer === false ? tr("tv_off_read", {when: when(i.device_at)})
       : i.device_at ? tr("tv_read_at", {when: when(i.device_at)}) : "";
+    var apps = (i.apps || []).slice().sort(function (a, b) {
+      return (b.visible - a.visible) || (b.running - a.running) || a.name.localeCompare(b.name);
+    });
+    var front = power && apps[0] && apps[0].visible ? apps[0].name : "";
+    var current = art.current || {}, show = art.slideshow || {};
+    // the volume over UPnP when the TV answered just now; SmartThings' lags
+    var vol = power && i.volume && i.volume_at >= (i.device_at || 0) - 60 ? i.volume
+      : ha.volume !== undefined ? {volume: ha.volume, muted: ha.muted} : null;
+    var volText = vol ? vol.volume + (vol.muted ? " · " + tr("tv_muted") : "") : "";
+    var watts = ha.power_w === undefined ? "" : Math.round(ha.power_w) + " W";
+    var wattsNote = ha.power_averaged ? tr("tv_power_averaged", {when: when(Date.parse(ha.period_at) / 1000)}) : "";
+    rows($("tv-now"), [
+      [tr("tv_state"), i.gone_at ? tr("tv_off_network") : i.answer === false ? tr("off") : power ? tr("on")
+        : d.PowerState, "", power],
+      ["Art Mode", i.art_mode === null || i.art_mode === undefined ? tr("not_known") : onOff(i.art_mode), "",
+       i.art_mode === true],
+      [tr("tv_showing"), i.art_mode ? i.current_label || current.content_id : "", i.current_ours ? tr("tv_from_frame_art") : ""],
+      [tr("tv_in_front"), i.art_mode ? "" : front],
+      [tr("tv_volume"), power ? volText : ""],
+      [tr("tv_power_use"), watts, wattsNote]
+    ]);
+
+    var pic = [ha.picture_mode, ha.sound_mode].filter(Boolean);
+    $("tv-picture-sum").textContent = pic.concat(volText ? [tr("tv_volume_short", {n: volText})] : []).join(" · ");
+    rows($("tv-picture"), [
+      [tr("tv_picture_mode"), ha.picture_mode || (ha.picture_modes ? tr("tv_not_said") : ""),
+       ha.picture_modes ? ha.picture_modes.join(", ") : ""],
+      [tr("tv_sound_mode"), ha.sound_mode, ha.sound_modes ? ha.sound_modes.join(", ") : ""],
+      [tr("tv_volume"), volText],
+      [tr("tv_source"), ha.source],
+      [tr("tv_learned"), learned(setting(r, "db/screend/settings/frame_backlight_info")), tr("tv_learned_note")]
+    ]);
+    $("tv-picture").append(el("p", {className: "note", textContent: ha.entity
+      ? tr("tv_from_smartthings", {entity: ha.entity, when: when(i.ha_at)}) : tr("tv_no_smartthings")}));
+
     var offAt = Math.max(last.power_off || 0, last.standby || 0);
+    var why = reason(setting(r, "db/sp-kpi/power_off_reason"));
+    var hours = setting(r, "db/sysman/panel_display_time");
+    $("tv-energy-sum").textContent = [watts, why && tr("tv_last_off_why", {why: why})].filter(Boolean).join(" · ");
+    rows($("tv-energy"), [
+      [tr("tv_power_use"), watts, wattsNote],
+      [tr("tv_last_on"), when(last.power_on)],
+      [tr("tv_last_off"), when(offAt), last.standby && last.standby === offAt ? tr("tv_standby_note") : ""],
+      [tr("tv_off_why"), why, tr("tv_off_why_note", {when: when(setting(r, "db/sysman/last_poweroff_time"))})],
+      [tr("tv_panel_time"), hours === undefined ? "" : hours.toLocaleString(LOCALE) + " h"],
+      [tr("tv_auto_power_off"), minutes(setting(r, VC + "eco_solution/auto_power_off"), "h")],
+      [tr("tv_energy_saving"), setting(r, VC + "eco_solution/energy_saving") === undefined ? ""
+        : onOff(setting(r, VC + "eco_solution/energy_saving") !== 0)],
+      [tr("tv_eco_sensor"), onOff(setting(r, VC + "eco_solution/eco_sensor/value"))],
+      [tr("tv_no_signal_off"), setting(r, VC + "eco_solution/no_signal_power_off") === undefined ? ""
+        : onOff(setting(r, VC + "eco_solution/no_signal_power_off") !== 0)],
+      [tr("tv_network_standby"), setting(r, VC + "power_control/network_standby") === undefined ? ""
+        : onOff(setting(r, VC + "power_control/network_standby") !== 0)],
+      [tr("tv_sleep_timer"), minutes(setting(r, VC + "time/sleep_timer"), "min")],
+      ["HDMI-CEC", setting(r, VC + "hdmicec/on_off") === undefined ? "" : onOff(setting(r, VC + "hdmicec/on_off") !== 0),
+       setting(r, VC + "hdmicec/auto_turn_off") ? tr("tv_cec_off_too") : ""]
+    ]);
+    $("tv-energy").append(el("p", {className: "note", textContent: r.settings
+      ? tr("tv_from_service", {when: when(i.report_at)}) : tr("tv_no_service")}));
+
+    $("tv-apps-sum").textContent = apps.length ? tr("tv_apps_sum", {n: apps.length,
+      running: apps.filter(function (a) { return a.running; }).length}) : "";
+    rows($("tv-apps"), apps.map(function (a) {
+      return [a.name + (a.id === i.app ? " ★" : ""), a.visible ? tr("tv_app_front") : a.running ? tr("tv_app_running")
+        : tr("tv_app_closed"), a.version && tr("tv_version", {v: a.version}), a.visible];
+    }));
+
+    var firmware = d.firmwareVersion && d.firmwareVersion !== "Unknown" ? d.firmwareVersion : r.firmware;
+    $("tv-about-sum").textContent = [d.modelName, firmware].filter(Boolean).join(" · ");
     rows($("tv-device"), [
       [tr("tv_name"), d.name],
       [tr("tv_model"), [d.modelName, d.model].filter(Boolean).join(" · ")],
-      [tr("tv_power"), i.gone_at ? tr("tv_off_network") : i.answer === false ? tr("off") : d.PowerState === "on" ? tr("on") : d.PowerState, "",
-       power],
-      ["Art Mode", i.art_mode === null || i.art_mode === undefined ? tr("not_known") : onOff(i.art_mode), "",
-       i.art_mode === true],
-      [tr("tv_last_on"), when(last.power_on)],
-      [tr("tv_last_off"), when(offAt), last.standby && last.standby === offAt ? tr("tv_standby_note") : ""],
       [tr("tv_resolution"), d.resolution],
       [tr("tv_network"), d.networkType && tr("tv_network_" + d.networkType)],
       [tr("tv_ip"), d.ip],
       [tr("tv_language"), [d.Language, d.countryCode].filter(Boolean).join(" · ")],
-      [tr("tv_firmware"), d.firmwareVersion && d.firmwareVersion !== "Unknown" ? d.firmwareVersion : r.firmware],
+      [tr("tv_firmware"), firmware],
       [tr("tv_os"), [r.tizen ? "Tizen " + r.tizen : d.OS, r.browser, all.version && tr("tv_api", {v: all.version})]
         .filter(Boolean).join(" · ")],
       [tr("tv_memory"), size(r.memory_free, r.memory_total)],
@@ -892,38 +991,33 @@
       [tr("tv_wifi"), r.wifi_signal === undefined ? "" : Math.round(r.wifi_signal * 100) + " %"],
       ["Frame TV", r.app_version && tr("tv_version", {v: r.app_version}),
        i.report_at ? tr("tv_reported", {when: when(i.report_at)}) : ""],
-      [tr("tv_developer"), d.developerMode === undefined ? "" : onOff(d.developerMode === "1")]
+      [tr("tv_developer"), d.developerMode === undefined ? "" : onOff(d.developerMode === "1")],
+      [tr("tv_art_api"), art.api_version]
     ]);
 
-    var apps = (i.apps || []).slice().sort(function (a, b) {
-      return (b.visible - a.visible) || (b.running - a.running) || a.name.localeCompare(b.name);
-    });
-    $("tv-apps-sum").textContent = i.apps_at ? tr("tv_read_at", {when: when(i.apps_at)}) : "";
-    rows($("tv-apps"), apps.map(function (a) {
-      return [a.name + (a.id === i.app ? " ★" : ""), a.visible ? tr("tv_app_front") : a.running ? tr("tv_app_running")
-        : tr("tv_app_closed"), a.version && tr("tv_version", {v: a.version}), a.visible];
-    }));
-
-    var current = art.current || {}, show = art.slideshow || {};
     var photos = art.my_photos ? art.my_photos.length : null;
-    var list = [
-      [tr("tv_art_api"), art.api_version],
-      [tr("tv_showing"), i.current_label || current.content_id, i.current_ours ? tr("tv_from_frame_art") : ""],
+    rows($("tv-art"), [
       ["My Photos", photos === null ? "" : tr("n_pictures", {n: photos}), i.ours === null || i.ours === undefined ? ""
         : tr("tv_ours", {n: i.ours})],
       [tr("tv_slideshow"), show.value === undefined ? "" : show.value === "off" ? tr("off")
         : tr("tv_slideshow_on", {n: show.value}), show.value && show.value !== "off" ? tr("tv_slideshow_note") : ""]
-    ];
-    rows($("tv-art"), list);
+    ]);
     if (i.answer === true || i.answer === false) tvAnswers = i.answer;
     lastTv = i;
     tvSettings();
-    $("tv-art-sum").textContent = i.art_at ? tr("tv_read_at", {when: when(i.art_at)}) : "";
     $("tv-art-note").textContent = i.art_error ? tr("tv_art_error", {error: i.art_error})
       : !power ? tr("tv_art_off") : i.busy ? tr("tv_art_busy") : "";
     tvPower();
-    $("tv-raw").textContent = JSON.stringify({device: i.device, apps: i.apps, art: i.art}, null, 1);
+    $("tv-raw").textContent = JSON.stringify({device: i.device, apps: i.apps, art: i.art, report: i.report,
+      volume: i.volume, ha: i.ha}, null, 1);
   }
+  // Which of the TV tab's cards are open, kept in this browser
+  document.querySelectorAll("details.card").forEach(function (card) {
+    try { card.open = localStorage.getItem("open:" + card.id) === "1"; } catch (e) {}
+    card.addEventListener("toggle", function () {
+      try { localStorage.setItem("open:" + card.id, card.open ? "1" : "0"); } catch (e) {}
+    });
+  });
   $("tv-read").onclick = function () { tvInfo(true); };
 
   // The TV's own Art Mode settings: changed one at a time, and drawn from what the TV says after. Sleep After and the

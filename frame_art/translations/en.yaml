@@ -39,6 +39,11 @@ configuration:
     name: App after Art Mode
     description: >-
       The id of a TV app to open when Art Mode is turned off while the TV is on, e.g. a home screen app. Empty: none.
+  smartthings_entity:
+    name: The TV in SmartThings
+    description: >-
+      The TV's media_player from Home Assistant's SmartThings integration, for the TV tab's picture mode, sound mode
+      and power. Empty (default): the media_player with the TV's name.
   services:
     name: Services
     description: >-

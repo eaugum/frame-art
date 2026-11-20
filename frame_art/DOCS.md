@@ -70,6 +70,7 @@ interval, the times and the switches) is on the add-on's page and is saved in `/
 | `price_entity` | A Nord Pool or Tibber price sensor for the morning picture |
 | `stasera_url` | [Stasera](https://www.stasera.app), for tonight's show, the screensaver posters and the film sources. Optional |
 | `back_app` | The id of a TV app to open when Art Mode is turned off while the TV is on, e.g. a home screen app. Empty (default): none |
+| `smartthings_entity` | The TV's `media_player` from Home Assistant's SmartThings integration, for the TV tab's picture mode, sound mode and power. Empty (default): the `media_player` with the TV's name |
 | `sources` | Where the pictures come from. See [Sources](#sources) |
 
 ## Language
@@ -263,20 +264,36 @@ to Stasera. Two more are for the rotation:
 - **Pause the rotation**: the picture on the wall stays. The morning picture, tonight's show, the music and "New
   picture" still work; resumed, the picture gets a whole interval before the next one.
 
-The **TV** tab shows what the TV says about itself: its name, model, power, network and language, when it last came on
-and went off, the streaming apps it has (in front, running or closed) and Art Mode: what it shows, how many pictures are
-in My Photos (and how many are Frame Art's) and Samsung's own slideshow. It's read when the tab opens and every minute
-while it's open; Art Mode at most every 5 minutes, and only while the TV is on. With the TV off, the tab shows what was
-read last, and when. The firmware, Tizen and Chromium versions, memory, storage and the Wi-Fi signal come from Frame TV,
-which reads them on the TV when it starts (with `art_url` set). "Everything the TV said" has the TV's own answers.
+The **TV** tab is in sections (AUG-1728), the ones you need most first. It's read when the tab opens and every minute
+while it's open; Art Mode at most every 5 minutes, and only while the TV is on. With the TV off, it shows what was read
+last, and when.
 
-Under **TV settings** is first a button that turns the TV on (with Wake-on-LAN, and then Frame
-TV opens, as "Turn the TV on" does) or off (by holding power, whatever it shows). After it come the TV's own settings:
-brightness, colour temperature and motion sensitivity, Sleep After and the light sensor, within what the TV says they
-can be. A change goes to the TV at once and is shown as the TV has it after; it can only be made while the TV is on.
-Under them are Frame Art's two settings for the TV: "Turn off the TV's own Art Mode timer and light sensor" (Sleep After
-and the light sensor are locked while it's on, since Frame Art turns them off again) and "Turn the TV off when nobody is
-home".
+- **Now**: whether the TV is on and in Art Mode, the picture it shows or the app in front, the volume and the power it
+  draws, with a button that turns it on (with Wake-on-LAN, and then Frame TV opens, as "Turn the TV on" does) or off
+  (by holding power, whatever it shows).
+- **Art Mode**: the TV's own brightness, colour temperature and motion sensitivity, Sleep After and the light sensor,
+  within what the TV says they can be. A change goes to the TV at once and is shown as the TV has it after; it can only
+  be made while the TV is on. Then My Photos (how many pictures, and how many are Frame Art's), Samsung's own
+  slideshow, and Frame Art's two settings for the TV: "Turn off the TV's own Art Mode timer and light sensor" (Sleep
+  After and the light sensor are locked while it's on, since Frame Art turns them off again) and "Turn the TV off when
+  nobody is home".
+
+The rest are closed until you open them (the page remembers which), with the gist on the line:
+
+- **Picture and sound**: picture and sound mode and the source, from Home Assistant's SmartThings integration
+  (`smartthings_entity`); the volume, asked of the TV itself (UPnP); and the brightness Art Mode has learned you want at
+  each light level.
+- **Power and energy**: the power it draws (Samsung's TVs often say 0 W, so it's the energy SmartThings reported for
+  the last 15 minutes), when it last came on and went off and why, as the TV says (the power button, Art Mode's own
+  timer or light sensor...), how long the screen has been on in all, Auto Power Off, energy saving, ambient light
+  detection, off without a signal, network standby, the sleep timer and HDMI-CEC.
+- **Apps**: the streaming apps it has, in front, running or closed.
+- **About the TV**: name, model, firmware, system, memory, storage, network, Wi-Fi signal, language and Developer Mode.
+
+What only the TV itself can read comes from Frame TV (with `art_url` set), when it starts and every hour: the firmware,
+Tizen and Chromium versions, memory, storage and the Wi-Fi signal, and, with Frame TV's small service beside it
+(`FrameTVService.tpk`), the TV's own power, ECO and HDMI-CEC settings. Nothing on the TV is changed from here but the
+Art Mode settings. "Everything the TV said" has the answers as they came.
 
 The **Debug** tab shows a day at a time; ‹ and › go between the days, and "Today" comes back to today. At the top is a timeline: when the TV was on, in
 Art Mode, showing Frame TV, the screensaver and the music, and when the morning picture and tonight's show came (striped:
@@ -416,6 +433,7 @@ to set up. Without Mosquitto it runs as before.
 | `switch.frame_art_tv_light_sensor` | The TV's light sensor in Art Mode |
 | `switch.frame_art_tv_timer_off` | Keep the TV's Sleep After and light sensor off, so the schedule decides |
 | `switch.frame_art_away_off` | Turn the TV off when nobody is home |
+| `sensor.frame_art_tv_off_reason` | Why the TV last went off, as it says itself: `POWER_KEY` (the power button), `ART_APP_TO_SUSPEND` (Art Mode's own timer or light sensor) or another of Samsung's. Needs Frame TV's service |
 
 The TV's settings are unavailable while the TV is off, and are read again each time it goes to Art Mode (so a change
 in the TV's own menu comes along). Sleep After and the light sensor can't be changed while
@@ -515,7 +533,7 @@ The answers wait for the TV.
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
 | `POST /event` | For Frame TV's events: `{"events": [{"at": <ms>, "kind": "hidden", "detail": "…"}]}`, up to 100 at a time |
-| `POST /tv/report` | For Frame TV's report on the TV when it starts: firmware, Tizen and Chromium versions, memory, storage, Wi-Fi signal |
+| `POST /tv/report` | For Frame TV's report on the TV when it starts and every hour: firmware, Tizen and Chromium versions, memory, storage, Wi-Fi signal, and `settings`, the TV's own settings by their vconf keys |
 | `GET /events/export` | All of it, the last 7 days, as a file |
 | `GET /events?since=<id>` | What happened, oldest first: `{"events": [{id, at, source, kind, detail, why}], "more": false}`, the newest 2000 after that id (an id is the time in ms). `?until=<id>` for those before one |
 
