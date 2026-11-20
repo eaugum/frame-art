@@ -1,5 +1,11 @@
 # Changes
 
+## 0.43.1
+
+- Another client connecting while Frame Art waits for the TV's art channel no longer ends the connection, so Frame
+  Art's two connections stop throwing each other out every minute. When the TV's art app hangs and never says it's
+  ready (20 s), the log says so and suggests unplugging the TV.
+
 ## 0.43.0
 
 - The TV tab in sections (AUG-1728): Now and Art Mode first, then Picture and sound, Power and energy, Apps and About

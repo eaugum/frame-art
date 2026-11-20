@@ -7,8 +7,12 @@ import re
 import urllib.error
 import urllib.request
 
+from samsungtvws import helper
 from samsungtvws.async_art import SamsungTVAsyncArt
+from samsungtvws.async_connection import SamsungTVWSAsyncConnection
 from samsungtvws.async_remote import SamsungTVWSAsyncRemote
+from samsungtvws.event import (MS_CHANNEL_CLIENT_CONNECT_EVENT, MS_CHANNEL_CLIENT_DISCONNECT_EVENT,
+                               MS_CHANNEL_READY_EVENT)
 from samsungtvws.exceptions import ConnectionFailure
 from samsungtvws.remote import SendRemoteKey
 
@@ -31,10 +35,42 @@ APPS = ("3201907018807", "3201910019365", "3201807016597", "9Ur5IzDKqV.TizenYouT
         "vIutycUzou.SteamLink")
 
 
+READY_SECONDS = 20  # the art app says it's ready within a second or two when it's well
+
+
+class ArtAppStuck(Exception):
+    pass
+
+
+class _Art(SamsungTVAsyncArt):
+    async def open(self):
+        """samsungtvws gives up when anything but ms.channel.ready follows the TV's ms.channel.connect, and waits for
+        ever when nothing does. Another client connecting or leaving (HA, a phone, our own watcher) comes in between
+        and isn't an answer: skipped. No ready at all means the TV's art app hangs (2026-11-20: from 23:07 until the
+        TV was unplugged), and two connections waiting on it then threw each other out every minute."""
+        connection = await SamsungTVWSAsyncConnection.open(self)
+        while True:
+            try:
+                data = await asyncio.wait_for(connection.recv(), READY_SECONDS)
+            except asyncio.TimeoutError:
+                await self.close()
+                raise ArtAppStuck("the TV took the connection, but its art app never said it's ready; "
+                                  "if it lasts, unplug the TV for 30 s")
+            response = helper.process_api_response(data)
+            event = response.get("event", "*")
+            self._websocket_event(event, response)
+            if event == MS_CHANNEL_READY_EVENT:
+                return connection
+            if event not in (MS_CHANNEL_CLIENT_CONNECT_EVENT, MS_CHANNEL_CLIENT_DISCONNECT_EVENT):
+                await self.close()
+                raise ConnectionFailure(response)
+            log.debug("another client on the art channel (%s) while waiting for it to be ready", event)
+
+
 async def _art(**kw):
     """SamsungTVAsyncArt asks the TV for its model with a blocking HTTP request when it's made, which waits for the
     whole timeout when the TV sleeps; in a thread, so the rest (MQTT's keepalive) goes on meanwhile."""
-    return await asyncio.to_thread(SamsungTVAsyncArt, **kw)
+    return await asyncio.to_thread(_Art, **kw)
 
 
 class TV:
@@ -72,17 +108,9 @@ class TV:
     async def __aenter__(self):
         if not self.has_token():
             await self.pair()
-        for attempt in range(4):
-            self.art = await self._new()
-            try:
-                await asyncio.wait_for(self.art.start_listening(), 90)
-                return self
-            except ConnectionFailure as e:
-                # samsungtvws gives up when another client (HA, a phone) connects or leaves at the same moment
-                if "ms.channel.client" not in str(e) or attempt == 3:
-                    raise
-                log.info("another client on the TV at the same moment; connecting again")
-                await asyncio.sleep(5)
+        self.art = await self._new()
+        await asyncio.wait_for(self.art.start_listening(), 90)
+        return self
 
     async def __aexit__(self, *exc):
         try:
