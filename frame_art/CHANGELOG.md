@@ -1,5 +1,13 @@
 # Changes
 
+## 0.44.0
+
+- Pictures left out, per category and source (AUG-1873): the Pictures section shows "5 of 17 hidden" after a
+  category's or source's count when "Don't show again" has hidden some of what you've seen, and an opened category
+  says how many pictures couldn't be used (not close to 16:9, too small, not free). Counting starts with this version;
+  pictures left out before it stay out but count in neither. `/status` has the numbers in `left_out` and on each
+  category.
+
 ## 0.43.1
 
 - Another client connecting while Frame Art waits for the TV's art channel no longer ends the connection, so Frame
