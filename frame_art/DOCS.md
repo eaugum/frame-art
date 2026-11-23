@@ -137,9 +137,10 @@ sources that have never been read are read in the background when the add-on sta
 Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel. On the add-on's page each category opens to show its sources,
 and the tick by a category turns all of its sources on or off.
 
-**Left out:** a picture you've turned off with "Don't show again" or the × is hidden for good, and a picture the TV or Frame Art
-couldn't use (too small, broken) is skipped. The page shows "{n} of {seen} hidden" after a category's or source's picture
-count, where `seen` is the pictures of it that have been shown, and "{n} couldn't be used" under an opened category's sources.
+**Left out:** a picture turned off with "Don't show again" or the × is hidden for good, and one Frame Art can't use
+(not close to 16:9, too small, not free) is skipped. After a category's or source's picture count, the page shows
+"{n} of {seen} hidden", where `seen` is its pictures shown in the last year plus those hidden, and an opened category
+says how many "couldn't be used". Both are counted from 0.44.0; pictures left out before that count in neither.
 
 **Old Norway:** photos from the National Library of Norway, about 1900 to 1950. Options saved before 0.35.0 don't have
 them: copy the service `nasjonalbiblioteket` from the add-on's
