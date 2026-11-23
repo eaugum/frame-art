@@ -513,15 +513,19 @@
     box.hidden = off;
     if (box.contains(document.activeElement)) return;
     box.innerHTML = "";
+    var fields = [];
     days.forEach(function (d, i) {
       var on = el("input", {type: "checkbox", checked: d.on}),
           from = el("input", {type: "time", value: d.from}), until = el("input", {type: "time", value: d.until});
       var row = el("div", {className: "day" + (d.on ? "" : " off")},
                    [el("span", {textContent: DAYS[i]}), on, from, el("small", {textContent: "–"}), until]);
+      fields.push({on: on, from: from, until: until});
       function keep() {
         if (!from.value || !until.value) return;
-        var all = days.map(function (x) { return {on: x.on, from: x.from, until: x.until}; });
-        all[i] = {on: on.checked, from: from.value, until: until.value};
+        // From what the rows show now: the box isn't redrawn while a checkbox has the focus, so days is stale then
+        var all = days.map(function (x, j) {
+          return {on: fields[j].on.checked, from: fields[j].from.value || x.from, until: fields[j].until.value || x.until};
+        });
         var c = {};
         c[kind + "_days"] = all;
         save(c);
@@ -708,7 +712,7 @@
                                  "tonight:shown": COLORS.tonight, "tonight:ready": COLORS.tonight,
                                  "morning:failed": "#e06666", "tonight:failed": "#e06666"}}
   ];
-  var DAY = 86400000, evs = [], evFrom = 0, evTo = 0, onlySource = null, polling = null, day = 0, fetching = false;
+  var DAY = 86400000, evs = [], evFrom = 0, evTo = 0, onlySource = null, polling = null, shownDay = 0, fetching = false;
   function getEvents(query, then) {
     fetch("events?" + query).then(function (r) { return r.json(); }).then(then)
       .catch(function () { fetching = false; $("events-sum").textContent = tr("no_answer"); });
@@ -737,17 +741,17 @@
     });
   }
   function showDay(start) {
-    day = start;
-    $("day").textContent = new Date(day).toLocaleDateString(LOCALE, {weekday: "long", day: "numeric", month: "long"});
-    $("day-next").disabled = day >= midnight(Date.now());
-    $("day-today").hidden = day >= midnight(Date.now());
+    shownDay = start;
+    $("day").textContent = new Date(shownDay).toLocaleDateString(LOCALE, {weekday: "long", day: "numeric", month: "long"});
+    $("day-next").disabled = shownDay >= midnight(Date.now());
+    $("day-today").hidden = shownDay >= midnight(Date.now());
     $("lanes").innerHTML = "";
     $("log").innerHTML = "";
     $("events-sum").textContent = tr("fetching");
-    back(day - DAY, drawDay);
+    back(shownDay - DAY, drawDay);
   }
-  $("day-prev").onclick = function () { showDay(midnight(day - DAY / 2)); };
-  $("day-next").onclick = function () { showDay(midnight(day + DAY * 1.5)); };
+  $("day-prev").onclick = function () { showDay(midnight(shownDay - DAY / 2)); };
+  $("day-next").onclick = function () { showDay(midnight(shownDay + DAY * 1.5)); };
   $("day-today").onclick = function () { showDay(midnight(Date.now())); };
   function clock(ms, seconds) {
     return new Date(ms).toLocaleTimeString(LOCALE, seconds === false ? {hour: "2-digit", minute: "2-digit"} :
@@ -755,9 +759,9 @@
   }
   function byTime(a, b) { return a.at - b.at || a.id - b.id; }
   function drawDay() {
-    var end = day + DAY, sorted = evs.slice().sort(byTime);
-    drawLanes(sorted, day, end);
-    drawEvents(sorted.filter(function (e) { return e.at * 1000 >= day && e.at * 1000 < end; }));
+    var end = shownDay + DAY, sorted = evs.slice().sort(byTime);
+    drawLanes(sorted, shownDay, end);
+    drawEvents(sorted.filter(function (e) { return e.at * 1000 >= shownDay && e.at * 1000 < end; }));
   }
 
   /** [state, from, to, label] for one lane between t0 and t1: true on, false off, null not known. */
