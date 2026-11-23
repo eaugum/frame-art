@@ -188,6 +188,8 @@ PAGE = {
     "reading": "reading …",
     "n_pictures": "{n} pictures",
     "no_pictures": "no pictures",
+    "n_hidden": "{n} of {seen} hidden",
+    "n_unfit": "{n} couldn't be used",
     "not_changed": "Not changed yet",
     "changed_at": "changed {time}",
     "fixed": "Fixed picture",

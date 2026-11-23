@@ -137,6 +137,10 @@ sources that have never been read are read in the background when the add-on sta
 Pixar, Disney, Star Wars, Studio Ghibli, DreamWorks and Marvel. On the add-on's page each category opens to show its sources,
 and the tick by a category turns all of its sources on or off.
 
+**Left out:** a picture you've turned off with "Don't show again" or the × is hidden for good, and a picture the TV or Frame Art
+couldn't use (too small, broken) is skipped. The page shows "{n} of {seen} hidden" after a category's or source's picture
+count, where `seen` is the pictures of it that have been shown, and "{n} couldn't be used" under an opened category's sources.
+
 **Old Norway:** photos from the National Library of Norway, about 1900 to 1950. Options saved before 0.35.0 don't have
 them: copy the service `nasjonalbiblioteket` from the add-on's
 [config.yaml](https://github.com/eaugum/frame-art/blob/main/frame_art/config.yaml) into `services`, and add this under
@@ -517,7 +521,7 @@ The answers wait for the TV.
 
 | Call | What |
 |---|---|
-| `GET /status` | What's showing, when it changed and changes next, the mode, the categories, the number of pictures per source and the settings |
+| `GET /status` | What's showing, when it changed and changes next, the mode, the categories, the number of pictures per source, how many of each are hidden, seen or unusable (`left_out`, and `hidden`, `seen` and `unfit` per category) and the settings |
 | `GET /tv` | Whether the TV is off (`{"off": true}`), asked of the TV; `null` while Home Assistant doesn't answer |
 | `GET /tv/info` | What the TV tab shows, as last read; `?fresh=1` asks the TV first (Art Mode at most every 5 minutes) |
 | `POST /tv/settings` | The TV's Art Mode settings, e.g. `{"brightness": 6}` (`brightness`, `color_temperature`, `motion_sensitivity`, `motion_timer`, `brightness_sensor_setting`); answers as `GET /tv/info` |

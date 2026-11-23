@@ -59,6 +59,7 @@
   .source { display: flex; align-items: center; gap: 10px; padding: 3px 0; cursor: pointer; color: #ccc;
             font-size: 14px; }
   .source span { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .unfit { margin: 2px 0 0 28px; color: var(--faint); font-size: 13px; }
   .source .n { flex: none; color: var(--faint); font-size: 13px; }
   input[type=checkbox] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); cursor: pointer; }
 
@@ -344,6 +345,10 @@
     return n === null || n === undefined ? tr("reading") : n ? tr("n_pictures", {n: n.toLocaleString(LOCALE)}) :
       tr("no_pictures");
   }
+  /** " · 3 of 40 hidden" after a count, or nothing when none are hidden. */
+  function hidden(x) {
+    return x && x.hidden > 0 ? " · " + tr("n_hidden", {n: x.hidden.toLocaleString(LOCALE), seen: x.seen.toLocaleString(LOCALE)}) : "";
+  }
   function off() { return ((last.settings || {}).sources_off || []).slice(); }
   function setOff(names, on) {
     var o = off().filter(function (n) { return names.indexOf(n) < 0; });
@@ -447,16 +452,17 @@
       var head = el("div", {className: "group-head"}, [all,
         el("button", {className: "acc", ariaExpanded: String(isOpen), onclick: function () { expand(isOpen ? null : c.name); }}, [
           el("span", {textContent: c.name}),
-          el("span", {className: "n", textContent: count(c.pictures)}),
+          el("span", {className: "n", textContent: count(c.pictures) + hidden(c)}),
           el("i", {textContent: isOpen ? "▾" : "▸"})])]);
       var group = el("div", {className: "group"}, [head]);
       if (isOpen && (names.length > 1 || names[0] !== c.name)) {
         group.append(el("div", {className: "sources"}, names.map(function (n) {
           return el("label", {className: "source"}, [
             el("input", {type: "checkbox", checked: o.indexOf(n) < 0, onchange: function () { setOff([n], this.checked); }}),
-            el("span", {textContent: n, title: n}), el("span", {className: "n", textContent: count(pools[n])})]);
+            el("span", {textContent: n, title: n}), el("span", {className: "n", textContent: count(pools[n]) + hidden((s.left_out || {})[n])})]);
         })));
       }
+      if (isOpen && c.unfit > 0) group.append(el("div", {className: "unfit", textContent: tr("n_unfit", {n: c.unfit.toLocaleString(LOCALE)})}));
       if (isOpen) {
         if (open !== c.name) group.append(el("a", {className: "choose", textContent: tr("choose"), onclick: function () { gallery(c.name); }}));
         else group.append(gal);

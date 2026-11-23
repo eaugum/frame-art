@@ -150,8 +150,8 @@ class State:
                 self.d = json.load(f)
         except (OSError, ValueError):
             self.d = {}
-        for k, v in (("uploaded", []), ("recent", []), ("bad", []), ("never", []), ("unfit", []), ("pools", {}), ("changed", 0), ("made", {}),
-                     ("tried", {})):
+        for k, v in (("uploaded", []), ("recent", []), ("bad", []), ("never", []), ("unfit", []),
+                     ("pools", {}), ("changed", 0), ("made", {}), ("tried", {})):
             self.d.setdefault(k, v)
 
     def __getitem__(self, k):
