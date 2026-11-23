@@ -1,5 +1,14 @@
 # Changes
 
+## 0.44.1
+
+- The page works again while a chosen picture stands: sources, settings and "Resume the rotation now" are back, and a
+  saved setting says it was saved (AUG-1782).
+- Ticking several days of a week in a row keeps every change, not only the last (AUG-1782).
+- A home or sleep entity that is unknown or unavailable, as during a Home Assistant restart, now counts as not known:
+  the schedule leaves the TV as it is, and "someone came home" needs a real away first (AUG-1781).
+- Tests and `scripts/check.sh`, which runs every check before a release.
+
 ## 0.44.0
 
 - Pictures left out, per category and source (AUG-1873): the Pictures section shows "5 of 17 hidden" after a
