@@ -150,7 +150,7 @@ class State:
                 self.d = json.load(f)
         except (OSError, ValueError):
             self.d = {}
-        for k, v in (("uploaded", []), ("recent", []), ("bad", []), ("pools", {}), ("changed", 0), ("made", {}),
+        for k, v in (("uploaded", []), ("recent", []), ("bad", []), ("never", []), ("unfit", []), ("pools", {}), ("changed", 0), ("made", {}),
                      ("tried", {})):
             self.d.setdefault(k, v)
 
@@ -425,7 +425,7 @@ class Rotation:
                 return self.render(src, key)
             except sources.Skip as e:
                 log.info("skipping %s: %s", full, e)
-                self.state["bad"].append(full)
+                self._leave_out(full, "unfit")
                 bad.add(full)
             except Exception as e:
                 log.warning("couldn't fetch %s: %s", full, e)
@@ -692,7 +692,7 @@ class Rotation:
             try:
                 got = await asyncio.to_thread(self.render, src, full.split(":", 1)[1])
             except sources.Skip as e:
-                self.state["bad"].append(full)
+                self._leave_out(full, "unfit")
                 self.state.save()
                 raise ValueError("that picture can't be used (%s)" % e)
             async with self.lock:
@@ -715,8 +715,7 @@ class Rotation:
         key = key or showing
         if not key or not self.source_of(key):
             raise ValueError("only a picture from the sources can be left out")
-        if key not in self.state["bad"]:
-            self.state["bad"].append(key)
+        self._leave_out(key, "never")
         self.state["history"] = [h for h in self.state["history"] if h["key"] != key]
         if os.path.exists(self._thumb_path(key)):
             os.remove(self._thumb_path(key))
@@ -1671,19 +1670,34 @@ class Rotation:
             pass
         self.wake.clear()
 
+    def _leave_out(self, full, why):
+        """Never drawn again: 'never' is the owner's choice, 'unfit' a picture that can't be used. Both are in `bad`."""
+        for k in ("bad", why):
+            if full not in self.state[k]:
+                self.state[k].append(full)
+
     def status(self):
         interval = self.interval()
         # None: not listed yet (or not since only 16:9 is used); 0: listed, and nothing found
         pools = {s.name: len(self.state["pools"][s.name].get("keys") or [])
                  if (self.state["pools"].get(s.name) or {}).get("wide") else None for s in self.sources}
         off = set(self.cfg.get("sources_off") or [])
+        # hidden: the owner's choice; seen: pictures that have been on the wall, plus the hidden; unfit: unusable
+        left_out = {s.name: {"hidden": 0, "seen": 0, "unfit": 0} for s in self.sources}
+        for field, keys in (("seen", set(self.state["shown_at"]) | set(self.state["never"])),
+                            ("hidden", set(self.state["never"])), ("unfit", set(self.state["unfit"]))):
+            for key in keys:
+                name = key.split(":", 1)[0]
+                if name in left_out:
+                    left_out[name][field] += 1
         categories = []
         for c in self.categories:
             names = [s.name for s in self.sources if s.category == c]
             counts = [pools[n] for n in names if pools[n] is not None]
             categories.append({"name": c, "on": any(n not in off for n in names), "sources": names,
                                "sources_on": [n for n in names if n not in off],
-                               "pictures": sum(counts) if counts else None, "unread": len(names) - len(counts)})
+                               "pictures": sum(counts) if counts else None, "unread": len(names) - len(counts),
+                               **{f: sum(left_out[n][f] for n in names) for f in ("hidden", "seen", "unfit")}})
         fixed = self.fixed()
         # no next change while the music or a fixed picture stands, or while it waits for Art Mode
         rotating = not fixed and not self.playing() and not self.waiting and not self.cfg.get("paused")
@@ -1691,7 +1705,7 @@ class Rotation:
                 "next": int(self.change_at()) if self.state["changed"] and rotating else None,
                 "interval_minutes": interval / 60, "sources": [s.name for s in self.sources],
                 "source_categories": {s.name: s.category for s in self.sources},
-                "pools": pools, "schedule": self.schedule(), "settings": self.settings(),
+                "pools": pools, "left_out": left_out, "schedule": self.schedule(), "settings": self.settings(),
                 "mode": "fixed" if fixed else "shuffle", "category": self._one_category(),
                 "reading": bool(self.reading),
                 "categories": categories, "fixed": fixed, "wanted": self.wanted(),
@@ -1755,7 +1769,7 @@ class Rotation:
         got = src.thumb(full.split(":", 1)[1])
         img = image.open_image(net.get(got), draft=image.THUMB) if isinstance(got, str) else got
         if not image.croppable(*img.size):
-            self.state["bad"].append(full)  # never drawn, and not offered again
+            self._leave_out(full, "unfit")  # never drawn, and not offered again
             raise sources.Skip("%dx%d isn't close to 16:9" % img.size)
         jpeg = image.thumbnail(img)
         self._keep_thumb(full, jpeg)

@@ -3,7 +3,8 @@
 GET  /         a page with what's showing, the buttons, the sources to tick, the settings and Stasera (the
                add-on's page in Home Assistant, through ingress)
 GET  /status   what's showing, when it changed and when it changes next, the mode, the categories, how many pictures
-               each source has (null: not read yet; reading says some are being read), the settings and Stasera
+               each source has (null: not read yet; reading says some are being read), how many each source
+               and category has hidden, seen and found unfit (left_out), the settings and Stasera
 GET  /showing.jpg  the picture
 GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random, from the
                category's sources that are ticked
