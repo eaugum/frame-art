@@ -1081,8 +1081,12 @@ class Rotation:
         return bool(self.cfg.get("music") and self.music and time.time() - self.music_at < MUSIC_GRACE)
 
     def _listen(self):
-        if self.cfg.get("music_home_only", True) and not self.ha.home(self.home_entity()):
-            return None
+        if self.cfg.get("music_home_only", True):
+            home = self.ha.home(self.home_entity())
+            if home is None:  # not known: music already followed goes on by the player, none starts
+                return self.ha.playing(time.time()) if self.playing() else None
+            if not home:
+                return None
         return self.ha.playing(time.time())
 
     async def follow(self):
@@ -1271,7 +1275,8 @@ class Rotation:
         return None
 
     def _is_home(self):
-        """Someone home, from home_entity (always without one); None when Home Assistant doesn't answer."""
+        """Someone home, from home_entity (always without one); None when Home Assistant doesn't answer or the entity
+        is unknown or unavailable."""
         if not self.ha.ready():
             return None
         try:
@@ -1280,14 +1285,16 @@ class Rotation:
             return None
 
     def _is_asleep(self):
-        """sleep_entity is on; False without one, None when Home Assistant doesn't answer."""
+        """sleep_entity is on; False without one, None when Home Assistant doesn't answer or the entity is unknown or
+        unavailable."""
         entity = (self.cfg.get("sleep_entity") or "").strip()
         if not entity:
             return False
         if not self.ha.ready():
             return None
         try:
-            return self.ha.state(entity)["state"] == "on"
+            state = self.ha.state(entity)["state"]
+            return None if state in music.NOT_KNOWN else state == "on"
         except Exception:
             return None
 

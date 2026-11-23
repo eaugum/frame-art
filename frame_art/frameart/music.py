@@ -11,6 +11,7 @@ from . import net
 
 PLAYER = "media_player.spotify"
 PLAYERS_SECONDS = 3600  # the list of players is looked up again this often
+NOT_KNOWN = ("", "unknown", "unavailable")  # what an entity says when Home Assistant has no answer for it (a restart)
 BIG = ("ab67616d0000b273", "ab67616d000082c1")  # Spotify's 640 px cover id, and the same cover at 2000 px
 
 
@@ -64,10 +65,13 @@ class HomeAssistant:
 
     def home(self, entity):
         """Someone at home, from home_entity: a zone counts the people in it, a person or device_tracker is "home", a
-        group, binary_sensor or input_boolean "on" (or "home"). Without an entity, always."""
+        group, binary_sensor or input_boolean "on" (or "home"). Without an entity, always. None when the entity has no
+        state (unknown, unavailable): that isn't "away"."""
         if not entity:
             return True
         state = self.state(entity)["state"]
+        if state in NOT_KNOWN:
+            return None
         if entity.startswith("zone."):
             return state.isdigit() and int(state) > 0
         return state in ("home", "on")
