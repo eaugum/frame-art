@@ -1,7 +1,9 @@
 """The add-on's page and API against fakes, in a container from the test image (tests/serve_page.sh starts it).
 
-The TV is 127.0.0.1, there's no Home Assistant, MQTT or Stasera, and the one source is a folder of sample pictures
-made here. Only the API runs, not the rotation or the watchers, so nothing waits for a TV. The data (options.json,
+The TV is a fake one (tests/fake_tv.py) on 127.0.0.1 in the container, so choosing a picture goes through the add-on's
+real TV code; its log lines ("fake TV: ...") are in docker logs. There's no Home Assistant, MQTT or Stasera, and the
+one source is a folder of sample pictures made here. Only the API runs, not the rotation or the watchers: choosing a
+picture (/show) and a fixed picture need neither, and the rotation would change the picture by itself. The data (options.json,
 state.json, settings.json) is in a temporary folder in the container.
 
 The page works without the key only from the Supervisor (api.INGRESS); here the Supervisor is the address requests
@@ -13,6 +15,7 @@ import os
 import socket
 import tempfile
 
+import fake_tv
 import fakes
 from frameart import api, events
 from frameart.service import Rotation
@@ -44,6 +47,10 @@ async def main():
     cfg = fakes.options(fakes.pictures(os.path.join(data, "pictures"), n=6))
     fakes.write_options(data, cfg)
     events.setup(data)
+    with open(os.path.join(data, "token.txt"), "w") as f:  # a token, so the add-on doesn't ask the TV to pair
+        f.write(fake_tv.TOKEN)
+    tv = fake_tv.FakeTV()
+    await tv.start()
     rot = Rotation(cfg, data)
     api.INGRESS = os.environ.get("FRAMEART_INGRESS") or gateway()
     logging.info("the page's requests count as ingress from %s; data in %s", api.INGRESS, data)
