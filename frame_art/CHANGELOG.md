@@ -1,5 +1,16 @@
 # Changes
 
+## 0.45.0
+
+- Safer fetching: web sources are fetched only from public addresses, and a folder source reads only the pictures it
+  lists; a link in the folder that points outside it is not followed (AUG-1772).
+- Pictures, downloads and listings stay within the box's memory and time; a slow source is skipped for the rest of a
+  change (AUG-1773). Pictures over 90 megapixels, RGBA, greyscale or palette pictures over about 50 megapixels, and
+  CMYK or sideways photos over about 52 megapixels are no longer shown. EPS, PSD, JPEG 2000 and ICO files are refused.
+- The API key stays out of the log and the event list, and pictures are asked for with `?picture=` (AUG-1777). After
+  updating, empty `api_key` in the configuration once to get a new key.
+- Tests run against a fake TV.
+
 ## 0.44.1
 
 - The page works again while a chosen picture stands: sources, settings and "Resume the rotation now" are back, and a
