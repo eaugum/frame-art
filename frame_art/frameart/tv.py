@@ -16,7 +16,7 @@ from samsungtvws.event import (MS_CHANNEL_CLIENT_CONNECT_EVENT, MS_CHANNEL_CLIEN
 from samsungtvws.exceptions import ConnectionFailure
 from samsungtvws.remote import SendRemoteKey
 
-from . import events
+from . import events, threads
 
 log = logging.getLogger(__name__)
 
@@ -70,7 +70,7 @@ class _Art(SamsungTVAsyncArt):
 async def _art(**kw):
     """SamsungTVAsyncArt asks the TV for its model with a blocking HTTP request when it's made, which waits for the
     whole timeout when the TV sleeps; in a thread, so the rest (MQTT's keepalive) goes on meanwhile."""
-    return await asyncio.to_thread(_Art, **kw)
+    return await threads.run(_Art, **kw)
 
 
 class TV:

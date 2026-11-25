@@ -37,7 +37,7 @@ import threading
 import time
 from zoneinfo import ZoneInfo
 
-from . import __version__, events, i18n, image, made, music, net, sources, today as todaymod, weather
+from . import __version__, events, i18n, image, limits, made, music, net, sources, threads, today as todaymod, weather
 from .i18n import t
 from .stasera import Stasera, Unlinked
 from . import tv as tvmod
@@ -58,6 +58,9 @@ SAVER = {"watching": "watching", "wantToStart": "want_to_start"}  # Stasera's li
 REPEAT_DAYS_MAX = 365  # how long "shown_at" remembers a picture
 HISTORY = 100  # pictures from the rotation remembered for "Recently shown"
 THUMBS = 600  # small copies kept for the add-on's page
+KEY_MAX = sources.KEY_MAX  # characters in a key
+POOL_MAX = sources.POOL_MAX  # keys kept per source
+CHANGE_SECONDS = 300  # all a change asks of the sources and Stasera, waits included: a slow one can't hold it longer
 OWN = ("saver", "music")  # pictures of the moment: not in "Recently shown", and not prepared ahead
 MUSIC_LOOK = 4  # seconds between looks at Home Assistant's player
 MUSIC_GRACE = 3 * 60  # paused or stopped this long, and the music has stopped
@@ -75,6 +78,18 @@ TV_INFO_WAIT = 60  # seconds the TV tab waits for the art channel
 SMARTTHINGS_SECONDS = 3600  # the TV's entities in Home Assistant are looked up again this often
 SEEN = {"power_on": "the TV came on", "power_off": "the TV went off", "art_mode_on": "Art Mode on",
         "art_mode_off": "Art Mode off"}
+
+
+def _kept(keys):
+    """The keys a pool keeps: one longer than KEY_MAX is left out (a broken answer), and at most POOL_MAX."""
+    return [k for k in keys if isinstance(k, str) and len(k) <= KEY_MAX][:POOL_MAX]
+
+
+def _pool(p):
+    """A pool as state.json had it, made sound: keys a list (else none), at a time (else 0: listed again)."""
+    keys, at = p.get("keys"), p.get("at")
+    return dict(p, keys=_kept(keys) if isinstance(keys, list) else [],
+                at=at if isinstance(at, (int, float)) and not isinstance(at, bool) else 0)
 
 
 def _bool(v):
@@ -179,6 +194,10 @@ class Rotation:
         self.stasera = Stasera(cfg.get("stasera_url"), data_dir)
         self.sources = sources.from_config(cfg, self.stasera)
         self.by_name = {s.name: s for s in self.sources}
+        # the pools of sources no longer in the options are forgotten, and keys from before KEY_MAX
+        pools = self.state["pools"] if isinstance(self.state["pools"], dict) else {}
+        self.state["pools"] = {name: _pool(p) for name, p in pools.items()
+                               if name in self.by_name and isinstance(p, dict)}
         self.categories = list(dict.fromkeys(s.category for s in self.sources))
         self.thumbs = os.path.join(data_dir, "thumbs")
         self.reading = set()  # categories whose sources are being listed for the page; "*" all of them
@@ -375,7 +394,7 @@ class Rotation:
     def _list(self, src):
         p = self.state["pools"].get(src.name)
         try:
-            keys = src.keys()
+            keys = _kept(src.keys())
             if not p or len(p["keys"]) != len(keys):
                 log.info("%s: %d pictures", src.name, len(keys))
             self.state["pools"][src.name] = {"at": time.time(), "keys": keys, "wide": True}
@@ -400,6 +419,7 @@ class Rotation:
                 or full == (self.cfg.get("fixed") or {}).get("key")
                 or any(h.get("key") == full for h in self.state["history"]))
 
+    @limits.in_job
     def render(self, src, key):
         """(jpeg, label, full key) for one key; raises sources.Skip when it can't be used."""
         img, label = src.fetch(key)
@@ -410,12 +430,14 @@ class Rotation:
 
     def pick(self):
         """(jpeg, label, key) for a new picture, or None, and self.nothing says why."""
-        bad, recent, empty = set(self.state["bad"]), self.state["recent"], set()
+        bad, recent, empty, slow = set(self.state["bad"]), self.state["recent"], set(), []
+        self.nothing = ""
         for _ in range(PICK_TRIES):
             # a source is listed only when it's drawn, so a big new one doesn't hold up the others
             choices = [s for s in self.in_play() if s.name not in empty]
             if not choices:
-                self.nothing = "none of the sources that are on has pictures" if self.in_play() else "no source is on"
+                self.nothing = ("gave up on %s for now: too slow or busy" % ", ".join(slow) if slow else
+                                "none of the sources that are on has pictures" if self.in_play() else "no source is on")
                 return None
             src = random.choice(choices)
             keys = [k for k in self.pool(src) if src.name + ":" + k not in bad]
@@ -435,9 +457,19 @@ class Rotation:
                 log.info("skipping %s: %s", full, e)
                 self._leave_out(full, "unfit")
                 bad.add(full)
+            except limits.TooBig as e:
+                log.info("skipping %s for now: %s", full, e)
+                bad.add(full)  # in this change only
+            except limits.Busy:
+                log.info("no memory free for %s now", full)
+                self.nothing = "no memory free for a big picture now (another is being made); trying again later"
+                return None
             except Exception as e:
                 log.warning("couldn't fetch %s: %s", full, e)
                 events.add("rotation", "fetch_failed", "couldn't fetch %s: %s" % (full, e))
+                if isinstance(e, TimeoutError) or getattr(e, "code", None) in (429, 503):
+                    empty.add(src.name)  # slow or busy: not again in this change
+                    slow.append(src.name)
         self.nothing = "tried %d pictures, and none of them could be used" % PICK_TRIES
         return None
 
@@ -547,6 +579,7 @@ class Rotation:
             return None
         return w[0]
 
+    @limits.in_job
     def make(self, kind):
         """(jpeg, label, key) for Morgenbildet or tonight's poster, or None (and it's tried again later)."""
         now = self.now()
@@ -600,6 +633,7 @@ class Rotation:
                 "power": todaymod.power(self.ha, self.cfg["price_entity"], now)
                 if ha and on("price") and self.cfg.get("price_entity") else None}
 
+    @limits.in_job
     def make_saver(self):
         """(jpeg, label, key) for the screensaver: the next of what we watch and want to start, in turn, or None."""
         try:
@@ -628,6 +662,7 @@ class Rotation:
             return None
         return image.to_jpeg(img), "Stasera: %s" % (items[n].get("title") or "?"), keys[n]
 
+    @limits.in_job
     def make_music(self):
         """(jpeg, label, key) for the album that plays, or None."""
         m = self.music
@@ -700,7 +735,8 @@ class Rotation:
             raise ValueError("not a picture from the sources")
         async with self.making:
             try:
-                got = await asyncio.to_thread(self.render, src, full.split(":", 1)[1])
+                got = await threads.run_in(threads.FETCHERS, limits.within, CHANGE_SECONDS, self.render, src,
+                                           full.split(":", 1)[1])
             except sources.Skip as e:
                 self._leave_out(full, "unfit")
                 self.state.save()
@@ -737,7 +773,7 @@ class Rotation:
         return await self.change(join=True) if key == showing else True
 
     async def _change(self, force, what=None):
-        got = await asyncio.to_thread(self.prepared, what)
+        got = await threads.run_in(threads.FETCHERS, limits.within, CHANGE_SECONDS, self.prepared, what)
         if not got:
             log.warning("nothing to show: %s", "couldn't make %s" % what if what else self.nothing)
             events.add(what if what in EVENT_SOURCES else "rotation", "nothing", "nothing to show: %s" % (
@@ -1002,9 +1038,10 @@ class Rotation:
         host = self.cfg.get("tv_host")
         if not host:
             return
+        threads.schedule()
         misses = 0
         while True:
-            on = await asyncio.to_thread(tvmod.powered_on, host, 5)
+            on = await threads.run(tvmod.powered_on, host, 5)
             if on and not self._mac():
                 await self._learn_mac()  # for Wake-on-LAN, before it's needed
             misses = 0 if on else misses + 1
@@ -1071,12 +1108,12 @@ class Rotation:
         self.back_at = time.time()
         await asyncio.sleep(1)
         host = self.cfg["tv_host"]
-        if not await asyncio.to_thread(tvmod.powered_on, host):
+        if not await threads.run(tvmod.powered_on, host):
             log.info("Art Mode off, and the TV isn't on: nothing opened")
             events.add("tv", "back_app_skipped", "the TV isn't on: %s not opened" % app)
             return
         try:
-            ok = await asyncio.to_thread(tvmod.launch, host, app)
+            ok = await threads.run(tvmod.launch, host, app)
             log.info("Art Mode off: %s %s", "opened" if ok else "the TV didn't open", app)
             events.add("tv", "back_app" if ok else "back_app_failed", "%s %s" % (
                 "opened" if ok else "the TV didn't open", app))
@@ -1109,7 +1146,7 @@ class Rotation:
         while True:
             if self.cfg.get("music"):
                 try:
-                    now = await asyncio.to_thread(self._listen)
+                    now = await threads.run(self._listen)
                     if failing:
                         log.info("Follow the music: Home Assistant answers again")
                         events.add("music", "ha_back", "Home Assistant answers again", why="")
@@ -1159,7 +1196,7 @@ class Rotation:
         answer."""
         if not self.ha.ready():
             return None
-        return not await asyncio.to_thread(tvmod.powered_on, self.cfg["tv_host"], 4)
+        return not await threads.run(tvmod.powered_on, self.cfg["tv_host"], 4)
 
     def _mac(self):
         """The TV's MAC address, as the TV said it on port 8001 (wifiMac), or None."""
@@ -1171,7 +1208,7 @@ class Rotation:
         """Asks the TV about itself and keeps the answer (the TV tab shows it too); the MAC address, or None."""
         try:
             got = self._tv_info_saved()
-            got["device"] = await asyncio.to_thread(tvmod.device, self.cfg["tv_host"], 5)
+            got["device"] = await threads.run(tvmod.device, self.cfg["tv_host"], 5)
             got["device_at"] = time.time()
             self._keep_tv_info(got)
         except Exception as e:
@@ -1186,7 +1223,7 @@ class Rotation:
         if not mac:
             raise RuntimeError("the TV's MAC address isn't known yet; it's read from the TV the first time it answers")
         try:
-            await asyncio.to_thread(self.ha.call, "wake_on_lan", "send_magic_packet", {"mac": mac})
+            await threads.run(self.ha.call, "wake_on_lan", "send_magic_packet", {"mac": mac})
         except Exception as e:
             raise RuntimeError("Home Assistant couldn't send Wake-on-LAN; is the Wake on LAN integration added? "
                                "(%s: %s)" % (type(e).__name__, e))
@@ -1215,6 +1252,7 @@ class Rotation:
         own Art Mode timer off. At night it only turns the TV off from Art Mode: something that plays is left alone."""
         if not self.cfg.get("tv_host"):
             return
+        threads.schedule()
         while True:
             try:
                 await self._guard()
@@ -1223,8 +1261,8 @@ class Rotation:
             await asyncio.sleep(GUARD_LOOK)
 
     async def _guard(self):
-        home = await asyncio.to_thread(self._is_home)
-        asleep = await asyncio.to_thread(self._is_asleep)
+        home = await threads.run(self._is_home)
+        asleep = await threads.run(self._is_asleep)
         if asleep is not None and asleep != self.was_asleep and self.was_asleep is not None:
             self.state["slept" if asleep else "woke_at"] = time.time()
             self.state.save()
@@ -1325,7 +1363,7 @@ class Rotation:
             return
         on = False
         for _ in range(10):
-            on = await asyncio.to_thread(tvmod.powered_on, self.cfg["tv_host"], 4)
+            on = await threads.run(tvmod.powered_on, self.cfg["tv_host"], 4)
             if on:
                 break
             await asyncio.sleep(3)
@@ -1373,7 +1411,7 @@ class Rotation:
                    why=why)
         for _ in range(10):
             await asyncio.sleep(3)
-            if not await asyncio.to_thread(tvmod.powered_on, host, 4):
+            if not await threads.run(tvmod.powered_on, host, 4):
                 return True
         log.info("the TV is still on after holding power")
         events.add("tv", "turn_off_failed", "the TV is still on after holding power; trying again in %d min" %
@@ -1384,7 +1422,7 @@ class Rotation:
     async def power_off(self):
         """The TV off from the page or Home Assistant, whatever it shows; the schedule turns it on again only when
         someone comes home, a window starts or the night is over."""
-        if not await asyncio.to_thread(tvmod.powered_on, self.cfg["tv_host"], 4):
+        if not await threads.run(tvmod.powered_on, self.cfg["tv_host"], 4):
             return True
         return await self.turn_off(events.why() or "asked to", anything=True)
 
@@ -1427,7 +1465,7 @@ class Rotation:
         didn't answer: in standby it often doesn't, and it wakes all the same. Doesn't wait for the lock, which a
         sleeping TV holds."""
         host = self.cfg["tv_host"]
-        if not await asyncio.to_thread(tvmod.powered_on, host):
+        if not await threads.run(tvmod.powered_on, host):
             events.expect("power_on")
             try:
                 mac = await self._wol()
@@ -1437,7 +1475,7 @@ class Rotation:
             log.info("turned the TV on with Wake-on-LAN (%s), from the page", mac)
             events.add("tv", "turned_on", "turned the TV on with Wake-on-LAN")
             until = time.time() + WAKE_WAIT
-            while not await asyncio.to_thread(tvmod.powered_on, host):
+            while not await threads.run(tvmod.powered_on, host):
                 if time.time() > until:
                     self.gone_at = time.time()
                     events.add("tv", "turn_on_failed", "the TV didn't come on: it's off the network")
@@ -1452,7 +1490,7 @@ class Rotation:
         self.back_at = time.time()  # coming up in Art Mode and leaving it opens the app once, not twice
         for attempt in range(3):  # just woken, the TV can say no to the first
             try:
-                if await asyncio.to_thread(tvmod.launch, host, app):
+                if await threads.run(tvmod.launch, host, app):
                     log.info("opened %s", app)
                     events.add("tv", "back_app", "opened %s" % app)
                     return True
@@ -1506,7 +1544,7 @@ class Rotation:
         if fresh and host:
             now = time.time()
             try:
-                got["device"] = await asyncio.to_thread(tvmod.device, host, 5)
+                got["device"] = await threads.run(tvmod.device, host, 5)
                 got["device_at"] = now
                 answer = True
             except Exception:
@@ -1515,20 +1553,20 @@ class Rotation:
             if on:
                 back = (self.cfg.get("back_app") or "").strip()
                 ids = ((back,) if back and back not in tvmod.APPS else ()) + tvmod.APPS
-                found = await asyncio.gather(*[asyncio.to_thread(tvmod.app_state, host, a) for a in ids],
+                found = await asyncio.gather(*[threads.run(tvmod.app_state, host, a) for a in ids],
                                              return_exceptions=True)
                 got["apps"] = [a for a in found if isinstance(a, dict)]
                 got["apps_at"] = now
             if on:
                 try:
-                    got["volume"] = await asyncio.to_thread(tvmod.volume, host)
+                    got["volume"] = await threads.run(tvmod.volume, host)
                     got["volume_at"] = now
                 except Exception as e:
                     log.info("the TV tab: no volume over UPnP (%s: %s)", type(e).__name__, e)
             name = ((got.get("device") or {}).get("device") or {}).get("name")
             if self.ha.ready() and (name or self.cfg.get("smartthings_entity")):
                 try:
-                    got["ha"] = await asyncio.to_thread(self._smartthings, name, now)
+                    got["ha"] = await threads.run(self._smartthings, name, now)
                     got["ha_at"] = now
                 except Exception as e:
                     log.info("the TV tab: nothing from SmartThings in Home Assistant (%s: %s)", type(e).__name__, e)
@@ -1659,7 +1697,7 @@ class Rotation:
                 raise ValueError("bad value for %s: %r" % (name, value))
             clean[name] = value
         host = self.cfg["tv_host"]
-        if not await asyncio.to_thread(tvmod.powered_on, host, 5):
+        if not await threads.run(tvmod.powered_on, host, 5):
             raise RuntimeError("the TV is off")
         async with self.lock:
             async with TV(host, os.path.join(self.data, "token.txt")) as tv:
@@ -1774,6 +1812,7 @@ class Rotation:
         for e in files[:max(0, len(files) - THUMBS)]:
             os.remove(e.path)
 
+    @limits.in_job
     def thumb(self, full):
         """A small JPEG of a picture, kept; raises sources.Skip or a network error."""
         if not self.offered(full):
@@ -1785,7 +1824,11 @@ class Rotation:
         src = self.source_of(full)
         if not src:
             raise sources.Skip("no such source")
-        got = src.thumb(full.split(":", 1)[1])
+        try:
+            got = src.thumb(full.split(":", 1)[1])
+        except sources.Skip:
+            self._leave_out(full, "unfit")
+            raise
         img = image.open_image(net.get(got, home=src.home), draft=image.THUMB) if isinstance(got, str) else got
         if not image.croppable(*img.size):
             self._leave_out(full, "unfit")  # never drawn, and not offered again
@@ -1820,7 +1863,7 @@ class Rotation:
         unlisted = sorted(name for name in names if name not in self.state["pools"])
         if unlisted and category not in self.reading:
             self.reading.add(category)
-            asyncio.get_running_loop().run_in_executor(None, self._read, category)
+            asyncio.get_running_loop().run_in_executor(threads.FETCHERS, self._read, category)
         return {"category": category, "off": not names, "recent": recent[:n],
                 "random": [{"key": k} for k in random.sample(keys, min(n, len(keys)))], "reading": unlisted}
 
@@ -1862,7 +1905,7 @@ class Rotation:
         events.add("rotation", "started", "Frame Art %s started" % __version__, why="")
         if self.unlisted():
             self.reading.add("*")
-            asyncio.get_running_loop().run_in_executor(None, self.read_unlisted)
+            asyncio.get_running_loop().run_in_executor(threads.FETCHERS, self.read_unlisted)
         if self.cfg.get("music") and self.ha.ready():
             try:  # music playing through a restart: not what was before it first, then the cover again
                 await asyncio.wait_for(self.listened.wait(), 30)

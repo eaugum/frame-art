@@ -2,7 +2,6 @@
 evening a poster of tonight's show from Stasera. Both are 3840x2160 PIL images. The screensaver's pictures (AUG-1494) are
 the same poster, for what we watch.
 """
-import io
 import os
 
 from PIL import Image, ImageDraw, ImageFont
@@ -206,7 +205,7 @@ def _logo(stasera, path):
     if not path:
         return None
     try:
-        return Image.open(io.BytesIO(net.get(stasera.image(path)))).convert("RGBA")
+        return image.open_image(net.get(stasera.image(path)), mode="RGBA")
     except Exception:
         return None
 

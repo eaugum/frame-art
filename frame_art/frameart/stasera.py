@@ -58,7 +58,7 @@ class Stasera:
             headers["Authorization"] = "Bearer " + token
         try:  # net: the token stays on Stasera's origin, even through a redirect
             status, raw = net.request(self.base + path, data, method, headers, timeout=30, limit=net.JSON_LIMIT)
-            return status, json.loads(raw or b"null")
+            return status, net.parse(raw or b"null")
         except urllib.error.HTTPError as e:
             if e.code == 401 and auth:
                 log.warning("Stasera no longer takes the token; link again from the add-on's page")

@@ -51,7 +51,7 @@ import urllib.request
 
 from aiohttp import web
 
-from . import events, i18n, sources
+from . import events, i18n, limits, sources, threads
 
 log = logging.getLogger(__name__)
 
@@ -221,12 +221,13 @@ def app(rotation):
             return web.json_response({"ok": False, "error": str(e)}, status=404, headers=CORS)
 
     thumbs = asyncio.Semaphore(4)  # a page asks for 24 at once; the museums don't like a crowd
+    thumb_seconds = 30  # all a thumbnail asks of the network: a slow one doesn't hold the big slot
 
     async def thumb(request):
         key = request.query.get("key", "")
         try:
             async with thumbs:
-                jpeg = await asyncio.to_thread(rotation.thumb, key)
+                jpeg = await threads.run_in(threads.FETCHERS, limits.within, thumb_seconds, rotation.thumb, key)
         except sources.Skip:
             raise web.HTTPNotFound()
         except Exception as e:

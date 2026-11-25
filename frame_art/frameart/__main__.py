@@ -10,7 +10,7 @@ import json
 import logging
 import os
 
-from . import api, events, i18n, mqtt
+from . import api, events, i18n, mqtt, threads
 from .service import Rotation
 
 
@@ -73,6 +73,8 @@ async def run(rot, cfg, port):
         music.cancel()
         schedule.cancel()
         language.cancel()
+        for pool in (threads.FETCHERS, threads.SCHEDULE):
+            pool.shutdown(wait=False, cancel_futures=True)
 
 
 main()

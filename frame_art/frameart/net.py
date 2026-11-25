@@ -14,11 +14,12 @@ import time
 import urllib.error
 import urllib.parse
 
-from . import __version__
+from . import __version__, limits
 
 USER_AGENT = "frame-art/%s (https://github.com/eaugum/frame-art)" % __version__
 LIMIT = 100 * 2 ** 20  # a picture: a museum's original can be 50 MB
-JSON_LIMIT = 20 * 2 ** 20
+JSON_LIMIT = 4 * 2 ** 20  # a page of a listing or a step's answer is well under 1 MB
+PARSED = 32  # parsed, JSON takes up to this many times its text ([{},{},...])
 REDIRECTS = 5
 NAT64 = ipaddress.ip_network("64:ff9b::/96")
 
@@ -111,6 +112,7 @@ def _read(r, conn, limit, deadline):
         chunk = r.read1(65536)
         if not chunk:
             break
+        limits.hold(len(chunk), raw=True)  # in the job's memory, as it comes
         out += chunk
         if len(out) > limit:
             raise Refused("an answer of more than %d bytes" % limit)
@@ -118,13 +120,18 @@ def _read(r, conn, limit, deadline):
         raise TimeoutError("the answer took too long")
     if r.length:  # read1 ends quietly when the connection does, before Content-Length
         raise http.client.IncompleteRead(bytes(out), r.length)
-    return bytes(out)
+    limits.hold(len(out), raw=True)  # the copy, for a moment
+    body = bytes(out)
+    del out
+    limits.let_go(len(body))
+    return body
 
 
 def request(url, data=None, method="GET", headers=None, timeout=60, limit=LIMIT, home=None):
     """(status, body). Raises urllib.error.HTTPError for 4xx and 5xx, Refused, or what the connection raises.
     home: the origin the caller trusts, when url came from an answer (by default url's own)."""
-    deadline = time.monotonic() + timeout
+    left = limits.left()
+    deadline = time.monotonic() + (timeout if left is None else min(timeout, left))
     first = origin(url)
     trusted = origin(home) if home else first
     headers = dict(headers or {})
@@ -158,6 +165,7 @@ def request(url, data=None, method="GET", headers=None, timeout=60, limit=LIMIT,
             watch.cancel()
             conn.close()
         if r.status >= 400:
+            limits.let_go(len(body))  # not counted while get() waits for Retry-After
             raise urllib.error.HTTPError(url, r.status, r.reason, r.headers, io.BytesIO(body))
         return r.status, body
     raise Refused("too many redirects")
@@ -176,8 +184,18 @@ def get(url, params=None, accept=None, timeout=60, headers=None, limit=LIMIT, ho
             if e.code not in (429, 503) or attempt == 3:  # too many at once: Commons, when it lists a big tree
                 raise
             wait = e.headers.get("Retry-After") or ""
-            time.sleep(min(int(wait), 120) if wait.isdigit() else 15 * (attempt + 1))
+            wait = min(int(wait), 120) if wait.isdigit() else 15 * (attempt + 1)
+            if limits.left() is not None and wait >= limits.left():
+                raise  # not within the time it has
+            time.sleep(wait)
+
+
+def parse(raw):
+    """JSON, parsed in a job of its own that counts what parsing can take (limits)."""
+    with limits.job():
+        limits.hold(len(raw) * PARSED)
+        return json.loads(raw)
 
 
 def get_json(url, params=None, accept="application/json", home=None):
-    return json.loads(get(url, params, accept, limit=JSON_LIMIT, home=home))
+    return parse(get(url, params, accept, limit=JSON_LIMIT, home=home))

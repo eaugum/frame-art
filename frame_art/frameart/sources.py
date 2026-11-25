@@ -17,10 +17,14 @@ import time
 import urllib.error
 import urllib.parse
 
-from . import image, net
+from . import image, limits, net
 from .stasera import Unlinked
 
 log = logging.getLogger(__name__)
+
+POOL_MAX = 100_000  # keys kept per source (a listing stops there)
+KEY_MAX = 500  # characters in a key: a path, a museum's id, a Commons file name (up to 255) or a picture's address
+ITEMS_TEXT = 16 * 2 ** 20  # characters kept of a listing's items, all of them (a listing stops there)
 
 
 class Skip(Exception):
@@ -34,8 +38,30 @@ def _fields(query, key):
     return dict(p.split("=", 1) for p in query.split("&") if "=" in p)
 
 
+def _picture(raw, draft=None):
+    """The picture; Skip when it never can be (not a picture, or a format or size we don't take)."""
+    try:
+        return image.open_image(raw, draft=draft)
+    except (limits.Busy, limits.TooBig):
+        raise
+    except Exception as e:
+        raise Skip("not a picture Pillow reads: %s" % e)
+
+
+def _used(spec):
+    """The fields of a list's item that the service's templates name (their first part): all that's kept of it."""
+    texts = [spec.get(k) or "" for k in ("id", "image", "thumb", "title", "width", "height", "ratio")]
+    texts += list(spec.get("steps") or []) + [re.split(r"[=~]", r, 1)[0] for r in spec.get("require") or []]
+    out = set()
+    for text in texts:
+        for part in re.split(r"\s+\|\s+", str(text)):
+            for path in re.findall(r"\{([^{}]+)\}", part) if "{" in part else [part]:
+                out.add(path.split("|")[0].split(".")[0].strip())
+    return out
+
+
 def _text(html_text, limit=80):
-    text = re.sub(r"\s+", " ", re.sub(r"<[^>]+>", " ", html_text or "")).strip()
+    text = re.sub(r"\s+", " ", re.sub(r"<[^<>]+>", " ", html_text or "")).strip()  # [^<>]: linear with many "<"
     text = re.sub(r"\s*\b(label|title) QS:.*$", "", text)  # Wikidata templates Commons leaves in ("label QS:Len,...")
     return text if len(text) <= limit else ""
 
@@ -103,8 +129,12 @@ class Folder(Source):
             raise Skip("not in the folder")
         fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
         try:
-            if not stat.S_ISREG(os.fstat(fd).st_mode):
+            info = os.fstat(fd)
+            if not stat.S_ISREG(info.st_mode):
                 raise Skip("not a file")
+            if info.st_size > net.LIMIT:
+                raise Skip("more than %d bytes" % net.LIMIT)
+            limits.hold(info.st_size, raw=True)
             f = open(fd, "rb")
         except BaseException:
             os.close(fd)
@@ -113,15 +143,10 @@ class Folder(Source):
             return f.read()
 
     def fetch(self, key):
-        raw = self.read(key)
-        try:
-            img = image.open_image(raw)
-        except Exception as e:
-            raise Skip("not a picture Pillow reads: %s" % e)
-        return img, key
+        return _picture(self.read(key)), key
 
     def thumb(self, key):
-        return image.open_image(self.read(key), draft=image.THUMB)
+        return _picture(self.read(key), draft=image.THUMB)
 
 
 def _at(o, path):
@@ -221,6 +246,7 @@ class Web(Source):
     PAGES = 5
     WAIT = 90  # seconds for a service to finish what it says is pending
     MISSING = (403, 404, 410)  # this picture isn't there for us, and won't be
+    ITEM_MAX = 16384  # characters of a list's item kept (its fields that are used, as JSON)
 
     def __init__(self, entry, cfg):
         Source.__init__(self, entry, cfg)
@@ -228,7 +254,8 @@ class Web(Source):
         self.pool_hours = entry.get("hours", 24)
         self.stasera = "{stasera}" in entry.get("url", "")
         self.client = None  # the add-on's Stasera, set by from_config
-        self.items = {}
+        self.items = {}  # key -> the item's used fields, as JSON: small, whatever the answer had
+        self.used = _used(entry)
 
     @property
     def home(self):
@@ -274,6 +301,7 @@ class Web(Source):
             log.warning("%s: no stasera_url in the options", self.name)
             return []
         items, seen = {}, 0
+        self.kept = 0  # characters in items, for ITEMS_TEXT
         try:
             for q in self.queries or [""]:
                 seen += self.search(q, items)
@@ -306,16 +334,21 @@ class Web(Source):
                     log.warning("%s: no list at %r in the answer", self.name, where)
                 break
             for o in found:
+                if len(items) >= POOL_MAX or self.kept >= ITEMS_TEXT:
+                    break
                 item = o if isinstance(o, dict) else {"id": o}
                 if self.shape_ok(item) is False:
                     continue
                 id_spec = spec.get("id") or ("id" if spec.get("steps") else None)
                 key = _fill(id_spec, item) if id_spec else self.link(spec["image"], item)
-                if key:
-                    items.setdefault(key, item)
+                kept = json.dumps({k: v for k, v in item.items() if k in self.used})
+                if key and len(key) <= KEY_MAX and len(kept) <= self.ITEM_MAX and key not in items:
+                    items[key] = kept
+                    self.kept += len(key) + len(kept)
             seen += len(found)
             following = self.link(spec.get("next"), got)
-            if not found or (not following and current == start):  # the end, or a url that doesn't page
+            full = len(items) >= POOL_MAX or self.kept >= ITEMS_TEXT
+            if not found or full or (not following and current == start):  # the end, or a url that doesn't page
                 break
             if following:
                 url = following
@@ -329,7 +362,7 @@ class Web(Source):
             self.keys()  # after a restart
             if key not in self.items:
                 raise RuntimeError("%s isn't in the answer now" % key)  # not Skip: it may come back
-        context = dict(self.items.get(key) or {})
+        context = json.loads(self.items[key]) if key in self.items else {}
         if spec.get("id") or spec.get("steps"):
             context["id"] = key
         for n, step in enumerate((spec.get("steps") or []) if steps else [], 1):
@@ -379,19 +412,20 @@ class Web(Source):
         urls = [u for u in (self.link(t, context) for t in re.split(r"\s+\|\s+", self.spec["image"])) if u]
         if not urls:
             raise Skip("no image")
-        raw = self.download(urls)
-        try:
-            img = image.open_image(raw)
-        except Exception as e:
-            raise Skip("not a picture Pillow reads: %s" % e)
+        label = self.label(context)
+        context = None  # the steps' answers aren't needed while the picture comes
+        img = _picture(self.download(urls))
         self.check(*img.size)
+        return img, label
+
+    def label(self, context):
         last = self.name
         for text in re.split(r"\s+\|\s+", self.spec.get("title") or ""):
             label = _fill(text, context)
             if label and _text(label):  # one too long or with a field missing gives way to the next
-                return img, _text(label)
+                return _text(label)
             last = _text(label, 1000) or last
-        return img, last
+        return last
 
     def thumb(self, key):
         spec = self.spec.get("thumb") or ""
