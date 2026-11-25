@@ -8,14 +8,14 @@ GET  /status   what's showing, when it changed and when it changes next, the mod
 GET  /showing.jpg  the picture
 GET  /category?name=Japan  for choosing a picture: what's been on the wall lately and 24 at random, from the
                category's sources that are ticked
-GET  /thumb?key=…  a small copy of a picture (a key from /category)
+GET  /thumb?picture=…  a small copy of a picture (a key from /category)
 GET  /tv       whether the TV is off ({"off": true}), asked of the TV; null while Home Assistant doesn't answer
 POST /tv/on    the TV on with Wake-on-LAN through Home Assistant, then back_app opened, without waiting for the TV's
                turn
 POST /next     a new picture now; ?art_mode=1 puts the TV in Art Mode too; ?what=morning or ?what=tonight shows
                Morgenbildet or tonight's show instead of one from the rotation. Ends a fixed picture. ?wake=1 (and on
                /show) turns the TV on first (Wake-on-LAN) when it's off.
-POST /show?key=…  that picture now, in Art Mode, standing until the next morning picture (a fixed picture)
+POST /show?picture=…  that picture now, in Art Mode, standing until the next morning picture (a fixed picture)
 POST /artmode  Art Mode on, with the picture it has
 POST /never    what's on the wall (from a source; showing_key in /status) is never drawn again, and another comes;
                ?picture=… is that picture instead (a key from /category), and the wall only changes if it's on it
@@ -36,8 +36,9 @@ GET  /events?since=<id>  what happened, when and why (AUG-1520), oldest first: {
 GET  /events/export  all of it (the last 7 days), as a file
 
 Every call from outside needs the add-on's key (AUG-1496), as "Authorization: Bearer <key>" or ?key=<key>: it's
-api_key in the add-on's options (made and written there when it's empty). The page itself, through ingress, doesn't
-need it. The answers wait for the TV (up to a minute or two).
+api_key in the add-on's options (a new one made and written there when it's empty). The page itself, through ingress,
+doesn't need it. /show and /thumb took the picture as ?key= before AUG-1777; that still works when the key comes in the
+header. The answers wait for the TV (up to a minute or two).
 """
 import asyncio
 import collections
@@ -45,13 +46,14 @@ import hmac
 import json
 import logging
 import os
+import re
 import secrets
 import time
 import urllib.request
 
 from aiohttp import web
 
-from . import events, i18n, limits, sources, threads
+from . import events, i18n, limits, redact, sources, threads
 
 log = logging.getLogger(__name__)
 
@@ -65,31 +67,53 @@ INGRESS = "172.30.32.2"  # the Supervisor, when the page is opened in Home Assis
 
 
 def api_key(cfg, data_dir):
-    """The key Frame TV and others send: api_key in the options. Without one, the key made before (api_key.txt) or a
-    new one, written into the add-on's options so it can be read there."""
-    if (cfg.get("api_key") or "").strip():
-        return cfg["api_key"].strip()
+    """The key Frame TV and others send: api_key in the options. Without one, a new key, written into the add-on's
+    options so it can be read there. api_key.txt keeps a key made here only until the options have it (AUG-1777), so
+    an emptied option makes a new key instead of bringing an old one back."""
     path = os.path.join(data_dir, "api_key.txt")
-    try:
-        with open(path) as f:
-            key = f.read().strip()
-    except OSError:
-        key = ""
+    if (cfg.get("api_key") or "").strip():
+        _forget(path)
+        return cfg["api_key"].strip()
+    key = _stored(path)
     if not key:
         key = secrets.token_urlsafe(24)
-        with open(path, "w") as f:
-            f.write(key)
-        os.chmod(path, 0o600)
         log.info("made a new key for the API")
-    _into_options(data_dir, key)
+        try:
+            with open(path, "w") as f:
+                f.write(key)
+            os.chmod(path, 0o600)
+        except OSError as e:
+            log.warning("couldn't keep the API's key in %s (%s)", path, type(e).__name__)
+    if _into_options(data_dir, key, path if _stored(path) == key else None):
+        _forget(path)
     return key
 
 
-def _into_options(data_dir, key):
-    """api_key into the add-on's own options, through the Supervisor (hassio_api)."""
+def _stored(path):
+    """A key made here that the options didn't get (or an older version's); "" when there's none, or it's damaged."""
+    try:
+        with open(path) as f:
+            key = f.read().strip()
+    except (OSError, ValueError):
+        return ""
+    return key if re.fullmatch(r"[A-Za-z0-9_-]{16,}", key) else ""
+
+
+def _forget(path):
+    try:
+        os.remove(path)
+    except FileNotFoundError:
+        pass
+    except OSError as e:
+        log.warning("couldn't remove %s (%s)", path, type(e).__name__)
+
+
+def _into_options(data_dir, key, kept):
+    """api_key into the add-on's own options, through the Supervisor (hassio_api). True when it took it. kept: the
+    file the key is in meanwhile, or None."""
     token = os.environ.get("SUPERVISOR_TOKEN")
     if not token:
-        return
+        return False
     try:
         with open(os.path.join(data_dir, "options.json")) as f:
             options = json.load(f)
@@ -99,16 +123,36 @@ def _into_options(data_dir, key):
         with urllib.request.urlopen(req, timeout=10):
             pass
         log.info("the API's key is now in the add-on's options (api_key)")
+        return True
     except Exception as e:
-        log.warning("couldn't write the API's key into the options (%s: %s); it's in %s/api_key.txt",
-                    type(e).__name__, e, data_dir)
+        log.warning("couldn't write the API's key into the options (%s: %s); %s", type(e).__name__, e,
+                    "it's kept in %s until then" % kept if kept else "it couldn't be kept either, so a new one at the "
+                    "next start")
+        return False
 
 
 def app(rotation):
     key = api_key(rotation.cfg, rotation.data)
+    redact.hide(key)
+    events.scrub()
 
     def ingress(request):
         return request.remote == INGRESS
+
+    def picture_of(request):
+        """The picture a call is about: ?picture=, or ?key= from callers before AUG-1777 when the API's key came
+        another way (the header, or ingress)."""
+        got = request.query.get("picture")
+        if got is None and (ingress(request) or request.headers.get("Authorization", "").startswith("Bearer ")):
+            got = request.query.get("key")
+        return not_the_key(got or "")
+
+    def not_the_key(picture):
+        """A picture that holds the API's key is refused, before it goes into the log and the events."""
+        if redact.holds(picture):
+            raise web.HTTPBadRequest(text=json.dumps({"ok": False, "error": "send the picture as ?picture="}),
+                                     content_type="application/json", headers=CORS)
+        return picture
 
     def caller(request):
         """Who asked, for the event log's why."""
@@ -209,7 +253,7 @@ def app(rotation):
             if not isinstance(changes, dict):
                 raise ValueError("send a JSON object")
             rotation.set_settings(changes)
-            events.add("api", "settings", ", ".join("%s=%s" % kv for kv in sorted(changes.items())))
+            events.add("api", "settings", ", ".join("%s=%s" % (k, rotation.cfg.get(k)) for k in sorted(changes)))
         except ValueError as e:
             return web.json_response(dict(rotation.status(), ok=False, error=str(e)), status=400, headers=CORS)
         return web.json_response(dict(rotation.status(), ok=True), headers=CORS)
@@ -224,24 +268,29 @@ def app(rotation):
     thumb_seconds = 30  # all a thumbnail asks of the network: a slow one doesn't hold the big slot
 
     async def thumb(request):
-        key = request.query.get("key", "")
+        wanted = picture_of(request)
+        if not wanted:
+            raise web.HTTPNotFound()
         try:
             async with thumbs:
-                jpeg = await threads.run_in(threads.FETCHERS, limits.within, thumb_seconds, rotation.thumb, key)
+                jpeg = await threads.run_in(threads.FETCHERS, limits.within, thumb_seconds, rotation.thumb, wanted)
         except sources.Skip:
             raise web.HTTPNotFound()
         except Exception as e:
-            log.info("no thumbnail for %s (%s: %s)", key, type(e).__name__, e)
+            log.info("no thumbnail for %s (%s: %s)", wanted, type(e).__name__, e)
             raise web.HTTPBadGateway()
         return web.Response(body=jpeg, content_type="image/jpeg", headers={"Cache-Control": "max-age=86400"})
 
     async def show(request):
-        key = request.query.get("key", "")
-        log.info("asked to show %s", key)
-        events.add("api", "show", key)
+        wanted = picture_of(request)
+        if not wanted:
+            return web.json_response(dict(rotation.status(), ok=False, error="which picture? send ?picture="),
+                                     status=400, headers=CORS)
+        log.info("asked to show %s", wanted)
+        events.add("api", "show", wanted)
         try:
             await wake(request)
-            ok = await rotation.choose(key)
+            ok = await rotation.choose(wanted)
             return web.json_response(dict(rotation.status(), ok=ok), headers=CORS)
         except ValueError as e:
             return web.json_response(dict(rotation.status(), ok=False, error=str(e)), status=400, headers=CORS)
@@ -263,10 +312,10 @@ def app(rotation):
         return web.json_response(dict(rotation.status(), ok=True), headers=CORS)
 
     async def never(request):
-        key = request.query.get("picture") or rotation.showing_key()  # not ?key=, which can be the API's key here
-        log.info("asked never to show %s again", key)
-        events.add("api", "never", key)
-        return await act(request, lambda: rotation.never(key))
+        wanted = not_the_key(request.query.get("picture")) or rotation.showing_key()
+        log.info("asked never to show %s again", wanted)
+        events.add("api", "never", wanted)
+        return await act(request, lambda: rotation.never(wanted))
 
     async def artmode(request):
         log.info("asked for Art Mode")

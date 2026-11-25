@@ -614,10 +614,10 @@
     box.innerHTML = "";
     items.forEach(function (it) {
       var pic = el("div", {className: "pic"}, [
-        el("img", {src: "thumb?key=" + encodeURIComponent(it.key), title: it.label || "", loading: "lazy",
+        el("img", {src: "thumb?picture=" + encodeURIComponent(it.key), title: it.label || "", loading: "lazy",
           onload: function () { pic.classList.add("ready"); },
           onerror: function () { pic.remove(); },
-          onclick: function () { act("show?key=" + encodeURIComponent(it.key), tr("showing_until")); }}),
+          onclick: function () { act("show?picture=" + encodeURIComponent(it.key), tr("showing_until")); }}),
         el("button", {textContent: "×", title: tr("never"), ariaLabel: tr("never"),
           onclick: function () { ask(it.key, pic.firstChild.src); }})]);
       pic.dataset.key = it.key;

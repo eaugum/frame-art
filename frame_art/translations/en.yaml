@@ -10,7 +10,8 @@ configuration:
   api_key:
     name: API key
     description: >-
-      The key for the API. Left empty, the add-on makes one and writes it here.
+      The key for the API. Left empty, the add-on makes a new one and writes it here, so emptying it replaces the
+      key; then give Frame TV the new one.
   weather_entity:
     name: Weather
     description: The weather entity for the morning picture (met.no). Empty gives no weather.

@@ -18,6 +18,8 @@ import os
 import threading
 import time
 
+from . import redact
+
 log = logging.getLogger(__name__)
 
 KEEP_DAYS = 7
@@ -63,15 +65,37 @@ def _trim():
     _recent.clear()
     _recent.extend(kept)
     _last_id = max([_last_id] + [e["id"] for e in kept])
-    if not _path:
-        return
+    if _path:
+        _write(kept, "trim")
+
+
+def _write(kept, what):
     try:
         tmp = _path + ".tmp"
         with open(tmp, "w", encoding="utf-8") as f:
             f.writelines(json.dumps(e, ensure_ascii=False) + "\n" for e in kept)
         os.replace(tmp, _path)
     except OSError as e:
-        log.warning("couldn't trim the event log (%s)", e)
+        log.warning("couldn't %s the event log (%s)", what, e)
+
+
+def _clean(e):
+    return dict(e, **{k: redact.text(e[k]) for k in ("kind", "detail", "why") if isinstance(e.get(k), str)})
+
+
+def scrub():
+    """The kept events through redact.text, once the key is known (AUG-1777): a key that went into them before is
+    gone. The file is written only when something changed."""
+    with _lock:
+        recent = [_clean(e) for e in _recent]
+        _recent.clear()
+        _recent.extend(recent)
+        if not _path:
+            return
+        kept = list(_read())
+        clean = [_clean(e) for e in kept]
+        if clean != kept:
+            _write(clean, "clean")
 
 
 def add(source, kind, detail="", why=None, at=None):
@@ -83,8 +107,8 @@ def add(source, kind, detail="", why=None, at=None):
     why = _why.get() if why is None else why
     with _lock:
         _last_id = max(int(now * 1000), _last_id + 1)
-        e = {"id": _last_id, "at": at or _last_id / 1000, "source": source, "kind": kind, "detail": str(detail or ""),
-             "why": why}
+        e = {"id": _last_id, "at": at or _last_id / 1000, "source": source, "kind": redact.text(str(kind)),
+             "detail": redact.text(str(detail or "")), "why": redact.text(str(why or ""))}
         _recent.append(e)
         if not _path:
             return e

@@ -30,7 +30,7 @@ options:
   # The language of the morning picture and the posters: auto follows Home Assistant's system language (English
   # when it's neither English nor Norwegian)
   language: auto
-  # The key for the API; left empty, the add-on makes one and writes it here
+  # The key for the API; left empty, the add-on makes a new one and writes it here
   api_key: ""
   # The morning picture's weather (met.no in Home Assistant); empty: no weather
   weather_entity: weather.forecast_home

@@ -63,7 +63,7 @@ interval, the times and the switches) is on the add-on's page and is saved in `/
 |---|---|
 | `tv_host` | The TV's IP address |
 | `language` | The language of the morning picture and the posters: `auto` (default), `en` or `nb`. See [Language](#language) |
-| `api_key` | The key for the API and Frame TV's `art_key`. Left empty, the add-on makes one at its start and writes it in |
+| `api_key` | The key for the API and Frame TV's `art_key`. Left empty, the add-on makes a new one at its start and writes it in, so emptying it replaces the key (then give Frame TV the new one). If the add-on can't write its options, it keeps the key it made until it can; type a new one to replace it then |
 | `weather_entity` | The weather for the morning picture, e.g. `weather.forecast_home` (Met.no). Empty gives no weather |
 | `home_entity` | Who's home, for "Only when someone is home": `zone.home` (default; someone in it), or a `person`, `device_tracker`, `group`, `binary_sensor` or `input_boolean` that is `home` or `on`. Empty: always home |
 | `calendars` | `calendar.*` entities whose events today are shown on the morning picture |
@@ -518,7 +518,8 @@ To go back to Frame TV when Art Mode is turned off, set `back_app` to `FrameTVap
 
 The add-on answers on port 8099 on the local network, for scripts and apps on the TV. Every call needs the key, as
 `Authorization: Bearer <key>` or `?key=<key>`; it's `api_key` in the options. The page in the sidebar doesn't need it.
-The answers wait for the TV.
+The answers wait for the TV. A picture is `?picture=…`; older scripts that send it as `?key=…` to `/show` or `/thumb`
+still work when the key is in the `Authorization` header.
 
 | Call | What |
 |---|---|
@@ -532,8 +533,8 @@ The answers wait for the TV.
 | `POST /artmode` | Art Mode on, with the picture it has |
 | `POST /never` | The picture on the wall is never shown again, and another comes; only for a picture from a source (`showing_key` in `/status`). `?picture=…` is a key from `/category` instead, and the wall only changes if that picture is on it |
 | `GET /category?name=Japan` | Recently shown and 24 at random from the category's ticked sources |
-| `GET /thumb?key=…` | A small copy of a picture from `/category` |
-| `POST /show?key=…` | That picture now, in Art Mode, fixed until the next morning picture |
+| `GET /thumb?picture=…` | A small copy of a picture from `/category` |
+| `POST /show?picture=…` | That picture now, in Art Mode, fixed until the next morning picture |
 | `POST /settings` | Changes the settings, with JSON: `sources_off`, `mode`, `interval_minutes`, `keep`, `morning`, `morning_days`, `morning_tv_on`, `tonight`, `tonight_days`, `tonight_tv_on`, `night_timer_minutes`, `away_off`, `tv_timer_off`, `screensaver`, `screensaver_stasera`, `music`, `music_home_only`, `repeat_days` (0–365), `paused`, `morning_weather`, `morning_calendar`, `morning_price`, `morning_names`, `morning_stasera`. A week is seven `{"on", "from", "until"}`, Monday first; `morning_time` and `tonight_time` from before move every day's start |
 | `POST /saver` | The screensaver: Art Mode on (see above). `?minutes=5` changes the picture that often meanwhile |
 | `POST /stasera/link`, `/stasera/unlink` | Links to Stasera (the code is in `/status` under `pairing`) and unlinks |
