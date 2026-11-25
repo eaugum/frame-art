@@ -392,6 +392,14 @@ class Rotation:
     def source_of(self, full):
         return self.by_name.get(full.split(":", 1)[0])
 
+    def offered(self, full):
+        """A key the add-on listed, showed or fixed itself: the only ones the page may choose, since a key names a file
+        or an address."""
+        name, _, key = full.partition(":")
+        return (key in ((self.state["pools"].get(name) or {}).get("keys") or [])
+                or full == (self.cfg.get("fixed") or {}).get("key")
+                or any(h.get("key") == full for h in self.state["history"]))
+
     def render(self, src, key):
         """(jpeg, label, full key) for one key; raises sources.Skip when it can't be used."""
         img, label = src.fetch(key)
@@ -688,6 +696,8 @@ class Rotation:
         src = self.source_of(full)
         if not src:
             raise ValueError("no source called %s" % full.split(":", 1)[0])
+        if not self.offered(full):
+            raise ValueError("not a picture from the sources")
         async with self.making:
             try:
                 got = await asyncio.to_thread(self.render, src, full.split(":", 1)[1])
@@ -1766,6 +1776,8 @@ class Rotation:
 
     def thumb(self, full):
         """A small JPEG of a picture, kept; raises sources.Skip or a network error."""
+        if not self.offered(full):
+            raise sources.Skip("not a picture from the sources")
         path = self._thumb_path(full)
         if os.path.exists(path):
             with open(path, "rb") as f:
@@ -1774,7 +1786,7 @@ class Rotation:
         if not src:
             raise sources.Skip("no such source")
         got = src.thumb(full.split(":", 1)[1])
-        img = image.open_image(net.get(got), draft=image.THUMB) if isinstance(got, str) else got
+        img = image.open_image(net.get(got, home=src.home), draft=image.THUMB) if isinstance(got, str) else got
         if not image.croppable(*img.size):
             self._leave_out(full, "unfit")  # never drawn, and not offered again
             raise sources.Skip("%dx%d isn't close to 16:9" % img.size)

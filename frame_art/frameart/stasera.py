@@ -7,9 +7,8 @@ import logging
 import os
 import time
 import urllib.error
-import urllib.request
 
-from .net import USER_AGENT
+from . import net
 
 log = logging.getLogger(__name__)
 
@@ -47,7 +46,7 @@ class Stasera:
         return "pairing" if self.pairing else "unlinked"
 
     def _request(self, method, path, body=None, auth=True):
-        headers = {"User-Agent": USER_AGENT, "Accept": "application/json"}
+        headers = {"User-Agent": net.USER_AGENT, "Accept": "application/json"}
         data = None
         if body is not None:
             data = json.dumps(body).encode()
@@ -57,10 +56,9 @@ class Stasera:
             if not token:
                 raise Unlinked()
             headers["Authorization"] = "Bearer " + token
-        req = urllib.request.Request(self.base + path, data=data, headers=headers, method=method)
-        try:
-            with urllib.request.urlopen(req, timeout=30) as r:
-                return r.status, json.loads(r.read() or b"null")
+        try:  # net: the token stays on Stasera's origin, even through a redirect
+            status, raw = net.request(self.base + path, data, method, headers, timeout=30, limit=net.JSON_LIMIT)
+            return status, json.loads(raw or b"null")
         except urllib.error.HTTPError as e:
             if e.code == 401 and auth:
                 log.warning("Stasera no longer takes the token; link again from the add-on's page")
@@ -124,6 +122,8 @@ class Stasera:
 
     def ask(self, url):
         """An address on Stasera, as the linked add-on. Raises Unlinked."""
+        if not self.on or not url.startswith(self.base + "/"):
+            raise RuntimeError("not an address on Stasera: %s" % url)
         path = url[len(self.base):]
         status, j = self._request("GET", path)
         if status != 200:

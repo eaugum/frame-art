@@ -127,7 +127,7 @@ is read, so sources with mostly portrait pictures, like posters and woodblock pr
 
 **Your own pictures:** Media → Local media → make the folder `frame-art` and upload the pictures there, or copy them to
 `/media/frame-art` over Samba. The default source "My pictures" shows them. JPEG and PNG work; HEIC from an iPhone
-doesn't.
+doesn't. Only files inside the folder are shown; a symbolic link that points outside it is skipped.
 
 **How they're drawn:** every source is drawn equally often, however many pictures it has, and no picture comes again
 before 200 others have been shown (or the whole source, if it's smaller). A source is read the first time it's drawn;

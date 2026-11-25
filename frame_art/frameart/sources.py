@@ -12,6 +12,7 @@ import logging
 import os
 import random
 import re
+import stat
 import time
 import urllib.error
 import urllib.parse
@@ -45,6 +46,7 @@ class Source:
     type = None
     pool_hours = 24
     default = []
+    home = None  # the origin of a source's own addresses (net.get's home)
 
     def __init__(self, entry, cfg):
         self.name = entry["name"]
@@ -83,21 +85,43 @@ class Folder(Source):
             dirs[:] = [d for d in dirs if not d.startswith(".")]
             for f in files:
                 if f.lower().endswith(self.EXT) and not f.startswith("."):
-                    out.append(os.path.relpath(os.path.join(root, f), self.path))
+                    key = os.path.relpath(os.path.join(root, f), self.path)
+                    if self.inside(key):
+                        out.append(key)
         return sorted(out)
 
+    def inside(self, key):
+        """The key's file, links followed, when that's inside the folder; else None."""
+        root = os.path.realpath(self.path)
+        path = os.path.realpath(os.path.join(root, key))
+        return path if os.path.commonpath([root, path]) == root else None
+
+    def read(self, key):
+        """The bytes of a regular file inside the folder; Skip for anything else (a FIFO would block the change)."""
+        path = self.inside(key)
+        if not path:
+            raise Skip("not in the folder")
+        fd = os.open(path, os.O_RDONLY | os.O_NONBLOCK)
+        try:
+            if not stat.S_ISREG(os.fstat(fd).st_mode):
+                raise Skip("not a file")
+            f = open(fd, "rb")
+        except BaseException:
+            os.close(fd)
+            raise
+        with f:
+            return f.read()
+
     def fetch(self, key):
-        with open(os.path.join(self.path, key), "rb") as f:
-            try:
-                img = image.open_image(f.read())
-            except Exception as e:
-                raise Skip("not a picture Pillow reads: %s" % e)
+        raw = self.read(key)
+        try:
+            img = image.open_image(raw)
+        except Exception as e:
+            raise Skip("not a picture Pillow reads: %s" % e)
         return img, key
 
     def thumb(self, key):
-        with open(os.path.join(self.path, key), "rb") as f:
-            img = image.open_image(f.read(), draft=image.THUMB)
-        return img
+        return image.open_image(self.read(key), draft=image.THUMB)
 
 
 def _at(o, path):
@@ -206,10 +230,15 @@ class Web(Source):
         self.client = None  # the add-on's Stasera, set by from_config
         self.items = {}
 
+    @property
+    def home(self):
+        """The service's own address: what its answers point to may be on the home network only there."""
+        return self.spec.get("url", "").replace("{stasera}", self.client.base if self.stasera else "")
+
     def ask(self, url):
         if self.stasera:
             return self.client.ask(url)
-        return net.get_json(url, accept=self.spec.get("accept") or "application/json")
+        return net.get_json(url, accept=self.spec.get("accept") or "application/json", home=self.home)
 
     def link(self, spec, context):
         """An absolute http(s) URL, or None: what an answer says isn't ours to open as a file."""
@@ -285,7 +314,7 @@ class Web(Source):
                 if key:
                     items.setdefault(key, item)
             seen += len(found)
-            following = _fill(spec.get("next"), got)
+            following = self.link(spec.get("next"), got)
             if not found or (not following and current == start):  # the end, or a url that doesn't page
                 break
             if following:
@@ -331,7 +360,7 @@ class Web(Source):
         """The first of the addresses that's there."""
         for url in urls:
             try:
-                return net.get(url, timeout=180)
+                return net.get(url, timeout=180, home=self.home)
             except urllib.error.HTTPError as e:
                 if e.code not in self.MISSING:
                     raise
