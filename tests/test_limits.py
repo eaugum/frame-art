@@ -44,6 +44,14 @@ def png_header(width, height):
 EPS = b"%!PS-Adobe-3.0 EPSF-3.0\n%%BoundingBox: 0 0 64 36\n%%EndComments\nshowpage\n%%EOF\n"
 
 
+class RotationOnly(Temp):
+    """The morning picture and tonight's show off, so a change takes a picture from the rotation at any time of day: in the
+    morning window it would make the morning picture and put it on a TV that isn't here."""
+
+    def rotation(self, **more):
+        return super().rotation(**dict({"morning": False, "tonight": False}, **more))
+
+
 class OpenImageTest(unittest.TestCase):
     def test_the_sources_formats_open(self):
         for fmt in ("JPEG", "PNG", "WEBP", "GIF", "BMP", "TIFF"):
@@ -125,7 +133,7 @@ class FolderTest(Temp):
             folder.read("huge.jpg")
 
 
-class ThreadsTest(Temp, unittest.IsolatedAsyncioTestCase):
+class ThreadsTest(RotationOnly, unittest.IsolatedAsyncioTestCase):
     """asyncio's default pool is the schedule's (guard, the TV, Home Assistant): the sources work in their own."""
 
     async def settled(self, rot):
@@ -352,7 +360,7 @@ class Answers(http.server.ThreadingHTTPServer):
         threading.Thread(target=self.serve_forever, daemon=True).start()
 
 
-class ChangeDeadlineTest(Temp, unittest.IsolatedAsyncioTestCase):
+class ChangeDeadlineTest(RotationOnly, unittest.IsolatedAsyncioTestCase):
     def rotation_for(self, how, path="list"):
         server = Answers(how)
         self.addCleanup(server.server_close)
